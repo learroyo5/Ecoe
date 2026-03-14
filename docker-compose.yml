@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ecoe-db
+    environment:
+      POSTGRES_DB: ecoe
+      POSTGRES_USER: ecoe
+      POSTGRES_PASSWORD: ecoe
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecoe -d ecoe"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: ecoe-backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://ecoe:ecoe@db:5432/ecoe
+      SECRET_KEY: ecoe-secret-key
+      CORS_ORIGINS: http://localhost:3000,http://frontend:3000
+      STORAGE_PATH: /app/storage
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend_storage:/app/storage
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: /backend/api
+        INTERNAL_API_URL: http://backend:8000
+    container_name: ecoe-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: /backend/api
+      INTERNAL_API_URL: http://backend:8000
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:
+  backend_storage:

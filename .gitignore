@@ -1,0 +1,6 @@
+.DS_Store
+*.log
+backend/ecoe.db
+backend/storage
+frontend/.next
+frontend/node_modules
