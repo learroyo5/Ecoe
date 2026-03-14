@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f4efe6;
+  --background-soft: #fbf8f2;
+  --foreground: #1f2937;
+  --muted: #6b7280;
+  --card: rgba(255, 252, 246, 0.92);
+  --line: rgba(31, 41, 55, 0.12);
+  --primary: #0f766e;
+  --primary-strong: #115e59;
+  --accent: #b45309;
+  --danger: #b91c1c;
+}
+
+html {
+  background:
+    radial-gradient(circle at top left, rgba(15, 118, 110, 0.12), transparent 28%),
+    radial-gradient(circle at top right, rgba(180, 83, 9, 0.12), transparent 26%),
+    linear-gradient(180deg, #f8f4ee 0%, #efe8dc 100%);
+  color: var(--foreground);
+}
+
+body {
+  min-height: 100vh;
+  color: var(--foreground);
+  font-family: var(--font-body), sans-serif;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display), serif;
+}
+
+input,
+select,
+textarea {
+  @apply w-full rounded-2xl border px-4 py-3 text-sm outline-none transition;
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: rgba(15, 118, 110, 0.5);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.15);
+}
+
+button {
+  @apply transition;
+}
+
+.panel-card {
+  @apply rounded-3xl border p-5 shadow-sm;
+  border-color: var(--line);
+  background: var(--card);
+  backdrop-filter: blur(16px);
+}
+
+.pill {
+  @apply inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em];
+}
+
+.pill-ok {
+  background: rgba(15, 118, 110, 0.12);
+  color: #115e59;
+}
+
+.pill-warn {
+  background: rgba(180, 83, 9, 0.14);
+  color: #92400e;
+}
+
+.pill-danger {
+  background: rgba(185, 28, 28, 0.12);
+  color: #991b1b;
+}
+
+.btn-primary {
+  @apply inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold text-white shadow-sm;
+  background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+}
+
+.btn-secondary {
+  @apply inline-flex items-center justify-center rounded-2xl border px-4 py-3 text-sm font-semibold;
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.grid-auto {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
