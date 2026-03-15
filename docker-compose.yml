@@ -2,6 +2,7 @@ services:
   db:
     image: postgres:16-alpine
     container_name: ecoe-db
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ecoe
       POSTGRES_USER: ecoe
@@ -20,6 +21,7 @@ services:
     build:
       context: ./backend
     container_name: ecoe-backend
+    restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+psycopg://ecoe:ecoe@db:5432/ecoe
       SECRET_KEY: ecoe-secret-key
@@ -40,6 +42,7 @@ services:
         NEXT_PUBLIC_API_URL: /backend/api
         INTERNAL_API_URL: http://backend:8000
     container_name: ecoe-frontend
+    restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_URL: /backend/api
       INTERNAL_API_URL: http://backend:8000
