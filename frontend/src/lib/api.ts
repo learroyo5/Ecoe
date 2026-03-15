@@ -40,11 +40,22 @@ export const api = {
     }),
   me: (token: string) => request("/auth/me", {}, token),
   listECOE: (token: string) => request("/ecoe", {}, token),
+  ecoe: (eventId: number, token: string) => request(`/ecoe/${eventId}`, {}, token),
   dashboard: (eventId: number, token: string) => request(`/dashboard/${eventId}`, {}, token),
+  updateECOETiming: (eventId: number, payload: unknown, token: string) =>
+    request(`/ecoe/${eventId}/timing`, { method: "PATCH", body: JSON.stringify(payload) }, token),
   validation: (eventId: number, token: string) => request(`/validation/${eventId}`, {}, token),
   students: (eventId: number, token: string) => request(`/students/${eventId}`, {}, token),
   createStudent: (payload: unknown, token: string) =>
     request("/students", { method: "POST", body: JSON.stringify(payload) }, token),
+  updateStudentStatus: (studentId: number, payload: unknown, token: string) =>
+    request(`/students/${studentId}/status`, { method: "PATCH", body: JSON.stringify(payload) }, token),
+  deleteStudent: (studentId: number, token: string) =>
+    request(`/students/${studentId}`, { method: "DELETE" }, token),
+  deduplicateStudentsByRut: (eventId: number, token: string) =>
+    request(`/students/${eventId}/deduplicate-rut`, { method: "POST" }, token),
+  renumberStudents: (eventId: number, token: string) =>
+    request(`/students/${eventId}/renumber`, { method: "POST" }, token),
   importStudents: (eventId: number, file: File, token: string) => {
     const formData = new FormData();
     formData.append("file", file);
@@ -53,16 +64,45 @@ export const api = {
   staff: (eventId: number, token: string) => request(`/staff/${eventId}`, {}, token),
   createStaff: (payload: unknown, token: string) =>
     request("/staff", { method: "POST", body: JSON.stringify(payload) }, token),
+  updateStaff: (staffId: number, payload: unknown, token: string) =>
+    request(`/staff/${staffId}`, { method: "PATCH", body: JSON.stringify(payload) }, token),
+  deleteStaff: (staffId: number, token: string) =>
+    request(`/staff/${staffId}`, { method: "DELETE" }, token),
+  deduplicateStaffByEmail: (eventId: number, token: string) =>
+    request(`/staff/${eventId}/deduplicate-email`, { method: "POST" }, token),
   importStaff: (eventId: number, file: File, token: string) => {
     const formData = new FormData();
     formData.append("file", file);
     return request(`/staff/import?ecoe_event_id=${eventId}`, { method: "POST", body: formData }, token);
   },
+  evaluatorContext: (eventId: number, token: string) => request(`/evaluator/context/${eventId}`, {}, token),
+  confirmStationCheckin: (payload: unknown, token: string) =>
+    request("/station-checkins/confirm", { method: "POST", body: JSON.stringify(payload) }, token),
+  studentAccess: (payload: unknown, token: string) =>
+    request("/student/access", { method: "POST", body: JSON.stringify(payload) }, token),
   stations: (eventId: number, token: string) => request(`/stations/${eventId}`, {}, token),
   createStation: (payload: unknown, token: string) =>
     request("/stations", { method: "POST", body: JSON.stringify(payload) }, token),
   updateStation: (stationId: number, payload: unknown, token: string) =>
     request(`/stations/${stationId}`, { method: "PUT", body: JSON.stringify(payload) }, token),
+  media: (stationId: number, token: string) => request(`/media/${stationId}`, {}, token),
+  deleteMedia: (assetId: number, token: string) =>
+    request(`/media/${assetId}`, { method: "DELETE" }, token),
+  mediaFile: (assetId: number, token: string) => request<Blob>(`/media/file/${assetId}`, {}, token),
+  uploadMedia: (
+    payload: { ecoe_event_id: number; station_id?: number | null; target_viewer?: string; file: File },
+    token: string,
+  ) => {
+    const formData = new FormData();
+    formData.append("file", payload.file);
+    const stationId = payload.station_id ? `&station_id=${payload.station_id}` : "";
+    const targetViewer = payload.target_viewer ?? "estudiante";
+    return request(
+      `/media/upload?ecoe_event_id=${payload.ecoe_event_id}${stationId}&target_viewer=${targetViewer}`,
+      { method: "POST", body: formData },
+      token,
+    );
+  },
   templates: (token: string) => request("/templates", {}, token),
   createTemplate: (payload: unknown, token: string) =>
     request("/templates", { method: "POST", body: JSON.stringify(payload) }, token),

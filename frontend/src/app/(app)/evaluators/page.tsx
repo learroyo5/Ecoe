@@ -1,10 +1,13 @@
 "use client";
 
+import Link from "next/link";
+import { useState } from "react";
+
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
 import { DataTable } from "@/components/data-table";
-import { FileImport, QuickForm } from "@/components/forms";
+import { FileImport } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 
 export default function EvaluatorsPage() {
@@ -13,46 +16,187 @@ export default function EvaluatorsPage() {
     () => api.staff(eventId, token!) as Promise<Record<string, unknown>[]>,
     [eventId, token],
   );
+  const { data: stations } = useApi(
+    () => api.stations(eventId, token!) as Promise<Record<string, unknown>[]>,
+    [eventId, token],
+  );
+  const [form, setForm] = useState({
+    name: "",
+    last_name: "",
+    email: "",
+    role_code: "evaluador",
+    station_id: "",
+  });
+  const [assignmentDrafts, setAssignmentDrafts] = useState<Record<string, string>>({});
+  const [message, setMessage] = useState<string | null>(null);
 
-  const refresh = async () => setData((await api.staff(eventId, token!)) as Record<string, unknown>[]);
+  const refresh = async () =>
+    setData((await api.staff(eventId, token!)) as Record<string, unknown>[]);
+
+  const stationOptions = (stations ?? []).map((station) => ({
+    id: String(station.id),
+    label: `${String(station.station_number)} - ${String(station.name)}`,
+  }));
 
   return (
     <div className="space-y-6">
-      <SectionCard title="Evaluadores y colaboradores" subtitle="Asignacion operativa por rol y estacion">
+      <SectionCard
+        title="Evaluadores y colaboradores"
+        subtitle="Cada evaluador debe tener una estacion principal clara para que su login abra el flujo correcto."
+      >
         <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
           <FileImport
             label="Importar evaluadores o colaboradores"
+            helper={
+              <div className="space-y-3 rounded-2xl bg-slate-50 p-3">
+                <p>Usa un archivo Excel o CSV con estos encabezados:</p>
+                <p className="font-semibold text-slate-800">
+                  nombre | apellidos | correo | rol
+                </p>
+                <p>El orden puede cambiar, pero los nombres de columna deben coincidir.</p>
+                <Link
+                  href="/plantilla_evaluadores.csv"
+                  className="inline-block font-semibold text-teal-700 underline-offset-4 hover:underline"
+                >
+                  Descargar plantilla base CSV
+                </Link>
+              </div>
+            }
             onImport={async (file) => {
-              await api.importStaff(eventId, file, token!);
+              const response = (await api.importStaff(eventId, file, token!)) as {
+                imported?: number;
+                skipped?: number;
+              };
               await refresh();
+              return `Carga completada: ${response.imported ?? 0} evaluadores o colaboradores importados y ${response.skipped ?? 0} omitidos por correo duplicado.`;
             }}
           />
-          <QuickForm
-            fields={[
-              { name: "name", label: "Nombre" },
-              { name: "last_name", label: "Apellidos" },
-              { name: "email", label: "Correo", type: "email" },
-              { name: "role_code", label: "Rol", placeholder: "evaluador" },
-              { name: "station_ids", label: "Estaciones", placeholder: "1,2" },
-            ]}
-            onSubmit={async (values) => {
-              await api.createStaff(
-                {
-                  ecoe_event_id: eventId,
-                  ...values,
-                  station_ids: (values.station_ids ?? "")
-                    .split(",")
-                    .map((value) => Number(value.trim()))
-                    .filter(Boolean),
-                },
-                token!,
-              );
-              await refresh();
+
+          <form
+            className="grid gap-4 md:grid-cols-2"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setMessage(null);
+              try {
+                await api.createStaff(
+                  {
+                    ecoe_event_id: eventId,
+                    name: form.name,
+                    last_name: form.last_name,
+                    email: form.email,
+                    role_code: form.role_code,
+                    station_ids: form.station_id ? [Number(form.station_id)] : [],
+                  },
+                  token!,
+                );
+                await refresh();
+                setForm({
+                  name: "",
+                  last_name: "",
+                  email: "",
+                  role_code: "evaluador",
+                  station_id: "",
+                });
+                setMessage("Evaluador o colaborador guardado correctamente.");
+              } catch (error) {
+                setMessage(error instanceof Error ? error.message : "No se pudo guardar.");
+              }
             }}
-          />
+          >
+            <label className="space-y-2">
+              <span className="text-sm font-semibold text-slate-700">Nombre</span>
+              <input
+                value={form.name}
+                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-semibold text-slate-700">Apellidos</span>
+              <input
+                value={form.last_name}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, last_name: event.target.value }))
+                }
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-semibold text-slate-700">Correo</span>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-semibold text-slate-700">Rol</span>
+              <select
+                value={form.role_code}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, role_code: event.target.value }))
+                }
+              >
+                <option value="evaluador">Evaluador</option>
+                <option value="coordinador_operativo">Coordinador operativo</option>
+                <option value="paciente_simulado">Paciente simulado</option>
+                <option value="cronometrador">Cronometrador</option>
+              </select>
+            </label>
+            <label className="space-y-2 md:col-span-2">
+              <span className="text-sm font-semibold text-slate-700">Estacion principal asignada</span>
+              <select
+                value={form.station_id}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, station_id: event.target.value }))
+                }
+              >
+                <option value="">Sin estacion asignada por ahora</option>
+                {stationOptions.map((station) => (
+                  <option key={station.id} value={station.id}>
+                    {station.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs leading-5 text-slate-500">
+                Para el flujo del evaluador se usa una estacion principal. Eso hace que al iniciar
+                sesion vea directamente su estacion y pueda confirmar al estudiante correcto.
+              </p>
+            </label>
+            <div className="md:col-span-2">
+              <button className="btn-primary">Guardar asignacion</button>
+              {message ? <p className="mt-3 text-sm text-slate-600">{message}</p> : null}
+            </div>
+          </form>
         </div>
       </SectionCard>
+
       <SectionCard title="Equipo operativo">
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={async () => {
+              const confirmed = window.confirm(
+                "Se revisara el equipo operativo de este ECOE y se borraran los duplicados por correo, conservando el primer registro cargado. ¿Quieres continuar?",
+              );
+              if (!confirmed) {
+                return;
+              }
+              const response = (await api.deduplicateStaffByEmail(eventId, token!)) as {
+                removed?: number;
+              };
+              await refresh();
+              window.alert(
+                `Limpieza completada: ${response.removed ?? 0} registros duplicados fueron eliminados.`,
+              );
+            }}
+          >
+            Limpiar duplicados por correo
+          </button>
+          <p className="text-sm text-slate-600">
+            Cada evaluador deberia tener una sola estacion principal asignada, aunque puedes
+            corregirla despues si hay contingencia.
+          </p>
+        </div>
         {loading ? (
           <p>Cargando equipo...</p>
         ) : error ? (
@@ -67,8 +211,89 @@ export default function EvaluatorsPage() {
               { key: "role_code", label: "Rol" },
               {
                 key: "station_ids",
-                label: "Estaciones",
-                render: (row) => String((row as { station_ids?: unknown[] }).station_ids ?? []),
+                label: "Estacion principal",
+                render: (row) => {
+                  const stationId = String(((row as { station_ids?: number[] }).station_ids ?? [])[0] ?? "");
+                  const station = stationOptions.find((item) => item.id === stationId);
+                  return station?.label ?? "Sin asignar";
+                },
+              },
+              {
+                key: "assignment",
+                label: "Reasignar",
+                render: (row) => {
+                  const staff = row as {
+                    id?: number;
+                    role_code?: string;
+                    station_ids?: number[];
+                  };
+                  const staffId = String(staff.id ?? "");
+                  const currentStationId = String((staff.station_ids ?? [])[0] ?? "");
+                  const selectedStationId = assignmentDrafts[staffId] ?? currentStationId;
+
+                  return (
+                    <div className="flex min-w-[260px] flex-wrap items-center gap-2">
+                      <select
+                        value={selectedStationId}
+                        onChange={(event) =>
+                          setAssignmentDrafts((current) => ({
+                            ...current,
+                            [staffId]: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Sin estacion asignada</option>
+                        {stationOptions.map((station) => (
+                          <option key={station.id} value={station.id}>
+                            {station.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={async () => {
+                          await api.updateStaff(
+                            Number(staff.id),
+                            {
+                              role_code: String(staff.role_code ?? "evaluador"),
+                              station_ids: selectedStationId ? [Number(selectedStationId)] : [],
+                            },
+                            token!,
+                          );
+                          await refresh();
+                        }}
+                      >
+                        Guardar
+                      </button>
+                    </div>
+                  );
+                },
+              },
+              {
+                key: "actions",
+                label: "Acciones",
+                render: (row) => {
+                  const staff = row as { id?: number };
+                  return (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={async () => {
+                        const confirmed = window.confirm(
+                          "Vas a borrar este evaluador o colaborador de forma permanente. Esta accion no se puede deshacer. ¿Quieres continuar?",
+                        );
+                        if (!confirmed) {
+                          return;
+                        }
+                        await api.deleteStaff(Number(staff.id), token!);
+                        await refresh();
+                      }}
+                    >
+                      Borrar
+                    </button>
+                  );
+                },
               },
             ]}
           />

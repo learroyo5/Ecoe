@@ -17,6 +17,16 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function defaultRouteForRole(role: string) {
+  if (role === "evaluador") {
+    return "/evaluator";
+  }
+  if (role === "estudiante") {
+    return "/student";
+  }
+  return "/dashboard";
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(() =>
     typeof window === "undefined" ? null : window.localStorage.getItem("ecoe-token"),
@@ -60,7 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(authUser);
     window.localStorage.setItem("ecoe-token", authToken);
     window.localStorage.setItem("ecoe-user", JSON.stringify(authUser));
-    router.push("/dashboard");
+    router.push(defaultRouteForRole(authUser.role));
   }, [router]);
 
   useEffect(() => {

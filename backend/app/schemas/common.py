@@ -58,6 +58,12 @@ class ECOEEventRead(ECOEEventBase, ORMBase):
     updated_at: datetime
 
 
+class ECOETimingUpdate(BaseModel):
+    station_time_minutes: int = Field(ge=1)
+    transition_time_minutes: int = Field(ge=0)
+    sync_existing_stations: bool = True
+
+
 class StudentBase(BaseModel):
     ecoe_event_id: int
     name: str
@@ -75,6 +81,11 @@ class StudentCreate(StudentBase):
 
 class StudentRead(StudentBase, ORMBase):
     id: int
+    is_active: bool
+
+
+class StudentStatusUpdate(BaseModel):
+    is_active: bool
 
 
 class StaffBase(BaseModel):
@@ -92,6 +103,11 @@ class StaffCreate(StaffBase):
 
 class StaffRead(StaffBase, ORMBase):
     id: int
+
+
+class StaffUpdate(BaseModel):
+    role_code: str
+    station_ids: list[int] = []
 
 
 class AssessmentItemInput(BaseModel):
@@ -150,10 +166,9 @@ class StationCreate(BaseModel):
     name: str
     station_type: str
     circuit_name: str
-    station_time_minutes: int
-    transition_time_minutes: int
     expected_outcomes: str
     student_activity: str
+    student_station_instruction: str = ""
     pre_entry_instruction: str
     evaluator_instruction: str
     requires_evaluator: bool = True
@@ -189,6 +204,7 @@ class TimerAction(BaseModel):
 
 
 class EvaluatorSubmission(BaseModel):
+    checkin_id: int | None = None
     ecoe_event_id: int
     live_session_id: int | None = None
     station_id: int
@@ -203,6 +219,7 @@ class EvaluatorSubmission(BaseModel):
 
 
 class StudentResponseCreate(BaseModel):
+    checkin_id: int | None = None
     ecoe_event_id: int
     live_session_id: int | None = None
     station_id: int
@@ -211,3 +228,14 @@ class StudentResponseCreate(BaseModel):
     answers: dict[str, Any]
     locked: bool = True
     by_contingency: bool = False
+
+
+class StationCheckInCreate(BaseModel):
+    ecoe_event_id: int
+    station_id: int
+    ecoe_number: str
+
+
+class StudentAccessRequest(BaseModel):
+    ecoe_event_id: int
+    ecoe_number: str

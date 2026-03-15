@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -9,11 +11,29 @@ import { DataTable } from "@/components/data-table";
 import { SectionCard } from "@/components/section-card";
 
 export default function StationsPage() {
-  const { token, eventId } = useAuth();
+  const { token, eventId, user } = useAuth();
+  const router = useRouter();
   const { data, loading, error } = useApi(
     () => api.stations(eventId, token!) as Promise<Record<string, unknown>[]>,
     [eventId, token],
   );
+
+  useEffect(() => {
+    if (user?.role === "evaluador") {
+      router.replace("/evaluator");
+    }
+  }, [router, user?.role]);
+
+  if (user?.role === "evaluador") {
+    return (
+      <SectionCard
+        title="Acceso restringido"
+        subtitle="El perfil evaluador no puede entrar a la gestion de estaciones."
+      >
+        <p>Te estamos redirigiendo a tu interfaz operativa.</p>
+      </SectionCard>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -43,6 +63,18 @@ export default function StationsPage() {
                   <span className="pill pill-ok">
                     {String((row as { status?: string }).status ?? "")}
                   </span>
+                ),
+              },
+              {
+                key: "actions",
+                label: "Acciones",
+                render: (row) => (
+                  <Link
+                    href={`/stations/builder?stationId=${String((row as { id?: number }).id ?? "")}`}
+                    className="text-sm font-semibold text-teal-700 underline-offset-4 hover:underline"
+                  >
+                    Abrir y editar
+                  </Link>
                 ),
               },
             ]}

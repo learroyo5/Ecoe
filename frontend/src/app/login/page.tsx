@@ -8,6 +8,7 @@ const demoUsers = [
   ["creator@ecoe.cl", "admin123", "Creador ECOE"],
   ["coeditor@ecoe.cl", "admin123", "Coeditor docente"],
   ["eval1@ecoe.cl", "admin123", "Evaluador"],
+  ["student1@ecoe.cl", "admin123", "Estudiante"],
   ["coord@ecoe.cl", "admin123", "Coordinacion operativa"],
   ["timer@ecoe.cl", "admin123", "Cronometrador"],
 ];

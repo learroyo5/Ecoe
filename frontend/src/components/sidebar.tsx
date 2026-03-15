@@ -3,35 +3,39 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { useAuth } from "@/lib/auth";
+
 const items = [
-  ["Dashboard", "/dashboard"],
-  ["Estudiantes", "/students"],
-  ["Evaluadores", "/evaluators"],
-  ["Estaciones", "/stations"],
-  ["Constructor", "/stations/builder"],
-  ["Plantillas", "/templates"],
-  ["Instrumentos", "/instruments"],
-  ["Paciente simulado", "/simulated-patient"],
-  ["Validacion", "/validation"],
-  ["Pilotaje", "/pilotage"],
-  ["Publicacion", "/publication"],
-  ["Panel en vivo", "/live"],
-  ["Evaluador", "/evaluator"],
-  ["Estudiante", "/student"],
-  ["Resultados", "/results"],
+  { label: "Dashboard", href: "/dashboard" },
+  { label: "Estudiantes", href: "/students", hiddenFor: ["evaluador"] },
+  { label: "Evaluadores", href: "/evaluators", hiddenFor: ["evaluador"] },
+  { label: "Estaciones", href: "/stations", hiddenFor: ["evaluador"] },
+  { label: "Constructor", href: "/stations/builder", hiddenFor: ["evaluador"] },
+  { label: "Plantillas", href: "/templates", hiddenFor: ["evaluador"] },
+  { label: "Instrumentos", href: "/instruments", hiddenFor: ["evaluador"] },
+  { label: "Paciente simulado", href: "/simulated-patient", hiddenFor: ["evaluador"] },
+  { label: "Validacion", href: "/validation", hiddenFor: ["evaluador"] },
+  { label: "Pilotaje", href: "/pilotage", hiddenFor: ["evaluador"] },
+  { label: "Publicacion", href: "/publication", hiddenFor: ["evaluador"] },
+  { label: "Panel en vivo", href: "/live", hiddenFor: ["evaluador"] },
+  { label: "Evaluador", href: "/evaluator" },
+  { label: "Estudiante", href: "/student", hiddenFor: ["evaluador"] },
+  { label: "Resultados", href: "/results", hiddenFor: ["evaluador"] },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { user } = useAuth();
+  const visibleItems = items.filter((item) => !item.hiddenFor?.includes(user?.role ?? ""));
 
   return (
     <aside className="panel-card sticky top-4 h-fit">
       <p className="text-xs font-semibold uppercase tracking-[0.22em] text-teal-700">
         ECOE operaciones
       </p>
-      <h1 className="mt-3 text-2xl">Proyecto Tecnologico ECOE</h1>
+      <h1 className="mt-3 text-2xl">Proyecto ECOE Digital</h1>
       <nav className="mt-6 space-y-2">
-        {items.map(([label, href]) => {
+        {visibleItems.map(({ label, href }) => {
           const active = pathname === href;
           return (
             <Link

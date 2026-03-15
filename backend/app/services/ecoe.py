@@ -27,7 +27,10 @@ from app.models.enums import ECOEStatus, SessionMode, StationStatus
 
 def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
     students_count = db.scalar(
-        select(func.count(Student.id)).where(Student.ecoe_event_id == ecoe_event.id)
+        select(func.count(Student.id)).where(
+            Student.ecoe_event_id == ecoe_event.id,
+            Student.is_active.is_(True),
+        )
     )
     station_count = db.scalar(
         select(func.count(Station.id)).where(Station.ecoe_event_id == ecoe_event.id)
@@ -140,7 +143,9 @@ def update_ecoe_status(db: Session, ecoe_event: ECOEEvent, target_status: str) -
 
 
 def compute_results(db: Session, ecoe_event_id: int) -> list[dict]:
-    students = db.scalars(select(Student).where(Student.ecoe_event_id == ecoe_event_id)).all()
+    students = db.scalars(
+        select(Student).where(Student.ecoe_event_id == ecoe_event_id, Student.is_active.is_(True))
+    ).all()
     results = []
     for student in students:
         records = db.scalars(

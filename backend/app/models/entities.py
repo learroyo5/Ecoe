@@ -117,6 +117,7 @@ class Student(Base, TimestampMixin):
     ecoe_number: Mapped[str] = mapped_column(String(32), nullable=False)
     group_name: Mapped[str] = mapped_column(String(64), nullable=False)
     circuit_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     ecoe_event: Mapped["ECOEEvent"] = relationship(back_populates="students")
 
@@ -210,6 +211,7 @@ class Station(Base, TimestampMixin):
     transition_time_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
     expected_outcomes: Mapped[str] = mapped_column(Text, nullable=False)
     student_activity: Mapped[str] = mapped_column(Text, nullable=False)
+    student_station_instruction: Mapped[str] = mapped_column(Text, default="")
     pre_entry_instruction: Mapped[str] = mapped_column(Text, nullable=False)
     evaluator_instruction: Mapped[str] = mapped_column(Text, nullable=False)
     requires_evaluator: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -279,6 +281,19 @@ class LiveSession(Base, TimestampMixin):
     remaining_seconds: Mapped[int] = mapped_column(Integer, default=480)
 
     ecoe_event: Mapped["ECOEEvent"] = relationship(back_populates="live_sessions")
+
+
+class StationCheckIn(Base, TimestampMixin):
+    __tablename__ = "station_checkins"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ecoe_event_id: Mapped[int] = mapped_column(ForeignKey("ecoe_events.id"), nullable=False)
+    station_id: Mapped[int] = mapped_column(ForeignKey("stations.id"), nullable=False)
+    student_id: Mapped[int] = mapped_column(ForeignKey("students.id"), nullable=False)
+    evaluator_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    evaluator_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="confirmado")
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class EvaluatorRecord(Base, TimestampMixin):

@@ -15,7 +15,7 @@ const body = Source_Sans_3({
 });
 
 export const metadata: Metadata = {
-  title: "Proyecto Tecnologico ECOE",
+  title: "Proyecto ECOE Digital",
   description: "Plataforma de planificacion y ejecucion de ECOE/OSCE",
 };
 

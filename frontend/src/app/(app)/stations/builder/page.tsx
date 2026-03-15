@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -8,14 +10,13 @@ import { useApi } from "@/hooks/use-api";
 import { SectionCard } from "@/components/section-card";
 
 const defaultForm = {
-  station_number: "6",
+  station_number: "1",
   name: "",
   station_type: "procedimental",
   circuit_name: "Circuito A",
-  station_time_minutes: "8",
-  transition_time_minutes: "2",
   expected_outcomes: "",
   student_activity: "",
+  student_station_instruction: "",
   pre_entry_instruction: "",
   evaluator_instruction: "",
   max_score: "20",
@@ -23,127 +24,1326 @@ const defaultForm = {
   multimedia_notes: "",
 };
 
+const stationTypeOptions = [
+  { value: "procedimental", label: "Procedimental" },
+  { value: "actitudinal", label: "Actitudinal" },
+  { value: "conceptual", label: "Conceptual" },
+];
+
+const circuitOptions = ["Circuito A", "Circuito B", "Circuito C"];
+type FormKey = keyof typeof defaultForm;
+type AssessmentMode = "existing" | "create";
+type InstrumentDraftItem = {
+  label: string;
+  score_per_item: string;
+};
+type InstrumentDraft = {
+  name: string;
+  tool_type: string;
+  free_observation: boolean;
+  items: InstrumentDraftItem[];
+};
+type StudentQuestion = {
+  prompt: string;
+  type: string;
+  optionsText: string;
+};
+
+type FieldConfigItem = {
+  label: string;
+  description: string;
+  placeholder?: string;
+  multiline?: boolean;
+};
+
+const fieldConfig: Record<FormKey, FieldConfigItem> = {
+  station_number: {
+    label: "Numero correlativo de la estacion",
+    description:
+      "Este numero se asigna automaticamente segun las estaciones ya creadas en este ECOE.",
+    placeholder: "Se asigna automaticamente",
+  },
+  name: {
+    label: "Nombre breve de la estacion",
+    description: "Escribe un titulo claro para identificar rapidamente el caso o procedimiento.",
+    placeholder: "Ejemplo: Dolor toracico en urgencia",
+  },
+  station_type: {
+    label: "Tipo de estacion",
+    description:
+      "Selecciona la naturaleza pedagogica de la estacion. La modalidad operativa se define mas abajo en la plantilla de referencia.",
+  },
+  circuit_name: {
+    label: "Circuito asignado",
+    description: "Indica en que circuito operativo se ubicara esta estacion.",
+  },
+  expected_outcomes: {
+    label: "Aprendizajes o desempenos esperados",
+    description: "Describe que deberia demostrar el estudiante al finalizar esta estacion.",
+    placeholder: "Ejemplo: Reconoce signos de alarma, prioriza diagnosticos y comunica un plan inicial seguro.",
+    multiline: true,
+  },
+  student_activity: {
+    label: "Actividad especifica del estudiante",
+    description:
+      "Describe la tarea, procedimiento o desempeno central que realizara el estudiante en esta estacion.",
+    placeholder:
+      "Ejemplo: Realizar anamnesis focalizada, examinar al paciente y comunicar una conducta inicial segura.",
+    multiline: true,
+  },
+  student_station_instruction: {
+    label: "Instrucciones dentro de la estacion para el estudiante",
+    description:
+      "Escribe la indicacion precisa que el estudiante debe seguir una vez que ya esta dentro de la estacion.",
+    placeholder:
+      "Ejemplo: Salude al paciente, explique el procedimiento y luego ejecute la tarea siguiendo el orden esperado.",
+    multiline: true,
+  },
+  pre_entry_instruction: {
+    label: "Instruccion previa de ingreso",
+    description: "Texto breve que el estudiante leeria antes de entrar a la estacion.",
+    placeholder: "Ejemplo: Revise el motivo de consulta y preparese para realizar una anamnesis focalizada.",
+    multiline: true,
+  },
+  evaluator_instruction: {
+    label: "Guia para el evaluador",
+    description: "Indica en que debe fijarse el evaluador y como debe registrar la observacion.",
+    placeholder: "Ejemplo: Observe estructura de la entrevista, seguridad del abordaje y comunicacion con el paciente.",
+    multiline: true,
+  },
+  max_score: {
+    label: "Puntaje maximo",
+    description: "Puntaje total que podra obtener el estudiante en esta estacion.",
+    placeholder: "Ejemplo: 20",
+  },
+  materials: {
+    label: "Materiales y recursos fisicos",
+    description: "Lista el equipamiento, insumos o documentos necesarios para montar la estacion.",
+    placeholder: "Ejemplo: Fonendoscopio, tensiometro, ficha clinica impresa, guantes y lapiz.",
+    multiline: true,
+  },
+  multimedia_notes: {
+    label: "Indicaciones sobre material multimedia",
+    description: "Especifica si se usara audio, video, PDF o imagen y en que momento debe mostrarse.",
+    placeholder: "Ejemplo: Mostrar ECG inicial al minuto 2 y radiografia de torax solo si el estudiante la solicita.",
+    multiline: true,
+  },
+};
+
+function FieldBlock({
+  label,
+  description,
+  children,
+  wide = false,
+}: {
+  label: string;
+  description: string;
+  children: React.ReactNode;
+  wide?: boolean;
+}) {
+  return (
+    <label className={`space-y-2 ${wide ? "lg:col-span-2" : ""}`}>
+      <span className="text-sm font-semibold text-slate-800">{label}</span>
+      <p className="text-xs leading-5 text-slate-500">{description}</p>
+      {children}
+    </label>
+  );
+}
+
+const instrumentTypeOptions = [
+  {
+    value: "lista_cotejo",
+    label: "Lista de cotejo",
+    description: "Sirve cuando quieres verificar pasos o conductas observables como cumplido/no cumplido o con puntaje por item.",
+  },
+  {
+    value: "rubrica_simple",
+    label: "Rubrica simple",
+    description: "Sirve cuando necesitas valorar la calidad del desempeno en criterios como estructura, comunicacion o seguridad.",
+  },
+  {
+    value: "escala_puntaje",
+    label: "Escala de puntaje",
+    description: "Sirve cuando prefieres una pauta corta con criterios puntuables sin tanto detalle descriptivo.",
+  },
+];
+
 export default function StationBuilderPage() {
-  const { token, eventId } = useAuth();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const { token, eventId, user } = useAuth();
+  const editingStationId = Number(searchParams.get("stationId") ?? "");
+  const isEditing = Number.isFinite(editingStationId) && editingStationId > 0;
+  const { data: ecoeEvent, setData: setECOEEvent } = useApi(
+    () => api.ecoe(eventId, token!) as Promise<Record<string, unknown>>,
+    [eventId, token],
+  );
   const { data: templates } = useApi(
     () => api.templates(token!) as Promise<Record<string, unknown>[]>,
     [token],
   );
-  const { data: instruments } = useApi(
+  const { data: instruments, setData: setInstruments } = useApi(
     () => api.instruments(token!) as Promise<Record<string, unknown>[]>,
     [token],
+  );
+  const { data: stations, setData: setStations } = useApi(
+    () => api.stations(eventId, token!) as Promise<Record<string, unknown>[]>,
+    [eventId, token],
   );
   const { data: patients } = useApi(
     () => api.simulatedPatients(token!) as Promise<Record<string, unknown>[]>,
     [token],
   );
+  const { data: mediaAssets, setData: setMediaAssets } = useApi(
+    () =>
+      isEditing
+        ? (api.media(editingStationId, token!) as Promise<Record<string, unknown>[]>)
+        : Promise.resolve([] as Record<string, unknown>[]),
+    [editingStationId, isEditing, token],
+  );
   const [form, setForm] = useState(defaultForm);
+  const [assessmentMode, setAssessmentMode] = useState<AssessmentMode>("existing");
+  const [selectedAssessmentToolId, setSelectedAssessmentToolId] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [instrumentDraft, setInstrumentDraft] = useState<InstrumentDraft>({
+    name: "",
+    tool_type: "lista_cotejo",
+    free_observation: true,
+    items: [
+      { label: "", score_per_item: "1" },
+      { label: "", score_per_item: "1" },
+      { label: "", score_per_item: "1" },
+    ],
+  });
+  const [studentQuestions, setStudentQuestions] = useState<StudentQuestion[]>([
+    { prompt: "", type: "single_choice", optionsText: "" },
+  ]);
+  const [timingForm, setTimingForm] = useState({
+    station_time_minutes: "8",
+    transition_time_minutes: "2",
+  });
+  const [mediaTargetViewer, setMediaTargetViewer] = useState("estudiante");
+  const [mediaMessage, setMediaMessage] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [timingMessage, setTimingMessage] = useState<string | null>(null);
+  const [instrumentMessage, setInstrumentMessage] = useState<string | null>(null);
+
+  const stationTime = String(ecoeEvent?.station_time_minutes ?? timingForm.station_time_minutes);
+  const transitionTime = String(
+    ecoeEvent?.transition_time_minutes ?? timingForm.transition_time_minutes,
+  );
+  const selectedTemplate =
+    (templates ?? []).find((template) => String(template.id) === selectedTemplateId) ?? null;
+  const selectedTemplateCategory = String(selectedTemplate?.category ?? "").toLowerCase();
+  const templateUsesStudentForm =
+    selectedTemplateCategory.includes("formulario") || selectedTemplateCategory.includes("hibrid");
+  const templateUsesMultimedia =
+    selectedTemplateCategory.includes("multimedia") || selectedTemplateCategory.includes("hibrid");
+  const templateUsesSimulatedPatient =
+    selectedTemplateCategory.includes("paciente") || selectedTemplateCategory.includes("hibrid");
+  const nextStationNumber = String(
+    ((stations ?? []).reduce((max, station) => {
+      const value = Number(station.station_number ?? 0);
+      return value > max ? value : max;
+    }, 0) || 0) + 1,
+  );
+
+  const updateField = (key: FormKey, value: string) => {
+    setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const updateInstrumentItem = (
+    index: number,
+    field: keyof InstrumentDraftItem,
+    value: string,
+  ) => {
+    setInstrumentDraft((current) => ({
+      ...current,
+      items: current.items.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [field]: value } : item,
+      ),
+    }));
+  };
+
+  const addInstrumentItem = () => {
+    setInstrumentDraft((current) => ({
+      ...current,
+      items: [...current.items, { label: "", score_per_item: "1" }],
+    }));
+  };
+
+  const removeInstrumentItem = (index: number) => {
+    setInstrumentDraft((current) => ({
+      ...current,
+      items:
+        current.items.length === 1
+          ? current.items
+          : current.items.filter((_, itemIndex) => itemIndex !== index),
+    }));
+  };
+
+  const updateStudentQuestion = (
+    index: number,
+    field: keyof StudentQuestion,
+    value: string,
+  ) => {
+    setStudentQuestions((current) =>
+      current.map((question, questionIndex) =>
+        questionIndex === index ? { ...question, [field]: value } : question,
+      ),
+    );
+  };
+
+  const addStudentQuestion = () => {
+    setStudentQuestions((current) => [
+      ...current,
+      { prompt: "", type: "single_choice", optionsText: "" },
+    ]);
+  };
+
+  const removeStudentQuestion = (index: number) => {
+    setStudentQuestions((current) =>
+      current.length === 1 ? current : current.filter((_, questionIndex) => questionIndex !== index),
+    );
+  };
+
+  const resetInstrumentDraft = () => {
+    setInstrumentDraft({
+      name: "",
+      tool_type: "lista_cotejo",
+      free_observation: true,
+      items: [
+        { label: "", score_per_item: "1" },
+        { label: "", score_per_item: "1" },
+        { label: "", score_per_item: "1" },
+      ],
+    });
+  };
+
+  const buildInstrumentPayload = () => {
+    const cleanItems = instrumentDraft.items
+      .map((item, index) => ({
+        label: item.label.trim(),
+        score_per_item: Number(item.score_per_item),
+        order_index: index + 1,
+      }))
+      .filter((item) => item.label && item.score_per_item > 0);
+
+    if (!instrumentDraft.name.trim()) {
+      throw new Error("Debes escribir un nombre para la pauta de evaluacion.");
+    }
+
+    if (!cleanItems.length) {
+      throw new Error("Debes agregar al menos un criterio evaluable en la pauta.");
+    }
+
+    return {
+      name: instrumentDraft.name.trim(),
+      tool_type: instrumentDraft.tool_type,
+      max_score: Number(form.max_score),
+      free_observation: instrumentDraft.free_observation,
+      items: cleanItems,
+    };
+  };
+
+  const saveInstrumentDraft = async () => {
+    const createdInstrument = (await api.createInstrument(
+      buildInstrumentPayload(),
+      token!,
+    )) as Record<string, unknown>;
+
+    setInstruments((current) => {
+      const existing = current ?? [];
+      if (existing.some((instrument) => Number(instrument.id) === Number(createdInstrument.id))) {
+        return existing.map((instrument) =>
+          Number(instrument.id) === Number(createdInstrument.id) ? createdInstrument : instrument,
+        );
+      }
+      return [...existing, createdInstrument];
+    });
+    setSelectedAssessmentToolId(String(createdInstrument.id));
+    setAssessmentMode("existing");
+    setInstrumentMessage("Pauta guardada correctamente y asociada a esta estacion.");
+    return createdInstrument;
+  };
+
+  const renderTextField = (key: FormKey) => {
+    const config = fieldConfig[key];
+    const wide = Boolean(config.multiline);
+
+    return (
+      <FieldBlock
+        key={key}
+        label={config.label}
+        description={config.description}
+        wide={wide}
+      >
+        {config.multiline ? (
+          <textarea
+            rows={4}
+            placeholder={config.placeholder}
+            value={form[key]}
+            onChange={(event) => updateField(key, event.target.value)}
+          />
+        ) : (
+          <input
+            placeholder={config.placeholder}
+            value={form[key]}
+            onChange={(event) => updateField(key, event.target.value)}
+          />
+        )}
+      </FieldBlock>
+    );
+  };
+
+  const syncTimingFromEvent = (eventData: Record<string, unknown>) => {
+    setTimingForm({
+      station_time_minutes: String(eventData.station_time_minutes ?? "8"),
+      transition_time_minutes: String(eventData.transition_time_minutes ?? "2"),
+    });
+  };
+
+  const buildStudentFormDefinition = () => ({
+    questions: studentQuestions
+      .map((question) => ({
+        type: question.type,
+        label: question.prompt.trim(),
+        options:
+          question.type === "short_text"
+            ? []
+            : question.optionsText
+                .split("\n")
+                .map((option) => option.trim())
+                .filter(Boolean),
+      }))
+      .filter((question) => question.label),
+  });
+
+  const buildStationPayload = () => ({
+    ecoe_event_id: eventId,
+    template_id: Number(selectedTemplateId) || null,
+    assessment_tool_id: selectedAssessmentToolId ? Number(selectedAssessmentToolId) : null,
+    simulated_patient_id: Number(selectedPatientId) || null,
+    ...form,
+    station_number: Number(isEditing ? form.station_number : nextStationNumber),
+    max_score: Number(form.max_score),
+    requires_evaluator: true,
+    requires_student_form: templateUsesStudentForm,
+    uses_multimedia: templateUsesMultimedia,
+    uses_simulated_patient: templateUsesSimulatedPatient,
+    uses_physical_resources: true,
+    student_form_definition: buildStudentFormDefinition(),
+    contingency_ready: true,
+    status: "en_diseno",
+  });
+
+  useEffect(() => {
+    if (user?.role === "evaluador") {
+      router.replace("/evaluator");
+    }
+  }, [router, user?.role]);
+
+  useEffect(() => {
+    if (ecoeEvent) {
+      syncTimingFromEvent(ecoeEvent);
+    }
+  }, [ecoeEvent]);
+
+  useEffect(() => {
+    setForm((current) =>
+      current.station_number === nextStationNumber
+        ? current
+        : { ...current, station_number: nextStationNumber },
+    );
+  }, [nextStationNumber]);
+
+  useEffect(() => {
+    if (assessmentMode !== "create") {
+      return;
+    }
+
+    const totalScore = instrumentDraft.items.reduce((sum, item) => {
+      const score = Number(item.score_per_item);
+      return Number.isFinite(score) ? sum + score : sum;
+    }, 0);
+
+    setForm((current) => ({
+      ...current,
+      max_score: totalScore > 0 ? String(totalScore) : current.max_score,
+    }));
+  }, [assessmentMode, instrumentDraft.items]);
+
+  useEffect(() => {
+    if (!isEditing || !stations?.length) {
+      return;
+    }
+
+    const station = stations.find((item) => Number(item.id) === editingStationId);
+    if (!station) {
+      return;
+    }
+
+    setForm({
+      station_number: String(station.station_number ?? nextStationNumber),
+      name: String(station.name ?? ""),
+      station_type: String(station.station_type ?? "procedimental"),
+      circuit_name: String(station.circuit_name ?? "Circuito A"),
+      expected_outcomes: String(station.expected_outcomes ?? ""),
+      student_activity: String(station.student_activity ?? ""),
+      student_station_instruction: String(station.student_station_instruction ?? ""),
+      pre_entry_instruction: String(station.pre_entry_instruction ?? ""),
+      evaluator_instruction: String(station.evaluator_instruction ?? ""),
+      max_score: String(station.max_score ?? "0"),
+      materials: String(station.materials ?? ""),
+      multimedia_notes: String(station.multimedia_notes ?? ""),
+    });
+    setSelectedTemplateId(station.template_id ? String(station.template_id) : "");
+    setSelectedPatientId(station.simulated_patient_id ? String(station.simulated_patient_id) : "");
+    setSelectedAssessmentToolId(
+      station.assessment_tool_id ? String(station.assessment_tool_id) : "",
+    );
+    setAssessmentMode("existing");
+
+    const rawQuestions = (
+      station.student_form_definition as { questions?: Record<string, unknown>[] } | undefined
+    )?.questions;
+
+    if (Array.isArray(rawQuestions) && rawQuestions.length) {
+      setStudentQuestions(
+        rawQuestions.map((question) => ({
+          prompt: String(question.label ?? ""),
+          type: String(question.type ?? "single_choice"),
+          optionsText: Array.isArray(question.options)
+            ? (question.options as unknown[]).map((option) => String(option)).join("\n")
+            : "",
+        })),
+      );
+      return;
+    }
+
+    setStudentQuestions([{ prompt: "", type: "single_choice", optionsText: "" }]);
+  }, [editingStationId, isEditing, nextStationNumber, stations]);
+
+  if (user?.role === "evaluador") {
+    return (
+      <SectionCard
+        title="Acceso restringido"
+        subtitle="El perfil evaluador no puede editar estaciones."
+      >
+        <p>Te estamos redirigiendo a tu interfaz operativa.</p>
+      </SectionCard>
+    );
+  }
 
   return (
     <SectionCard
-      title="Constructor de estacion"
-      subtitle="Configuracion pedagica, operativa, evaluativa y de contingencia"
+      title={isEditing ? "Edicion de estacion" : "Constructor de estaciones"}
+      subtitle={
+        isEditing
+          ? "Ajusta la estacion seleccionada y guarda una nueva version del diseno."
+          : "Completa la informacion academica y operativa de cada estacion con textos claros para quienes la van a usar."
+      }
     >
+      <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-950">
+        {isEditing
+          ? "Estas editando una estacion ya creada. Revisa con cuidado el flujo del estudiante, del evaluador y los recursos necesarios antes de guardar los cambios."
+          : "Esta pantalla crea una estacion nueva. La idea es dejar claro que debe hacer el estudiante, que observara el evaluador y que recursos necesita el equipo organizador."}
+      </div>
+
+      <section className="space-y-4 rounded-3xl border border-teal-200 bg-teal-50/70 p-5">
+        <div>
+          <h4 className="text-xl text-slate-900">Configuracion general de tiempos del ECOE</h4>
+          <p className="mt-1 text-sm text-slate-700">
+            El tiempo de resolucion y el tiempo de transicion se definen una sola vez para todo el ECOE. Si cambias estos valores aqui, se actualizan todas las estaciones del evento para mantener la congruencia del examen.
+          </p>
+        </div>
+        <form
+          className="grid gap-4 lg:grid-cols-2"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            setTimingMessage(null);
+            try {
+              const updated = (await api.updateECOETiming(
+                eventId,
+                {
+                  station_time_minutes: Number(timingForm.station_time_minutes),
+                  transition_time_minutes: Number(timingForm.transition_time_minutes),
+                  sync_existing_stations: true,
+                },
+                token!,
+              )) as Record<string, unknown>;
+              setECOEEvent(updated);
+              syncTimingFromEvent(updated);
+              setTimingMessage("Los tiempos generales del ECOE fueron actualizados para todas las estaciones.");
+            } catch (error) {
+              setTimingMessage(
+                error instanceof Error ? error.message : "No se pudieron actualizar los tiempos.",
+              );
+            }
+          }}
+        >
+          <FieldBlock
+            label="Tiempo oficial por estacion"
+            description="Minutos disponibles para resolver cada estacion del ECOE."
+          >
+            <input
+              value={timingForm.station_time_minutes}
+              onChange={(event) =>
+                setTimingForm((current) => ({
+                  ...current,
+                  station_time_minutes: event.target.value,
+                }))
+              }
+            />
+          </FieldBlock>
+          <FieldBlock
+            label="Tiempo oficial de transicion"
+            description="Minutos de cambio entre una estacion y la siguiente."
+          >
+            <input
+              value={timingForm.transition_time_minutes}
+              onChange={(event) =>
+                setTimingForm((current) => ({
+                  ...current,
+                  transition_time_minutes: event.target.value,
+                }))
+              }
+            />
+          </FieldBlock>
+          <div className="lg:col-span-2 flex flex-wrap items-center gap-3">
+            <button className="btn-secondary" type="submit">
+              Guardar tiempos generales
+            </button>
+            <p className="text-sm text-slate-600">
+              Tiempo actual del ECOE: {stationTime} min por estacion y {transitionTime} min de transicion.
+            </p>
+          </div>
+          {timingMessage ? (
+            <p className="lg:col-span-2 text-sm text-slate-700">{timingMessage}</p>
+          ) : null}
+        </form>
+      </section>
+
       <form
-        className="grid gap-4 lg:grid-cols-2"
+        className="space-y-6"
         onSubmit={async (event) => {
           event.preventDefault();
           setMessage(null);
           try {
-            await api.createStation(
-              {
-                ecoe_event_id: eventId,
-                template_id: Number((event.currentTarget.elements.namedItem("template_id") as HTMLSelectElement).value) || null,
-                assessment_tool_id:
-                  Number((event.currentTarget.elements.namedItem("assessment_tool_id") as HTMLSelectElement).value) || null,
-                simulated_patient_id:
-                  Number((event.currentTarget.elements.namedItem("simulated_patient_id") as HTMLSelectElement).value) || null,
-                ...form,
-                station_number: Number(form.station_number),
-                station_time_minutes: Number(form.station_time_minutes),
-                transition_time_minutes: Number(form.transition_time_minutes),
-                max_score: Number(form.max_score),
-                requires_evaluator: true,
-                requires_student_form: form.station_type === "formulario_estudiante" || form.station_type === "hibrida",
-                uses_multimedia: form.station_type === "multimedia" || form.station_type === "hibrida",
-                uses_simulated_patient: form.station_type === "paciente_simulado" || form.station_type === "hibrida",
-                uses_physical_resources: true,
-                student_form_definition: {
-                  questions: [
-                    {
-                      type: "single_choice",
-                      label: "Pregunta demo",
-                      options: ["Opcion A", "Opcion B", "Opcion C"],
-                    },
-                  ],
-                },
-                contingency_ready: true,
-                status: "en_diseno",
-              },
+            if (assessmentMode === "create") {
+              throw new Error(
+                "Debes guardar primero la pauta de evaluacion antes de guardar los cambios de la estacion.",
+              );
+            }
+
+            const payload = buildStationPayload();
+
+            if (
+              templateUsesStudentForm &&
+              !payload.student_form_definition.questions.length
+            ) {
+              throw new Error(
+                "Debes agregar al menos una pregunta en el formulario del estudiante para este tipo de estacion.",
+              );
+            }
+
+            if (isEditing) {
+              const updatedStation = (await api.updateStation(
+                editingStationId,
+                payload,
+                token!,
+              )) as Record<string, unknown>;
+              setStations((current) =>
+                (current ?? []).map((station) =>
+                  Number(station.id) === editingStationId ? updatedStation : station,
+                ),
+              );
+              setMessage("Estacion actualizada correctamente.");
+              return;
+            }
+
+            const createdStation = (await api.createStation(
+              payload,
               token!,
-            );
+            )) as Record<string, unknown>;
+            setStations((current) => [...(current ?? []), createdStation]);
             setMessage("Estacion creada correctamente.");
-            setForm(defaultForm);
+            setForm({ ...defaultForm, station_number: String(Number(nextStationNumber) + 1) });
+            setSelectedAssessmentToolId("");
+            setSelectedTemplateId("");
+            setSelectedPatientId("");
+            setAssessmentMode("existing");
+            setStudentQuestions([{ prompt: "", type: "single_choice", optionsText: "" }]);
+            resetInstrumentDraft();
+            setInstrumentMessage(null);
           } catch (error) {
             setMessage(error instanceof Error ? error.message : "No se pudo guardar.");
           }
         }}
       >
-        <label className="space-y-2">
-          <span className="text-sm font-semibold">Plantilla base</span>
-          <select name="template_id" defaultValue="">
-            <option value="">Sin plantilla</option>
-            {(templates ?? []).map((template) => (
-              <option key={String(template.id)} value={String(template.id)}>
-                {String(template.name)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="space-y-2">
-          <span className="text-sm font-semibold">Instrumento</span>
-          <select name="assessment_tool_id" defaultValue="">
-            <option value="">Sin instrumento</option>
-            {(instruments ?? []).map((instrument) => (
-              <option key={String(instrument.id)} value={String(instrument.id)}>
-                {String(instrument.name)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="space-y-2">
-          <span className="text-sm font-semibold">Paciente simulado</span>
-          <select name="simulated_patient_id" defaultValue="">
-            <option value="">No aplica</option>
-            {(patients ?? []).map((patient) => (
-              <option key={String(patient.id)} value={String(patient.id)}>
-                {String(patient.character_name)}
-              </option>
-            ))}
-          </select>
-        </label>
-        {Object.entries(form).map(([key, value]) => (
-          <label key={key} className={`space-y-2 ${key.includes("instruction") || key.includes("outcomes") || key.includes("activity") || key === "materials" || key === "multimedia_notes" ? "lg:col-span-2" : ""}`}>
-            <span className="text-sm font-semibold">{key.replaceAll("_", " ")}</span>
-            {key.includes("instruction") || key.includes("outcomes") || key.includes("activity") || key === "materials" || key === "multimedia_notes" ? (
-              <textarea
-                rows={4}
-                value={value}
-                onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))}
-              />
-            ) : (
+        <section className="space-y-4">
+          <div>
+            <h4 className="text-xl text-slate-900">1. Identificacion general</h4>
+            <p className="mt-1 text-sm text-slate-600">
+              Define como se reconocera esta estacion dentro del ECOE y a que circuito pertenece.
+            </p>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <FieldBlock
+              label={fieldConfig.station_number.label}
+              description={fieldConfig.station_number.description}
+            >
               <input
-                value={value}
-                onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))}
+                value={isEditing ? form.station_number : nextStationNumber}
+                readOnly
+                className="bg-slate-100 text-slate-600"
               />
+            </FieldBlock>
+            {renderTextField("name")}
+            <FieldBlock
+              label={fieldConfig.station_type.label}
+              description={fieldConfig.station_type.description}
+            >
+              <div className="grid gap-3 md:grid-cols-3">
+                {stationTypeOptions.map((option) => {
+                  const checked = form.station_type === option.value;
+                  return (
+                    <label
+                      key={option.value}
+                      className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 text-sm transition ${
+                        checked
+                          ? "border-teal-600 bg-teal-50 text-teal-900"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="station_type"
+                        value={option.value}
+                        checked={checked}
+                        onChange={(event) => updateField("station_type", event.target.value)}
+                      />
+                      <span className="font-medium">{option.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </FieldBlock>
+            <FieldBlock
+              label={fieldConfig.circuit_name.label}
+              description={fieldConfig.circuit_name.description}
+            >
+              <select
+                value={form.circuit_name}
+                onChange={(event) => updateField("circuit_name", event.target.value)}
+              >
+                {circuitOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </FieldBlock>
+            {renderTextField("expected_outcomes")}
+            {renderTextField("student_activity")}
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div>
+            <h4 className="text-xl text-slate-900">2. Configuracion academica</h4>
+            <p className="mt-1 text-sm text-slate-600">
+              Describe que debe lograr el estudiante y con que instrumento o apoyo se evaluara.
+            </p>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <FieldBlock
+              label="Plantilla de referencia"
+              description="Usa una plantilla si quieres partir desde una estructura ya preparada."
+            >
+              <select
+                value={selectedTemplateId}
+                onChange={(event) => setSelectedTemplateId(event.target.value)}
+              >
+                <option value="">Crear sin plantilla</option>
+                {(templates ?? []).map((template) => (
+                  <option key={String(template.id)} value={String(template.id)}>
+                    {String(template.name)}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs leading-5 text-slate-500">
+                Aqui se define la modalidad operativa de la estacion, por ejemplo si usara
+                formulario del estudiante, apoyo multimedia, paciente simulado o una modalidad
+                hibrida.
+              </p>
+              {selectedTemplate ? (
+                <p className="text-xs leading-5 text-slate-600">
+                  Plantilla seleccionada: {String(selectedTemplate.name)} · categoria{" "}
+                  {String(selectedTemplate.category ?? "sin categoria")}
+                </p>
+              ) : null}
+            </FieldBlock>
+            <FieldBlock
+              label="Instrumento de evaluacion"
+              description="Define aqui mismo la pauta que completara el evaluador o reutiliza una ya creada."
+              wide
+            >
+              <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={assessmentMode === "existing" ? "btn-primary" : "btn-secondary"}
+                    onClick={() => {
+                      setAssessmentMode("existing");
+                      setInstrumentMessage(null);
+                    }}
+                  >
+                    Usar pauta existente
+                  </button>
+                  <button
+                    type="button"
+                    className={assessmentMode === "create" ? "btn-primary" : "btn-secondary"}
+                    onClick={() => {
+                      setAssessmentMode("create");
+                      setInstrumentMessage(null);
+                    }}
+                  >
+                    Crear pauta en esta estacion
+                  </button>
+                </div>
+
+                {assessmentMode === "existing" ? (
+                  <div className="space-y-3">
+                    <p className="text-sm text-slate-600">
+                      Elige una pauta ya creada si quieres reutilizarla tal como esta.
+                    </p>
+                    <select
+                      name="assessment_tool_id"
+                      value={selectedAssessmentToolId}
+                      onChange={(event) => setSelectedAssessmentToolId(event.target.value)}
+                    >
+                      <option value="">Aun sin instrumento asignado</option>
+                      {(instruments ?? []).map((instrument) => (
+                        <option key={String(instrument.id)} value={String(instrument.id)}>
+                          {String(instrument.name)}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs leading-5 text-slate-500">
+                      Las pautas creadas para este ECOE quedan guardadas en el Banco de instrumentos
+                      y luego puedes reutilizarlas en otras estaciones.
+                    </p>
+                    <p className="text-xs leading-5 text-slate-500">
+                      Si lo que necesitas es que el estudiante responda preguntas en pantalla, eso
+                      no se configura en esta pauta. Debes usar la plantilla adecuada y completar el
+                      formulario del estudiante en la seccion correspondiente.
+                    </p>
+                    {instrumentMessage ? (
+                      <p className="text-sm text-teal-700">{instrumentMessage}</p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-white/80 p-4">
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-slate-800">
+                          Construye aqui la pauta exacta que vera el evaluador en esta estacion.
+                        </p>
+                        <p className="text-xs leading-5 text-slate-500">
+                          Esta pauta se guardara en el Banco de instrumentos para que despues puedas
+                          reutilizarla o editarla con mas calma.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="rounded-full border border-slate-300 px-3 py-1 text-sm font-semibold text-slate-600 transition hover:border-slate-400 hover:text-slate-900"
+                        onClick={() => {
+                          setAssessmentMode("existing");
+                          setInstrumentMessage(null);
+                        }}
+                        aria-label="Cerrar creacion de pauta"
+                      >
+                        X
+                      </button>
+                    </div>
+
+                    <FieldBlock
+                      label="Nombre de la pauta"
+                      description="Escribe un nombre claro para reconocer esta pauta despues."
+                    >
+                      <input
+                        value={instrumentDraft.name}
+                        placeholder="Ejemplo: Lista de cotejo - dolor toracico"
+                        onChange={(event) =>
+                          setInstrumentDraft((current) => ({
+                            ...current,
+                            name: event.target.value,
+                          }))
+                        }
+                      />
+                    </FieldBlock>
+
+                    <FieldBlock
+                      label="Tipo de pauta"
+                      description="Selecciona la forma en que el evaluador calificara el desempeno."
+                    >
+                      <select
+                        value={instrumentDraft.tool_type}
+                        onChange={(event) =>
+                          setInstrumentDraft((current) => ({
+                            ...current,
+                            tool_type: event.target.value,
+                          }))
+                        }
+                      >
+                        {instrumentTypeOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </FieldBlock>
+
+                    <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 text-sm text-slate-700">
+                      {
+                        instrumentTypeOptions.find(
+                          (option) => option.value === instrumentDraft.tool_type,
+                        )?.description
+                      }
+                    </div>
+
+                    <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={instrumentDraft.free_observation}
+                        onChange={(event) =>
+                          setInstrumentDraft((current) => ({
+                            ...current,
+                            free_observation: event.target.checked,
+                          }))
+                        }
+                      />
+                      Permitir observacion libre adicional para el evaluador
+                    </label>
+
+                    <div className="space-y-3">
+                      <div>
+                        <h5 className="text-sm font-semibold text-slate-800">
+                          Criterios o items de evaluacion
+                        </h5>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                          Agrega aqui los pasos, conductas o criterios que debera marcar el evaluador.
+                        </p>
+                      </div>
+
+                      {instrumentDraft.items.map((item, index) => (
+                        <div
+                          key={`${index}-${instrumentDraft.tool_type}`}
+                          className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 lg:grid-cols-[1.4fr_0.5fr_auto]"
+                        >
+                          <label className="space-y-2">
+                            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                              Criterio {index + 1}
+                            </span>
+                            <input
+                              value={item.label}
+                              placeholder="Ejemplo: Identifica signos de alarma al inicio de la entrevista"
+                              onChange={(event) =>
+                                updateInstrumentItem(index, "label", event.target.value)
+                              }
+                            />
+                          </label>
+                          <label className="space-y-2">
+                            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                              Puntaje
+                            </span>
+                            <input
+                              type="number"
+                              min="0.5"
+                              step="0.5"
+                              value={item.score_per_item}
+                              onChange={(event) =>
+                                updateInstrumentItem(index, "score_per_item", event.target.value)
+                              }
+                            />
+                          </label>
+                          <div className="flex items-end">
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              onClick={() => removeInstrumentItem(index)}
+                              disabled={instrumentDraft.items.length === 1}
+                            >
+                              Quitar
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+
+                      <button type="button" className="btn-secondary" onClick={addInstrumentItem}>
+                        Agregar criterio
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        onClick={async () => {
+                          setInstrumentMessage(null);
+                          try {
+                            await saveInstrumentDraft();
+                          } catch (error) {
+                            setInstrumentMessage(
+                              error instanceof Error ? error.message : "No se pudo guardar la pauta.",
+                            );
+                          }
+                        }}
+                      >
+                        Guardar pauta
+                      </button>
+                      <p className="text-sm text-slate-600">
+                        Este paso guarda la pauta y la deja seleccionada para la estacion.
+                      </p>
+                    </div>
+                    {instrumentMessage ? (
+                      <p className="text-sm text-slate-700">{instrumentMessage}</p>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            </FieldBlock>
+            <FieldBlock
+              label="Paciente simulado asociado"
+              description="Vincula un personaje solo si la estacion requiere interaccion con paciente simulado."
+            >
+              <select
+                value={selectedPatientId}
+                onChange={(event) => setSelectedPatientId(event.target.value)}
+              >
+                <option value="">No aplica para esta estacion</option>
+                {(patients ?? []).map((patient) => (
+                  <option key={String(patient.id)} value={String(patient.id)}>
+                    {String(patient.character_name)}
+                  </option>
+                ))}
+              </select>
+            </FieldBlock>
+            <FieldBlock
+              label={fieldConfig.max_score.label}
+              description={
+                assessmentMode === "create"
+                  ? "Este puntaje se calcula automaticamente segun la suma de los criterios de la pauta que estas creando."
+                  : fieldConfig.max_score.description
+              }
+            >
+              <input
+                placeholder={fieldConfig.max_score.placeholder}
+                value={form.max_score}
+                onChange={(event) => updateField("max_score", event.target.value)}
+                readOnly={assessmentMode === "create"}
+                className={assessmentMode === "create" ? "bg-slate-100 text-slate-600" : ""}
+              />
+            </FieldBlock>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 lg:col-span-2">
+              {assessmentMode === "create"
+                ? `El puntaje total de la estacion se calcula automaticamente desde la pauta que estas construyendo: ${form.max_score} puntos.`
+                : "Si reutilizas una pauta existente, revisa que el puntaje total de la estacion coincida con el instrumento seleccionado."}
+            </div>
+          </div>
+        </section>
+
+        {templateUsesStudentForm ? (
+          <section className="space-y-4 rounded-3xl border border-indigo-200 bg-indigo-50/70 p-5">
+            <div>
+              <h4 className="text-xl text-slate-900">Formulario que respondera el estudiante</h4>
+              <p className="mt-1 text-sm text-slate-700">
+                Esta mini ventana se activa porque la plantilla seleccionada requiere respuesta del
+                estudiante en interfaz. Define aqui las preguntas que vera dentro de la estacion.
+              </p>
+            </div>
+            <div className="space-y-4">
+              {studentQuestions.map((question, index) => (
+                <div
+                  key={`student-question-${index}`}
+                  className="grid gap-4 rounded-2xl border border-indigo-200 bg-white/90 p-4 lg:grid-cols-[1.4fr_0.7fr_auto]"
+                >
+                  <FieldBlock
+                    label={`Pregunta ${index + 1}`}
+                    description="Escribe la pregunta o consigna exacta que debe responder el estudiante."
+                  >
+                    <textarea
+                      rows={3}
+                      value={question.prompt}
+                      placeholder="Ejemplo: Cual es el diagnostico sindromatico mas probable en este caso?"
+                      onChange={(event) =>
+                        updateStudentQuestion(index, "prompt", event.target.value)
+                      }
+                    />
+                  </FieldBlock>
+                  <div className="space-y-4">
+                    <FieldBlock
+                      label="Tipo de respuesta"
+                      description="Selecciona el formato de respuesta que vera el estudiante."
+                    >
+                      <select
+                        value={question.type}
+                        onChange={(event) =>
+                          updateStudentQuestion(index, "type", event.target.value)
+                        }
+                      >
+                        <option value="single_choice">Seleccion unica</option>
+                        <option value="multiple_choice">Seleccion multiple</option>
+                        <option value="short_text">Respuesta breve</option>
+                      </select>
+                    </FieldBlock>
+                    {question.type !== "short_text" ? (
+                      <FieldBlock
+                        label="Opciones de respuesta"
+                        description="Escribe una opcion por linea en el orden en que deberian aparecer."
+                      >
+                        <textarea
+                          rows={4}
+                          value={question.optionsText}
+                          placeholder={"Opcion A\nOpcion B\nOpcion C"}
+                          onChange={(event) =>
+                            updateStudentQuestion(index, "optionsText", event.target.value)
+                          }
+                        />
+                      </FieldBlock>
+                    ) : null}
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => removeStudentQuestion(index)}
+                      disabled={studentQuestions.length === 1}
+                    >
+                      Quitar pregunta
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <div className="flex flex-wrap gap-3">
+                <button type="button" className="btn-secondary" onClick={addStudentQuestion}>
+                  Agregar pregunta
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={async () => {
+                    if (!isEditing) {
+                      setMessage(
+                        "Para guardar solo el formulario del estudiante, primero guarda la estacion y luego vuelve a editarla.",
+                      );
+                      return;
+                    }
+                    try {
+                      const payload = buildStationPayload();
+                      const updatedStation = (await api.updateStation(
+                        editingStationId,
+                        payload,
+                        token!,
+                      )) as Record<string, unknown>;
+                      setStations((current) =>
+                        (current ?? []).map((station) =>
+                          Number(station.id) === editingStationId ? updatedStation : station,
+                        ),
+                      );
+                      setMessage("Formulario del estudiante guardado correctamente.");
+                    } catch (error) {
+                      setMessage(
+                        error instanceof Error
+                          ? error.message
+                          : "No se pudo guardar el formulario del estudiante.",
+                      );
+                    }
+                  }}
+                >
+                  Guardar formulario
+                </button>
+                <p className="text-sm text-slate-600">
+                  Este formulario queda guardado dentro de la estacion y se usara despues en la
+                  interfaz del estudiante.
+                </p>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        <section className="space-y-4">
+          <div>
+            <h4 className="text-xl text-slate-900">3. Instrucciones y tiempos</h4>
+            <p className="mt-1 text-sm text-slate-600">
+              Define que leera el estudiante y que observara el evaluador. Los tiempos ya estan fijados a nivel general para todo el ECOE.
+            </p>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 lg:col-span-2">
+              Esta estacion heredara automaticamente el tiempo oficial del ECOE: {stationTime} minutos de resolucion y {transitionTime} minutos de transicion.
+            </div>
+            {renderTextField("pre_entry_instruction")}
+            {renderTextField("student_station_instruction")}
+            <div className="lg:col-span-2">{renderTextField("evaluator_instruction")}</div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div>
+            <h4 className="text-xl text-slate-900">4. Recursos y contingencia</h4>
+            <p className="mt-1 text-sm text-slate-600">
+              Detalla lo necesario para montar la estacion y cualquier apoyo multimedia previsto.
+            </p>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {renderTextField("materials")}
+            {renderTextField("multimedia_notes")}
+          </div>
+          <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5">
+            <div>
+              <h5 className="text-lg font-semibold text-slate-900">Archivos multimedia de la estacion</h5>
+              <p className="mt-1 text-sm text-slate-600">
+                Puedes cargar audio, video, PDF, imagenes y documentos Word para usarlos en la
+                estacion. Si la estacion aun no ha sido guardada, primero debes guardarla y luego
+                volver a editarla para adjuntar archivos.
+              </p>
+            </div>
+
+            {isEditing ? (
+              <div className="mt-4 space-y-4">
+                <div className="grid gap-4 md:grid-cols-[0.7fr_1.3fr]">
+                  <FieldBlock
+                    label="Visible para"
+                    description="Indica a quien se le mostrara este recurso dentro del flujo."
+                  >
+                    <select
+                      value={mediaTargetViewer}
+                      onChange={(event) => setMediaTargetViewer(event.target.value)}
+                    >
+                      <option value="estudiante">Estudiante</option>
+                      <option value="evaluador">Evaluador</option>
+                      <option value="paciente_simulado">Paciente simulado</option>
+                      <option value="coordinacion">Coordinacion</option>
+                    </select>
+                  </FieldBlock>
+                  <FieldBlock
+                    label="Cargar archivo"
+                    description="Formatos sugeridos: audio, video, PDF, imagenes y documentos .doc o .docx."
+                  >
+                    <input
+                      type="file"
+                      accept="audio/*,video/*,.pdf,image/*,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      onChange={async (event) => {
+                        const file = event.target.files?.[0];
+                        if (!file) {
+                          return;
+                        }
+                        setMediaMessage(null);
+                        try {
+                          const uploaded = (await api.uploadMedia(
+                            {
+                              ecoe_event_id: eventId,
+                              station_id: editingStationId,
+                              target_viewer: mediaTargetViewer,
+                              file,
+                            },
+                            token!,
+                          )) as Record<string, unknown>;
+                          setMediaAssets((current) => [...(current ?? []), uploaded]);
+                          setMediaMessage("Archivo multimedia cargado correctamente.");
+                          event.currentTarget.value = "";
+                        } catch (error) {
+                          setMediaMessage(
+                            error instanceof Error ? error.message : "No se pudo cargar el archivo.",
+                          );
+                        }
+                      }}
+                    />
+                  </FieldBlock>
+                </div>
+
+                <div className="space-y-3">
+                  {(mediaAssets ?? []).length ? (
+                    (mediaAssets ?? []).map((asset) => (
+                      <div
+                        key={String(asset.id)}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                      >
+                        <div>
+                          <p className="font-semibold text-slate-900">
+                            {String(asset.original_name ?? asset.filename ?? "Archivo")}
+                          </p>
+                          <p className="text-slate-500">
+                            {String(asset.content_type ?? "tipo no informado")} · visible para{" "}
+                            {String(asset.target_viewer ?? "sin definir")}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={async () => {
+                            const confirmed = window.confirm(
+                              "Vas a borrar este archivo multimedia de la estacion. ¿Quieres continuar?",
+                            );
+                            if (!confirmed) {
+                              return;
+                            }
+                            setMediaMessage(null);
+                            try {
+                              await api.deleteMedia(Number(asset.id), token!);
+                              setMediaAssets((current) =>
+                                (current ?? []).filter(
+                                  (currentAsset) => Number(currentAsset.id) !== Number(asset.id),
+                                ),
+                              );
+                              setMediaMessage("Archivo multimedia borrado correctamente.");
+                            } catch (error) {
+                              setMediaMessage(
+                                error instanceof Error
+                                  ? error.message
+                                  : "No se pudo borrar el archivo.",
+                              );
+                            }
+                          }}
+                        >
+                          Borrar
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                      Aun no hay archivos multimedia cargados para esta estacion.
+                    </p>
+                  )}
+                </div>
+
+                {mediaMessage ? <p className="text-sm text-slate-700">{mediaMessage}</p> : null}
+              </div>
+            ) : (
+              <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                Guarda primero la estacion y luego vuelve a abrirla para cargar archivos multimedia.
+              </p>
             )}
-          </label>
-        ))}
-        <div className="lg:col-span-2">
-          <button className="btn-primary">Guardar estacion</button>
-          {message ? <p className="mt-3 text-sm text-slate-600">{message}</p> : null}
+          </div>
+        </section>
+
+        <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4">
+          <button className="btn-primary">{isEditing ? "Guardar cambios" : "Guardar estacion"}</button>
+          {isEditing ? (
+            <Link href="/stations" className="btn-secondary">
+              Volver al listado
+            </Link>
+          ) : null}
+          <p className="text-sm text-slate-500">
+            {isEditing
+              ? "Los cambios se guardan sobre la estacion existente, manteniendo su lugar en el circuito."
+              : "La estacion se crea en estado de diseno para que puedas seguir afinandola despues."}
+          </p>
         </div>
+        {message ? <p className="text-sm text-slate-600">{message}</p> : null}
       </form>
     </SectionCard>
   );

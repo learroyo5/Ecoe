@@ -62,6 +62,12 @@ def seed_data(db: Session) -> None:
             role_id=role_map[RoleCode.evaluador.value],
         ),
         User(
+            email="student1@ecoe.cl",
+            full_name="Estudiante 1 Demo",
+            hashed_password=get_password_hash("admin123"),
+            role_id=role_map[RoleCode.estudiante.value],
+        ),
+        User(
             email="coord@ecoe.cl",
             full_name="Coordinacion ECOE",
             hashed_password=get_password_hash("admin123"),
