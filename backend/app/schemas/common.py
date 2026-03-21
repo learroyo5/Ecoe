@@ -191,6 +191,46 @@ class StationRead(StationCreate, ORMBase):
     id: int
 
 
+class StationBankBase(BaseModel):
+    template_id: int | None = None
+    assessment_tool_id: int | None = None
+    simulated_patient_id: int | None = None
+    name: str
+    station_type: str
+    circuit_name: str = "Circuito A"
+    expected_outcomes: str
+    student_activity: str
+    student_station_instruction: str = ""
+    pre_entry_instruction: str
+    evaluator_instruction: str
+    requires_evaluator: bool = True
+    requires_student_form: bool = False
+    uses_multimedia: bool = False
+    uses_simulated_patient: bool = False
+    uses_physical_resources: bool = False
+    max_score: float = 0
+    materials: str = ""
+    clinical_equipment: str = ""
+    simulator: str = ""
+    ambience: str = ""
+    multimedia_notes: str = ""
+    student_form_definition: dict[str, Any] = {}
+    contingency_ready: bool = True
+    status: str = "en_diseno"
+
+
+class StationBankCreate(StationBankBase):
+    pass
+
+
+class StationBankRead(StationBankBase, ORMBase):
+    id: int
+
+
+class StationBankStatusUpdate(BaseModel):
+    status: str
+
+
 class PilotRunCreate(BaseModel):
     ecoe_event_id: int
     name: str

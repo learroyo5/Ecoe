@@ -80,6 +80,13 @@ export const api = {
     request("/station-checkins/confirm", { method: "POST", body: JSON.stringify(payload) }, token),
   studentAccess: (payload: unknown, token: string) =>
     request("/student/access", { method: "POST", body: JSON.stringify(payload) }, token),
+  stationBank: (token: string) => request("/station-bank", {}, token),
+  createStationBank: (payload: unknown, token: string) =>
+    request("/station-bank", { method: "POST", body: JSON.stringify(payload) }, token),
+  updateStationBank: (bankStationId: number, payload: unknown, token: string) =>
+    request(`/station-bank/${bankStationId}`, { method: "PUT", body: JSON.stringify(payload) }, token),
+  updateStationBankStatus: (bankStationId: number, payload: unknown, token: string) =>
+    request(`/station-bank/${bankStationId}/status`, { method: "PATCH", body: JSON.stringify(payload) }, token),
   stations: (eventId: number, token: string) => request(`/stations/${eventId}`, {}, token),
   createStation: (payload: unknown, token: string) =>
     request("/stations", { method: "POST", body: JSON.stringify(payload) }, token),

@@ -10,6 +10,7 @@ const items = [
   { label: "Estudiantes", href: "/students", hiddenFor: ["evaluador"] },
   { label: "Evaluadores", href: "/evaluators", hiddenFor: ["evaluador"] },
   { label: "Estaciones", href: "/stations", hiddenFor: ["evaluador"] },
+  { label: "Banco de estaciones", href: "/station-bank", hiddenFor: ["evaluador"] },
   { label: "Constructor", href: "/stations/builder", hiddenFor: ["evaluador"] },
   { label: "Plantillas", href: "/templates", hiddenFor: ["evaluador"] },
   { label: "Instrumentos", href: "/instruments", hiddenFor: ["evaluador"] },

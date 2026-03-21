@@ -38,9 +38,14 @@ export default function StationsPage() {
   return (
     <div className="space-y-6">
       <SectionCard title="Gestion de estaciones" subtitle="Vista resumida del circuito y acceso al constructor">
-        <Link href="/stations/builder" className="btn-primary">
-          Abrir constructor de estacion
-        </Link>
+        <div className="flex flex-wrap gap-3">
+          <Link href="/stations/builder" className="btn-primary">
+            Abrir constructor de estacion
+          </Link>
+          <Link href="/station-bank" className="btn-secondary">
+            Abrir banco de estaciones
+          </Link>
+        </div>
       </SectionCard>
       <SectionCard title="Estaciones del ECOE">
         {loading ? (

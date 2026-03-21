@@ -20,6 +20,7 @@ from app.models.entities import (
     SimulatedPatient,
     StaffAssignment,
     Station,
+    StationBank,
     StationCheckIn,
     StationTemplate,
     Student,
@@ -39,6 +40,8 @@ from app.schemas.common import (
     SimulatedPatientCreate,
     StaffCreate,
     StationCreate,
+    StationBankCreate,
+    StationBankStatusUpdate,
     StationTemplateCreate,
     StudentCreate,
     StudentAccessRequest,
@@ -916,6 +919,61 @@ def create_patient(
     db.commit()
     db.refresh(patient)
     return patient
+
+
+@router.get("/station-bank")
+def list_station_bank(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    return db.scalars(select(StationBank).order_by(StationBank.updated_at.desc(), StationBank.id.desc())).all()
+
+
+@router.post("/station-bank")
+def create_station_bank(
+    payload: StationBankCreate,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+):
+    bank_station = StationBank(**payload.model_dump())
+    db.add(bank_station)
+    db.commit()
+    db.refresh(bank_station)
+    return bank_station
+
+
+@router.put("/station-bank/{bank_station_id}")
+def update_station_bank(
+    bank_station_id: int,
+    payload: StationBankCreate,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+):
+    bank_station = db.get(StationBank, bank_station_id)
+    if not bank_station:
+        raise HTTPException(status_code=404, detail="Estacion de banco no encontrada")
+
+    for field, value in payload.model_dump().items():
+        setattr(bank_station, field, value)
+    db.add(bank_station)
+    db.commit()
+    db.refresh(bank_station)
+    return bank_station
+
+
+@router.patch("/station-bank/{bank_station_id}/status")
+def update_station_bank_status(
+    bank_station_id: int,
+    payload: StationBankStatusUpdate,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+):
+    bank_station = db.get(StationBank, bank_station_id)
+    if not bank_station:
+        raise HTTPException(status_code=404, detail="Estacion de banco no encontrada")
+
+    bank_station.status = payload.status
+    db.add(bank_station)
+    db.commit()
+    db.refresh(bank_station)
+    return bank_station
 
 
 @router.get("/stations/{ecoe_event_id}")

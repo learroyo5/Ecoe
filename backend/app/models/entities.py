@@ -232,6 +232,37 @@ class Station(Base, TimestampMixin):
     ecoe_event: Mapped["ECOEEvent"] = relationship(back_populates="stations")
 
 
+class StationBank(Base, TimestampMixin):
+    __tablename__ = "station_bank"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    template_id: Mapped[int | None] = mapped_column(ForeignKey("station_templates.id"))
+    assessment_tool_id: Mapped[int | None] = mapped_column(ForeignKey("assessment_tools.id"))
+    simulated_patient_id: Mapped[int | None] = mapped_column(ForeignKey("simulated_patients.id"))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    station_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    circuit_name: Mapped[str] = mapped_column(String(64), default="Circuito A")
+    expected_outcomes: Mapped[str] = mapped_column(Text, nullable=False)
+    student_activity: Mapped[str] = mapped_column(Text, nullable=False)
+    student_station_instruction: Mapped[str] = mapped_column(Text, default="")
+    pre_entry_instruction: Mapped[str] = mapped_column(Text, nullable=False)
+    evaluator_instruction: Mapped[str] = mapped_column(Text, nullable=False)
+    requires_evaluator: Mapped[bool] = mapped_column(Boolean, default=True)
+    requires_student_form: Mapped[bool] = mapped_column(Boolean, default=False)
+    uses_multimedia: Mapped[bool] = mapped_column(Boolean, default=False)
+    uses_simulated_patient: Mapped[bool] = mapped_column(Boolean, default=False)
+    uses_physical_resources: Mapped[bool] = mapped_column(Boolean, default=False)
+    max_score: Mapped[float] = mapped_column(Float, default=0)
+    materials: Mapped[str] = mapped_column(Text, default="")
+    clinical_equipment: Mapped[str] = mapped_column(Text, default="")
+    simulator: Mapped[str] = mapped_column(Text, default="")
+    ambience: Mapped[str] = mapped_column(Text, default="")
+    multimedia_notes: Mapped[str] = mapped_column(Text, default="")
+    student_form_definition: Mapped[dict] = mapped_column(JSON, default=dict)
+    contingency_ready: Mapped[bool] = mapped_column(Boolean, default=True)
+    status: Mapped[str] = mapped_column(String(64), default="en_diseno")
+
+
 class StationResource(Base):
     __tablename__ = "station_resources"
 

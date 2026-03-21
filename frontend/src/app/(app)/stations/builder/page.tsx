@@ -172,8 +172,15 @@ export default function StationBuilderPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { token, eventId, user } = useAuth();
+  const builderScope = searchParams.get("scope") === "bank" ? "bank" : "ecoe";
   const editingStationId = Number(searchParams.get("stationId") ?? "");
   const isEditing = Number.isFinite(editingStationId) && editingStationId > 0;
+  const editingBankStationId = Number(searchParams.get("bankStationId") ?? "");
+  const isEditingBankStation =
+    builderScope === "bank" && Number.isFinite(editingBankStationId) && editingBankStationId > 0;
+  const useBankStationId = Number(searchParams.get("useBankStationId") ?? "");
+  const isUsingBankStation =
+    builderScope === "ecoe" && Number.isFinite(useBankStationId) && useBankStationId > 0;
   const { data: ecoeEvent, setData: setECOEEvent } = useApi(
     () => api.ecoe(eventId, token!) as Promise<Record<string, unknown>>,
     [eventId, token],
@@ -189,6 +196,10 @@ export default function StationBuilderPage() {
   const { data: stations, setData: setStations } = useApi(
     () => api.stations(eventId, token!) as Promise<Record<string, unknown>[]>,
     [eventId, token],
+  );
+  const { data: bankStations, setData: setBankStations } = useApi(
+    () => api.stationBank(token!) as Promise<Record<string, unknown>[]>,
+    [token],
   );
   const { data: patients } = useApi(
     () => api.simulatedPatients(token!) as Promise<Record<string, unknown>[]>,
@@ -223,6 +234,7 @@ export default function StationBuilderPage() {
     station_time_minutes: "8",
     transition_time_minutes: "2",
   });
+  const [bankStatus, setBankStatus] = useState("en_diseno");
   const [mediaTargetViewer, setMediaTargetViewer] = useState("estudiante");
   const [mediaMessage, setMediaMessage] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -235,6 +247,8 @@ export default function StationBuilderPage() {
   );
   const selectedTemplate =
     (templates ?? []).find((template) => String(template.id) === selectedTemplateId) ?? null;
+  const selectedBankStation =
+    (bankStations ?? []).find((station) => String(station.id) === String(useBankStationId)) ?? null;
   const selectedTemplateCategory = String(selectedTemplate?.category ?? "").toLowerCase();
   const templateUsesStudentForm =
     selectedTemplateCategory.includes("formulario") || selectedTemplateCategory.includes("hibrid");
@@ -248,6 +262,13 @@ export default function StationBuilderPage() {
       return value > max ? value : max;
     }, 0) || 0) + 1,
   );
+
+  const bankStatusOptions = [
+    { value: "en_diseno", label: "En diseno" },
+    { value: "piloteada", label: "Piloteada" },
+    { value: "aprobada", label: "Aprobada" },
+    { value: "archivada", label: "Archivada" },
+  ];
 
   const updateField = (key: FormKey, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -438,6 +459,77 @@ export default function StationBuilderPage() {
     status: "en_diseno",
   });
 
+  const buildStationBankPayload = () => ({
+    template_id: Number(selectedTemplateId) || null,
+    assessment_tool_id: selectedAssessmentToolId ? Number(selectedAssessmentToolId) : null,
+    simulated_patient_id: Number(selectedPatientId) || null,
+    name: form.name,
+    station_type: form.station_type,
+    circuit_name: form.circuit_name,
+    expected_outcomes: form.expected_outcomes,
+    student_activity: form.student_activity,
+    student_station_instruction: form.student_station_instruction,
+    pre_entry_instruction: form.pre_entry_instruction,
+    evaluator_instruction: form.evaluator_instruction,
+    requires_evaluator: true,
+    requires_student_form: templateUsesStudentForm,
+    uses_multimedia: templateUsesMultimedia,
+    uses_simulated_patient: templateUsesSimulatedPatient,
+    uses_physical_resources: true,
+    max_score: Number(form.max_score),
+    materials: form.materials,
+    clinical_equipment: "",
+    simulator: "",
+    ambience: "",
+    multimedia_notes: form.multimedia_notes,
+    student_form_definition: buildStudentFormDefinition(),
+    contingency_ready: true,
+    status: bankStatus,
+  });
+
+  const applyStationLikeData = (station: Record<string, unknown>) => {
+    setForm({
+      station_number: String(station.station_number ?? nextStationNumber),
+      name: String(station.name ?? ""),
+      station_type: String(station.station_type ?? "procedimental"),
+      circuit_name: String(station.circuit_name ?? "Circuito A"),
+      expected_outcomes: String(station.expected_outcomes ?? ""),
+      student_activity: String(station.student_activity ?? ""),
+      student_station_instruction: String(station.student_station_instruction ?? ""),
+      pre_entry_instruction: String(station.pre_entry_instruction ?? ""),
+      evaluator_instruction: String(station.evaluator_instruction ?? ""),
+      max_score: String(station.max_score ?? "0"),
+      materials: String(station.materials ?? ""),
+      multimedia_notes: String(station.multimedia_notes ?? ""),
+    });
+    setSelectedTemplateId(station.template_id ? String(station.template_id) : "");
+    setSelectedPatientId(station.simulated_patient_id ? String(station.simulated_patient_id) : "");
+    setSelectedAssessmentToolId(
+      station.assessment_tool_id ? String(station.assessment_tool_id) : "",
+    );
+    setAssessmentMode("existing");
+    setBankStatus(String(station.status ?? "en_diseno"));
+
+    const rawQuestions = (
+      station.student_form_definition as { questions?: Record<string, unknown>[] } | undefined
+    )?.questions;
+
+    if (Array.isArray(rawQuestions) && rawQuestions.length) {
+      setStudentQuestions(
+        rawQuestions.map((question) => ({
+          prompt: String(question.label ?? ""),
+          type: String(question.type ?? "single_choice"),
+          optionsText: Array.isArray(question.options)
+            ? (question.options as unknown[]).map((option) => String(option)).join("\n")
+            : "",
+        })),
+      );
+      return;
+    }
+
+    setStudentQuestions([{ prompt: "", type: "single_choice", optionsText: "" }]);
+  };
+
   useEffect(() => {
     if (user?.role === "evaluador") {
       router.replace("/evaluator");
@@ -475,7 +567,7 @@ export default function StationBuilderPage() {
   }, [assessmentMode, instrumentDraft.items]);
 
   useEffect(() => {
-    if (!isEditing || !stations?.length) {
+    if (!isEditing || !stations?.length || builderScope !== "ecoe") {
       return;
     }
 
@@ -483,47 +575,29 @@ export default function StationBuilderPage() {
     if (!station) {
       return;
     }
+    applyStationLikeData(station);
+  }, [builderScope, editingStationId, isEditing, nextStationNumber, stations]);
 
-    setForm({
-      station_number: String(station.station_number ?? nextStationNumber),
-      name: String(station.name ?? ""),
-      station_type: String(station.station_type ?? "procedimental"),
-      circuit_name: String(station.circuit_name ?? "Circuito A"),
-      expected_outcomes: String(station.expected_outcomes ?? ""),
-      student_activity: String(station.student_activity ?? ""),
-      student_station_instruction: String(station.student_station_instruction ?? ""),
-      pre_entry_instruction: String(station.pre_entry_instruction ?? ""),
-      evaluator_instruction: String(station.evaluator_instruction ?? ""),
-      max_score: String(station.max_score ?? "0"),
-      materials: String(station.materials ?? ""),
-      multimedia_notes: String(station.multimedia_notes ?? ""),
-    });
-    setSelectedTemplateId(station.template_id ? String(station.template_id) : "");
-    setSelectedPatientId(station.simulated_patient_id ? String(station.simulated_patient_id) : "");
-    setSelectedAssessmentToolId(
-      station.assessment_tool_id ? String(station.assessment_tool_id) : "",
-    );
-    setAssessmentMode("existing");
-
-    const rawQuestions = (
-      station.student_form_definition as { questions?: Record<string, unknown>[] } | undefined
-    )?.questions;
-
-    if (Array.isArray(rawQuestions) && rawQuestions.length) {
-      setStudentQuestions(
-        rawQuestions.map((question) => ({
-          prompt: String(question.label ?? ""),
-          type: String(question.type ?? "single_choice"),
-          optionsText: Array.isArray(question.options)
-            ? (question.options as unknown[]).map((option) => String(option)).join("\n")
-            : "",
-        })),
-      );
+  useEffect(() => {
+    if (!isEditingBankStation || !bankStations?.length) {
       return;
     }
+    const bankStation = bankStations.find((item) => Number(item.id) === editingBankStationId);
+    if (!bankStation) {
+      return;
+    }
+    applyStationLikeData(bankStation);
+  }, [bankStations, editingBankStationId, isEditingBankStation]);
 
-    setStudentQuestions([{ prompt: "", type: "single_choice", optionsText: "" }]);
-  }, [editingStationId, isEditing, nextStationNumber, stations]);
+  useEffect(() => {
+    if (!isUsingBankStation || isEditing || builderScope !== "ecoe" || !selectedBankStation) {
+      return;
+    }
+    applyStationLikeData(selectedBankStation);
+    setMessage(
+      `Estas creando una estacion del ECOE a partir del banco: ${String(selectedBankStation.name ?? "")}.`,
+    );
+  }, [builderScope, isEditing, isUsingBankStation, selectedBankStation]);
 
   if (user?.role === "evaluador") {
     return (
@@ -538,20 +612,33 @@ export default function StationBuilderPage() {
 
   return (
     <SectionCard
-      title={isEditing ? "Edicion de estacion" : "Constructor de estaciones"}
+      title={
+        builderScope === "bank"
+          ? isEditingBankStation
+            ? "Edicion de estacion del banco"
+            : "Constructor del banco de estaciones"
+          : isEditing
+            ? "Edicion de estacion"
+            : "Constructor de estaciones"
+      }
       subtitle={
-        isEditing
-          ? "Ajusta la estacion seleccionada y guarda una nueva version del diseno."
-          : "Completa la informacion academica y operativa de cada estacion con textos claros para quienes la van a usar."
+        builderScope === "bank"
+          ? "Aqui defines estaciones reutilizables del hospital o de la institucion para cargarlas despues en distintos ECOE."
+          : isEditing
+            ? "Ajusta la estacion seleccionada y guarda una nueva version del diseno."
+            : "Completa la informacion academica y operativa de cada estacion con textos claros para quienes la van a usar."
       }
     >
       <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-950">
-        {isEditing
-          ? "Estas editando una estacion ya creada. Revisa con cuidado el flujo del estudiante, del evaluador y los recursos necesarios antes de guardar los cambios."
-          : "Esta pantalla crea una estacion nueva. La idea es dejar claro que debe hacer el estudiante, que observara el evaluador y que recursos necesita el equipo organizador."}
+        {builderScope === "bank"
+          ? "Estas trabajando sobre el Banco de estaciones. La idea es dejar estaciones estandar bien definidas para despues reutilizarlas en ECOE reales."
+          : isEditing
+            ? "Estas editando una estacion ya creada. Revisa con cuidado el flujo del estudiante, del evaluador y los recursos necesarios antes de guardar los cambios."
+            : "Esta pantalla crea una estacion nueva. La idea es dejar claro que debe hacer el estudiante, que observara el evaluador y que recursos necesita el equipo organizador."}
       </div>
 
-      <section className="space-y-4 rounded-3xl border border-teal-200 bg-teal-50/70 p-5">
+      {builderScope === "ecoe" ? (
+        <section className="space-y-4 rounded-3xl border border-teal-200 bg-teal-50/70 p-5">
         <div>
           <h4 className="text-xl text-slate-900">Configuracion general de tiempos del ECOE</h4>
           <p className="mt-1 text-sm text-slate-700">
@@ -623,7 +710,8 @@ export default function StationBuilderPage() {
             <p className="lg:col-span-2 text-sm text-slate-700">{timingMessage}</p>
           ) : null}
         </form>
-      </section>
+        </section>
+      ) : null}
 
       <form
         className="space-y-6"
@@ -635,6 +723,43 @@ export default function StationBuilderPage() {
               throw new Error(
                 "Debes guardar primero la pauta de evaluacion antes de guardar los cambios de la estacion.",
               );
+            }
+
+            if (builderScope === "bank") {
+              const bankPayload = buildStationBankPayload();
+
+              if (
+                templateUsesStudentForm &&
+                !bankPayload.student_form_definition.questions.length
+              ) {
+                throw new Error(
+                  "Debes agregar al menos una pregunta en el formulario del estudiante para este tipo de estacion del banco.",
+                );
+              }
+
+              if (isEditingBankStation) {
+                const updatedBankStation = (await api.updateStationBank(
+                  editingBankStationId,
+                  bankPayload,
+                  token!,
+                )) as Record<string, unknown>;
+                setBankStations((current) =>
+                  (current ?? []).map((station) =>
+                    Number(station.id) === editingBankStationId ? updatedBankStation : station,
+                  ),
+                );
+                setMessage("Estacion del banco actualizada correctamente.");
+                return;
+              }
+
+              const createdBankStation = (await api.createStationBank(
+                bankPayload,
+                token!,
+              )) as Record<string, unknown>;
+              setBankStations((current) => [createdBankStation, ...(current ?? [])]);
+              setMessage("Estacion del banco guardada correctamente.");
+              router.replace(`/stations/builder?scope=bank&bankStationId=${String(createdBankStation.id)}`);
+              return;
             }
 
             const payload = buildStationPayload();
@@ -690,16 +815,34 @@ export default function StationBuilderPage() {
             </p>
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
-            <FieldBlock
-              label={fieldConfig.station_number.label}
-              description={fieldConfig.station_number.description}
-            >
-              <input
-                value={isEditing ? form.station_number : nextStationNumber}
-                readOnly
-                className="bg-slate-100 text-slate-600"
-              />
-            </FieldBlock>
+            {builderScope === "ecoe" ? (
+              <FieldBlock
+                label={fieldConfig.station_number.label}
+                description={fieldConfig.station_number.description}
+              >
+                <input
+                  value={isEditing ? form.station_number : nextStationNumber}
+                  readOnly
+                  className="bg-slate-100 text-slate-600"
+                />
+              </FieldBlock>
+            ) : (
+              <FieldBlock
+                label="Estado de la estacion en el banco"
+                description="Indica si esta estacion esta aun en diseno, si ya fue piloteada o si ya esta aprobada para reutilizacion."
+              >
+                <select
+                  value={bankStatus}
+                  onChange={(event) => setBankStatus(event.target.value)}
+                >
+                  {bankStatusOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </FieldBlock>
+            )}
             {renderTextField("name")}
             <FieldBlock
               label={fieldConfig.station_type.label}
@@ -730,21 +873,39 @@ export default function StationBuilderPage() {
                 })}
               </div>
             </FieldBlock>
-            <FieldBlock
-              label={fieldConfig.circuit_name.label}
-              description={fieldConfig.circuit_name.description}
-            >
-              <select
-                value={form.circuit_name}
-                onChange={(event) => updateField("circuit_name", event.target.value)}
+            {builderScope === "ecoe" ? (
+              <FieldBlock
+                label={fieldConfig.circuit_name.label}
+                description={fieldConfig.circuit_name.description}
               >
-                {circuitOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </FieldBlock>
+                <select
+                  value={form.circuit_name}
+                  onChange={(event) => updateField("circuit_name", event.target.value)}
+                >
+                  {circuitOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </FieldBlock>
+            ) : (
+              <FieldBlock
+                label="Circuito sugerido"
+                description="Puedes dejar un circuito de referencia aunque despues el ECOE concreto lo cambie."
+              >
+                <select
+                  value={form.circuit_name}
+                  onChange={(event) => updateField("circuit_name", event.target.value)}
+                >
+                  {circuitOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </FieldBlock>
+            )}
             {renderTextField("expected_outcomes")}
             {renderTextField("student_activity")}
           </div>
@@ -1212,7 +1373,7 @@ export default function StationBuilderPage() {
               </p>
             </div>
 
-            {isEditing ? (
+            {isEditing && builderScope === "ecoe" ? (
               <div className="mt-4 space-y-4">
                 <div className="grid gap-4 md:grid-cols-[0.7fr_1.3fr]">
                   <FieldBlock
@@ -1324,23 +1485,66 @@ export default function StationBuilderPage() {
               </div>
             ) : (
               <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                Guarda primero la estacion y luego vuelve a abrirla para cargar archivos multimedia.
+                {builderScope === "bank"
+                  ? "La carga multimedia sigue asociada a estaciones del ECOE. En el banco deja aqui las indicaciones y define despues los archivos concretos en la estacion operativa."
+                  : "Guarda primero la estacion y luego vuelve a abrirla para cargar archivos multimedia."}
               </p>
             )}
           </div>
         </section>
 
         <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4">
-          <button className="btn-primary">{isEditing ? "Guardar cambios" : "Guardar estacion"}</button>
-          {isEditing ? (
-            <Link href="/stations" className="btn-secondary">
-              Volver al listado
-            </Link>
+          <button className="btn-primary">
+            {builderScope === "bank"
+              ? isEditingBankStation
+                ? "Guardar cambios en banco"
+                : "Guardar estacion en banco"
+              : isEditing
+                ? "Guardar cambios"
+                : "Guardar estacion"}
+          </button>
+          {builderScope === "ecoe" ? (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={async () => {
+                setMessage(null);
+                try {
+                  if (assessmentMode === "create") {
+                    throw new Error(
+                      "Debes guardar primero la pauta de evaluacion antes de guardar esta estacion en el banco.",
+                    );
+                  }
+                  const createdBankStation = (await api.createStationBank(
+                    buildStationBankPayload(),
+                    token!,
+                  )) as Record<string, unknown>;
+                  setBankStations((current) => [createdBankStation, ...(current ?? [])]);
+                  setMessage("La estacion fue guardada tambien en el banco de estaciones.");
+                } catch (error) {
+                  setMessage(
+                    error instanceof Error
+                      ? error.message
+                      : "No se pudo guardar la estacion en el banco.",
+                  );
+                }
+              }}
+            >
+              Guardar en banco
+            </button>
           ) : null}
+          <Link
+            href={builderScope === "bank" ? "/station-bank" : "/stations"}
+            className="btn-secondary"
+          >
+            Volver al listado
+          </Link>
           <p className="text-sm text-slate-500">
-            {isEditing
-              ? "Los cambios se guardan sobre la estacion existente, manteniendo su lugar en el circuito."
-              : "La estacion se crea en estado de diseno para que puedas seguir afinandola despues."}
+            {builderScope === "bank"
+              ? "Las estaciones del banco quedan disponibles para reutilizacion posterior en ECOE reales y pueden marcarse como piloteadas o aprobadas."
+              : isEditing
+                ? "Los cambios se guardan sobre la estacion existente, manteniendo su lugar en el circuito."
+                : "La estacion se crea en estado de diseno para que puedas seguir afinandola despues."}
           </p>
         </div>
         {message ? <p className="text-sm text-slate-600">{message}</p> : null}
