@@ -1198,9 +1198,9 @@ def control_timer(
         ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
         session = LiveSession(
             ecoe_event_id=payload.ecoe_event_id,
-            station_time_seconds=ecoe_event.station_time_minutes * 60,
-            transition_time_seconds=ecoe_event.transition_time_minutes * 60,
-            remaining_seconds=ecoe_event.station_time_minutes * 60,
+            station_time_seconds=max(1, round(ecoe_event.station_time_minutes * 60)),
+            transition_time_seconds=max(0, round(ecoe_event.transition_time_minutes * 60)),
+            remaining_seconds=max(1, round(ecoe_event.station_time_minutes * 60)),
         )
         db.add(session)
         db.flush()

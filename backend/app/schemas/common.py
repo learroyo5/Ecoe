@@ -36,8 +36,8 @@ class ECOEEventBase(BaseModel):
     contact_email: EmailStr
     circuit_mode: str
     total_stations: int = Field(ge=1)
-    station_time_minutes: int = Field(ge=1)
-    transition_time_minutes: int = Field(ge=0)
+    station_time_minutes: float = Field(ge=0.1)
+    transition_time_minutes: float = Field(ge=0)
     total_students: int = Field(ge=0)
     total_groups: int = Field(ge=1)
     passing_reference_percent: float = Field(default=60, ge=0, le=100)
@@ -59,8 +59,8 @@ class ECOEEventRead(ECOEEventBase, ORMBase):
 
 
 class ECOETimingUpdate(BaseModel):
-    station_time_minutes: int = Field(ge=1)
-    transition_time_minutes: int = Field(ge=0)
+    station_time_minutes: float = Field(ge=0.1)
+    transition_time_minutes: float = Field(ge=0)
     sync_existing_stations: bool = True
 
 

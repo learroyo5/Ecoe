@@ -150,6 +150,44 @@ function FieldBlock({
   );
 }
 
+function BuilderSection({
+  index,
+  title,
+  subtitle,
+  expanded,
+  onToggle,
+  children,
+}: {
+  index: number;
+  title: string;
+  subtitle: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-white/90">
+      <button
+        type="button"
+        className="flex w-full items-start justify-between gap-4 px-5 py-5 text-left"
+        onClick={onToggle}
+      >
+        <div>
+          <div className="inline-flex rounded-full bg-teal-700 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white">
+            Paso {index}
+          </div>
+          <h4 className="mt-2 text-xl text-slate-900">{title}</h4>
+          <p className="mt-1 text-sm leading-6 text-slate-600">{subtitle}</p>
+        </div>
+        <span className="rounded-full border border-slate-300 px-3 py-1 text-sm font-semibold text-slate-600">
+          {expanded ? "Ocultar" : "Abrir"}
+        </span>
+      </button>
+      {expanded ? <div className="border-t border-slate-200 px-5 py-5">{children}</div> : null}
+    </section>
+  );
+}
+
 const instrumentTypeOptions = [
   {
     value: "lista_cotejo",
@@ -165,6 +203,46 @@ const instrumentTypeOptions = [
     value: "escala_puntaje",
     label: "Escala de puntaje",
     description: "Sirve cuando prefieres una pauta corta con criterios puntuables sin tanto detalle descriptivo.",
+  },
+];
+
+const builderFlowSteps = [
+  {
+    title: "Elige desde donde nace la estacion",
+    description: "Define si partes desde cero, desde el banco o si estas ajustando una estacion ya creada.",
+  },
+  {
+    title: "Define la base pedagogica",
+    description: "Aclara el nombre, el tipo y el desempeno central que quieres observar en el estudiante.",
+  },
+  {
+    title: "Configura como funcionara",
+    description: "Completa plantilla, pauta, instrucciones, tiempos y formulario segun corresponda.",
+  },
+  {
+    title: "Revisa recursos y guarda",
+    description: "Confirma materiales, multimedia y decide si la estacion queda solo en este ECOE o tambien en el banco.",
+  },
+];
+
+const builderOriginOptions = [
+  {
+    label: "Estacion nueva del ECOE",
+    description:
+      "Construye una estacion especifica para el ECOE que estas editando ahora.",
+    href: "/stations/builder",
+  },
+  {
+    label: "Usar una estacion del banco",
+    description:
+      "Carga una estacion estandar ya aprobada o piloteada y adaptala al ECOE actual.",
+    href: "/station-bank",
+  },
+  {
+    label: "Crear o editar banco de estaciones",
+    description:
+      "Trabaja sobre estaciones reutilizables del hospital o de la institucion.",
+    href: "/stations/builder?scope=bank",
   },
 ];
 
@@ -235,6 +313,7 @@ export default function StationBuilderPage() {
     transition_time_minutes: "2",
   });
   const [bankStatus, setBankStatus] = useState("en_diseno");
+  const [expandedSection, setExpandedSection] = useState<1 | 2 | 3 | 4>(1);
   const [mediaTargetViewer, setMediaTargetViewer] = useState("estudiante");
   const [mediaMessage, setMediaMessage] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -611,38 +690,84 @@ export default function StationBuilderPage() {
   }
 
   return (
-    <SectionCard
-      title={
-        builderScope === "bank"
-          ? isEditingBankStation
-            ? "Edicion de estacion del banco"
-            : "Constructor del banco de estaciones"
-          : isEditing
-            ? "Edicion de estacion"
-            : "Constructor de estaciones"
-      }
-      subtitle={
-        builderScope === "bank"
-          ? "Aqui defines estaciones reutilizables del hospital o de la institucion para cargarlas despues en distintos ECOE."
-          : isEditing
-            ? "Ajusta la estacion seleccionada y guarda una nueva version del diseno."
-            : "Completa la informacion academica y operativa de cada estacion con textos claros para quienes la van a usar."
-      }
-    >
-      <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-950">
-        {builderScope === "bank"
-          ? "Estas trabajando sobre el Banco de estaciones. La idea es dejar estaciones estandar bien definidas para despues reutilizarlas en ECOE reales."
-          : isEditing
-            ? "Estas editando una estacion ya creada. Revisa con cuidado el flujo del estudiante, del evaluador y los recursos necesarios antes de guardar los cambios."
-            : "Esta pantalla crea una estacion nueva. La idea es dejar claro que debe hacer el estudiante, que observara el evaluador y que recursos necesita el equipo organizador."}
-      </div>
+    <SectionCard>
+      <section className="space-y-4 rounded-3xl border border-indigo-200 bg-indigo-50/70 p-5">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-700">
+            Ruta de construccion
+          </p>
+          <h2 className="mt-2 text-2xl text-slate-950">
+            {builderScope === "bank"
+              ? isEditingBankStation
+                ? "Editar estacion del banco"
+                : "Constructor del banco de estaciones"
+              : isEditing
+                ? "Editar estacion"
+                : "Constructor de estaciones"}
+          </h2>
+          <p className="mt-1 text-sm font-medium text-slate-700">
+            Sigue este orden hacia abajo. Primero define lo grande y luego completa los detalles.
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          {builderFlowSteps.map((step, index) => (
+            <div key={step.title} className="space-y-3">
+              <button
+                type="button"
+                className={`w-full rounded-2xl border px-4 py-4 text-left transition ${
+                  expandedSection === index + 1
+                    ? "border-teal-600 bg-white text-slate-900"
+                    : "border-indigo-200 bg-white/80 text-slate-700 hover:border-indigo-300"
+                }`}
+                onClick={() => setExpandedSection((index + 1) as 1 | 2 | 3 | 4)}
+              >
+                <div className="flex items-start gap-4">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-700 text-sm font-semibold text-white">
+                    {index + 1}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">{step.title}</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">{step.description}</p>
+                  </div>
+                </div>
+              </button>
+              {index < builderFlowSteps.length - 1 ? (
+                <div className="flex justify-center text-xl text-indigo-400">↓</div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+            {builderScope === "bank"
+              ? isEditingBankStation
+                ? "Modo: editando banco"
+                : "Modo: creando banco"
+              : isUsingBankStation
+                ? "Modo: desde banco hacia ECOE"
+                : isEditing
+                  ? "Modo: editando ECOE"
+                  : "Modo: nueva estacion del ECOE"}
+          </span>
+          {builderScope === "bank" ? (
+            <span className="rounded-full bg-white px-3 py-1 text-xs text-slate-600">
+              Estacion reutilizable para futuros ECOE
+            </span>
+          ) : null}
+        </div>
+      </section>
 
       {builderScope === "ecoe" ? (
         <section className="space-y-4 rounded-3xl border border-teal-200 bg-teal-50/70 p-5">
         <div>
-          <h4 className="text-xl text-slate-900">Configuracion general de tiempos del ECOE</h4>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-700">
+            Tiempos del ECOE
+          </p>
+          <h4 className="mt-2 text-xl text-slate-900">Define una vez los tiempos oficiales</h4>
           <p className="mt-1 text-sm text-slate-700">
-            El tiempo de resolucion y el tiempo de transicion se definen una sola vez para todo el ECOE. Si cambias estos valores aqui, se actualizan todas las estaciones del evento para mantener la congruencia del examen.
+            Estos tiempos se aplican a todas las estaciones del mismo ECOE para mantener la congruencia del examen.
           </p>
         </div>
         <form
@@ -675,6 +800,9 @@ export default function StationBuilderPage() {
             description="Minutos disponibles para resolver cada estacion del ECOE."
           >
             <input
+              type="number"
+              min="0.1"
+              step="0.1"
               value={timingForm.station_time_minutes}
               onChange={(event) =>
                 setTimingForm((current) => ({
@@ -689,6 +817,9 @@ export default function StationBuilderPage() {
             description="Minutos de cambio entre una estacion y la siguiente."
           >
             <input
+              type="number"
+              min="0"
+              step="0.1"
               value={timingForm.transition_time_minutes}
               onChange={(event) =>
                 setTimingForm((current) => ({
@@ -706,6 +837,9 @@ export default function StationBuilderPage() {
               Tiempo actual del ECOE: {stationTime} min por estacion y {transitionTime} min de transicion.
             </p>
           </div>
+          <p className="lg:col-span-2 text-xs leading-5 text-slate-600">
+            Puedes usar fracciones de minuto. Ejemplo: `0.5` equivale a 30 segundos.
+          </p>
           {timingMessage ? (
             <p className="lg:col-span-2 text-sm text-slate-700">{timingMessage}</p>
           ) : null}
@@ -807,12 +941,43 @@ export default function StationBuilderPage() {
           }
         }}
       >
-        <section className="space-y-4">
-          <div>
-            <h4 className="text-xl text-slate-900">1. Identificacion general</h4>
-            <p className="mt-1 text-sm text-slate-600">
-              Define como se reconocera esta estacion dentro del ECOE y a que circuito pertenece.
-            </p>
+        <BuilderSection
+          index={1}
+          title="Origen y base de la estacion"
+          subtitle="Primero define desde donde nace esta estacion y luego completa su identidad pedagogica central."
+          expanded={expandedSection === 1}
+          onToggle={() => setExpandedSection(1)}
+        >
+          <div className="mb-5 space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Origen de la estacion</p>
+              <p className="mt-1 text-xs leading-5 text-slate-600">
+                Esta decision ordena el resto del trabajo. Elige desde donde quieres construir.
+              </p>
+            </div>
+            <div className="grid gap-3 lg:grid-cols-3">
+              {builderOriginOptions.map((option) => {
+                const isActive =
+                  (option.href === "/stations/builder" && builderScope === "ecoe" && !isUsingBankStation) ||
+                  (option.href === "/station-bank" && isUsingBankStation) ||
+                  (option.href.includes("scope=bank") && builderScope === "bank");
+
+                return (
+                  <Link
+                    key={option.label}
+                    href={option.href}
+                    className={`rounded-2xl border px-4 py-4 transition ${
+                      isActive
+                        ? "border-teal-600 bg-white text-slate-900"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                    }`}
+                  >
+                    <p className="text-sm font-semibold">{option.label}</p>
+                    <p className="mt-2 text-xs leading-5 text-slate-600">{option.description}</p>
+                  </Link>
+                );
+              })}
+            </div>
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
             {builderScope === "ecoe" ? (
@@ -909,15 +1074,15 @@ export default function StationBuilderPage() {
             {renderTextField("expected_outcomes")}
             {renderTextField("student_activity")}
           </div>
-        </section>
+        </BuilderSection>
 
-        <section className="space-y-4">
-          <div>
-            <h4 className="text-xl text-slate-900">2. Configuracion academica</h4>
-            <p className="mt-1 text-sm text-slate-600">
-              Describe que debe lograr el estudiante y con que instrumento o apoyo se evaluara.
-            </p>
-          </div>
+        <BuilderSection
+          index={2}
+          title="Configuracion academica"
+          subtitle="Aqui decides la plantilla, la pauta y los apoyos que activan el flujo real de la estacion."
+          expanded={expandedSection === 2}
+          onToggle={() => setExpandedSection(2)}
+        >
           <div className="grid gap-4 lg:grid-cols-2">
             <FieldBlock
               label="Plantilla de referencia"
@@ -945,6 +1110,15 @@ export default function StationBuilderPage() {
                   {String(selectedTemplate.category ?? "sin categoria")}
                 </p>
               ) : null}
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs leading-6 text-slate-600">
+                Esta decision afecta el flujo posterior. Por ejemplo:
+                {` `}
+                `Hibrida` combina evaluador, formulario y multimedia;
+                {` `}
+                `Formulario estudiante` activa preguntas para el estudiante;
+                {` `}
+                `Paciente simulado` espera un personaje asociado.
+              </div>
             </FieldBlock>
             <FieldBlock
               label="Instrumento de evaluacion"
@@ -1213,8 +1387,13 @@ export default function StationBuilderPage() {
                 ? `El puntaje total de la estacion se calcula automaticamente desde la pauta que estas construyendo: ${form.max_score} puntos.`
                 : "Si reutilizas una pauta existente, revisa que el puntaje total de la estacion coincida con el instrumento seleccionado."}
             </div>
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 lg:col-span-2">
+              Piensa este bloque como el puente entre el diseno docente y la ejecucion real:
+              aqui defines que vera el evaluador, si el estudiante respondera en pantalla y si la
+              estacion dependera de multimedia o paciente simulado.
+            </div>
           </div>
-        </section>
+        </BuilderSection>
 
         {templateUsesStudentForm ? (
           <section className="space-y-4 rounded-3xl border border-indigo-200 bg-indigo-50/70 p-5">
@@ -1224,6 +1403,10 @@ export default function StationBuilderPage() {
                 Esta mini ventana se activa porque la plantilla seleccionada requiere respuesta del
                 estudiante en interfaz. Define aqui las preguntas que vera dentro de la estacion.
               </p>
+            </div>
+            <div className="rounded-2xl border border-indigo-200 bg-white/90 px-4 py-3 text-sm leading-6 text-slate-700">
+              Lo que escribas aqui es exactamente lo que luego aparecera en la vista del
+              estudiante. Conviene usar preguntas cortas, claras y sin dobles interpretaciones.
             </div>
             <div className="space-y-4">
               {studentQuestions.map((question, index) => (
@@ -1335,13 +1518,13 @@ export default function StationBuilderPage() {
           </section>
         ) : null}
 
-        <section className="space-y-4">
-          <div>
-            <h4 className="text-xl text-slate-900">3. Instrucciones y tiempos</h4>
-            <p className="mt-1 text-sm text-slate-600">
-              Define que leera el estudiante y que observara el evaluador. Los tiempos ya estan fijados a nivel general para todo el ECOE.
-            </p>
-          </div>
+        <BuilderSection
+          index={3}
+          title="Instrucciones y tiempos"
+          subtitle="Define lo que guiara al estudiante y al evaluador durante la ejecucion real. Los tiempos ya estan fijados a nivel general para todo el ECOE."
+          expanded={expandedSection === 3}
+          onToggle={() => setExpandedSection(3)}
+        >
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 lg:col-span-2">
               Esta estacion heredara automaticamente el tiempo oficial del ECOE: {stationTime} minutos de resolucion y {transitionTime} minutos de transicion.
@@ -1349,19 +1532,33 @@ export default function StationBuilderPage() {
             {renderTextField("pre_entry_instruction")}
             {renderTextField("student_station_instruction")}
             <div className="lg:col-span-2">{renderTextField("evaluator_instruction")}</div>
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 lg:col-span-2">
+              Regla practica:
+              {` `}
+              `Instruccion previa de ingreso` es lo que orienta antes de entrar;
+              {` `}
+              `Instrucciones dentro de la estacion` es la orden operativa principal del estudiante;
+              {` `}
+              `Guia para el evaluador` es lo que ordena la observacion y el registro.
+            </div>
           </div>
-        </section>
+        </BuilderSection>
 
-        <section className="space-y-4">
-          <div>
-            <h4 className="text-xl text-slate-900">4. Recursos y contingencia</h4>
-            <p className="mt-1 text-sm text-slate-600">
-              Detalla lo necesario para montar la estacion y cualquier apoyo multimedia previsto.
-            </p>
-          </div>
+        <BuilderSection
+          index={4}
+          title="Recursos y contingencia"
+          subtitle="Cierra aqui todo lo necesario para montar la estacion sin incertidumbre el dia del ECOE."
+          expanded={expandedSection === 4}
+          onToggle={() => setExpandedSection(4)}
+        >
           <div className="grid gap-4 lg:grid-cols-2">
             {renderTextField("materials")}
             {renderTextField("multimedia_notes")}
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700">
+            Este bloque no solo documenta materiales: tambien ayuda a que coordinacion, docente y
+            evaluador sepan que debe estar disponible, que archivo se mostrara y que hacer si falta
+            algun recurso.
           </div>
           <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5">
             <div>
@@ -1491,7 +1688,7 @@ export default function StationBuilderPage() {
               </p>
             )}
           </div>
-        </section>
+        </BuilderSection>
 
         <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4">
           <button className="btn-primary">
@@ -1546,6 +1743,17 @@ export default function StationBuilderPage() {
                 ? "Los cambios se guardan sobre la estacion existente, manteniendo su lugar en el circuito."
                 : "La estacion se crea en estado de diseno para que puedas seguir afinandola despues."}
           </p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-700">
+          Antes de cerrar esta pantalla, confirma mentalmente estas cuatro preguntas:
+          {` `}
+          el estudiante sabe exactamente que debe hacer;
+          {` `}
+          el evaluador sabe exactamente que debe observar;
+          {` `}
+          la pauta o formulario quedaron guardados;
+          {` `}
+          y los recursos necesarios quedaron descritos o cargados.
         </div>
         {message ? <p className="text-sm text-slate-600">{message}</p> : null}
       </form>
