@@ -18,7 +18,7 @@ export default function TemplatesPage() {
 
   return (
     <div className="space-y-6">
-      <SectionCard title="Banco de plantillas" subtitle="Procedimental, paciente simulado, formulario, multimedia e hibrida">
+      <SectionCard title="Banco de plantillas" subtitle="Define estructuras base reutilizables para orientar el flujo real de cada tipo de estacion.">
         <QuickForm
           fields={[
             { name: "name", label: "Nombre" },
@@ -34,7 +34,7 @@ export default function TemplatesPage() {
           }}
         />
       </SectionCard>
-      <SectionCard title="Plantillas disponibles">
+      <SectionCard title="Plantillas disponibles" subtitle="Repositorio de configuraciones operativas reutilizables para nuevos ECOE.">
         {loading ? (
           <p>Cargando plantillas...</p>
         ) : error ? (

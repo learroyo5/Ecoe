@@ -23,8 +23,8 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center px-4 py-8">
       <div className="grid w-full max-w-6xl gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <section className="panel-card overflow-hidden p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-teal-700">
-            Red local universitaria
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--color-primary)]">
+            DRNOTUS · Red academica clinica
           </p>
           <h1 className="mt-4 text-5xl">Gestion integral para ECOE y OSCE</h1>
           <p className="mt-4 max-w-2xl text-lg text-slate-600">
@@ -32,20 +32,20 @@ export default function LoginPage() {
             resultados con una sola plataforma.
           </p>
           <div className="mt-8 grid gap-4 md:grid-cols-3">
-            <div className="rounded-3xl bg-teal-800 p-5 text-white">
-              <p className="text-sm uppercase tracking-[0.16em] text-teal-100">MVP operativo</p>
+            <div className="rounded-3xl bg-[linear-gradient(135deg,var(--color-primary-dark),var(--color-primary))] p-5 text-white">
+              <p className="text-sm uppercase tracking-[0.16em] text-slate-100/85">MVP operativo</p>
               <p className="mt-3 text-3xl font-semibold">16</p>
-              <p className="mt-2 text-sm text-teal-50">pantallas funcionales conectadas a API</p>
+              <p className="mt-2 text-sm text-slate-100/85">pantallas funcionales conectadas a API</p>
             </div>
-            <div className="rounded-3xl bg-amber-600 p-5 text-white">
-              <p className="text-sm uppercase tracking-[0.16em] text-amber-100">Modo dual</p>
+            <div className="clinical-panel">
+              <p className="text-sm uppercase tracking-[0.16em] text-slate-500">Modo dual</p>
               <p className="mt-3 text-3xl font-semibold">Pilotaje</p>
-              <p className="mt-2 text-sm text-amber-50">separado estrictamente de ejecucion real</p>
+              <p className="mt-2 text-sm text-slate-600">separado estrictamente de ejecucion real</p>
             </div>
-            <div className="rounded-3xl bg-slate-900 p-5 text-white">
-              <p className="text-sm uppercase tracking-[0.16em] text-slate-300">Operativo</p>
+            <div className="clinical-panel">
+              <p className="text-sm uppercase tracking-[0.16em] text-slate-500">Operativo</p>
               <p className="mt-3 text-3xl font-semibold">Tablets</p>
-              <p className="mt-2 text-sm text-slate-200">UI sobria con pocos clics y botones grandes</p>
+              <p className="mt-2 text-sm text-slate-600">UI sobria con pocos clics y botones grandes</p>
             </div>
           </div>
         </section>
@@ -78,7 +78,7 @@ export default function LoginPage() {
               />
             </label>
             <button className="btn-primary w-full text-base">Iniciar sesion</button>
-            {error ? <p className="text-sm text-red-700">{error}</p> : null}
+            {error ? <p className="text-sm text-[var(--color-error)]">{error}</p> : null}
           </form>
 
           <div className="mt-8 space-y-3">
@@ -86,7 +86,7 @@ export default function LoginPage() {
             {demoUsers.map(([demoEmail, demoPassword, role]) => (
               <button
                 key={demoEmail}
-                className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left"
+                className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:bg-[var(--color-bg-soft)]"
                 onClick={() => {
                   setEmail(demoEmail);
                   setPassword(demoPassword);

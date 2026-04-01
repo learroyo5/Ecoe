@@ -46,7 +46,7 @@ export default function StationBankPage() {
     <div className="space-y-6">
       <SectionCard
         title="Banco de estaciones"
-        subtitle="Aqui viven las estaciones reutilizables del hospital o de la institucion."
+        subtitle="Aqui viven las estaciones reutilizables del hospital o de la institucion para estandarizar y escalar disenos docentes."
       >
         <div className="flex flex-wrap gap-3">
           <Link href="/stations/builder?scope=bank" className="btn-primary">
@@ -60,7 +60,7 @@ export default function StationBankPage() {
 
       <SectionCard
         title="Estaciones reutilizables"
-        subtitle="Una estacion puede quedar en diseno, piloteada, aprobada o archivada."
+        subtitle="Una estacion puede quedar en diseno, piloteada, aprobada o archivada segun su nivel de madurez."
       >
         {loading ? (
           <p>Cargando banco de estaciones...</p>
@@ -117,7 +117,7 @@ export default function StationBankPage() {
                     <div className="flex flex-wrap gap-3">
                       <Link
                         href={`/stations/builder?scope=bank&bankStationId=${bankStationId}`}
-                        className="text-sm font-semibold text-teal-700 underline-offset-4 hover:underline"
+                        className="text-sm font-semibold text-[var(--color-primary)] underline-offset-4 hover:underline"
                       >
                         Editar banco
                       </Link>

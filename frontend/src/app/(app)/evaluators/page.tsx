@@ -48,7 +48,7 @@ export default function EvaluatorsPage() {
           <FileImport
             label="Importar evaluadores o colaboradores"
             helper={
-              <div className="space-y-3 rounded-2xl bg-slate-50 p-3">
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3">
                 <p>Usa un archivo Excel o CSV con estos encabezados:</p>
                 <p className="font-semibold text-slate-800">
                   nombre | apellidos | correo | rol
@@ -56,7 +56,7 @@ export default function EvaluatorsPage() {
                 <p>El orden puede cambiar, pero los nombres de columna deben coincidir.</p>
                 <Link
                   href="/plantilla_evaluadores.csv"
-                  className="inline-block font-semibold text-teal-700 underline-offset-4 hover:underline"
+                  className="inline-block font-semibold text-[var(--color-primary)] underline-offset-4 hover:underline"
                 >
                   Descargar plantilla base CSV
                 </Link>
@@ -103,14 +103,14 @@ export default function EvaluatorsPage() {
               }
             }}
           >
-            <label className="space-y-2">
+            <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
               <span className="text-sm font-semibold text-slate-700">Nombre</span>
               <input
                 value={form.name}
                 onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
               />
             </label>
-            <label className="space-y-2">
+            <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
               <span className="text-sm font-semibold text-slate-700">Apellidos</span>
               <input
                 value={form.last_name}
@@ -119,7 +119,7 @@ export default function EvaluatorsPage() {
                 }
               />
             </label>
-            <label className="space-y-2">
+            <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
               <span className="text-sm font-semibold text-slate-700">Correo</span>
               <input
                 type="email"
@@ -127,7 +127,7 @@ export default function EvaluatorsPage() {
                 onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
               />
             </label>
-            <label className="space-y-2">
+            <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
               <span className="text-sm font-semibold text-slate-700">Rol</span>
               <select
                 value={form.role_code}
@@ -141,7 +141,7 @@ export default function EvaluatorsPage() {
                 <option value="cronometrador">Cronometrador</option>
               </select>
             </label>
-            <label className="space-y-2 md:col-span-2">
+            <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4 md:col-span-2">
               <span className="text-sm font-semibold text-slate-700">Estacion principal asignada</span>
               <select
                 value={form.station_id}
@@ -169,7 +169,7 @@ export default function EvaluatorsPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title="Equipo operativo">
+      <SectionCard title="Equipo operativo" subtitle="Asignacion principal de estaciones para que cada evaluador ingrese directo a su flujo operativo.">
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <button
             type="button"

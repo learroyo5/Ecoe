@@ -362,8 +362,8 @@ export default function StudentPage() {
           </form>
 
           {context ? (
-            <div className="rounded-3xl border border-teal-200 bg-teal-50/80 p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-700">
+            <div className="clinical-panel">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-primary)]">
                 Datos confirmados
               </p>
               <p className="mt-3 text-lg font-semibold text-slate-900">
@@ -390,8 +390,8 @@ export default function StudentPage() {
 
           {context ? (
             <>
-              <div className="rounded-3xl border border-teal-200 bg-teal-50/80 p-6">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-700">
+              <div className="clinical-panel">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-primary)]">
                   Instrucciones dentro de la estacion
                 </p>
                 <p className="mt-4 text-xl font-semibold leading-8 text-slate-900 md:text-2xl md:leading-9">
@@ -402,7 +402,7 @@ export default function StudentPage() {
                 </p>
               </div>
               {resolvedMediaAssets.length ? (
-                <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5">
+                <div className="clinical-panel">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                     Material de apoyo disponible
                   </p>
@@ -446,7 +446,7 @@ export default function StudentPage() {
 
                     if (question.type === "short_text") {
                       return (
-                        <label key={fieldKey} className="space-y-2">
+                        <label key={fieldKey} className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
                           <span className="text-sm font-semibold text-slate-900">
                             {question.label}
                           </span>
@@ -497,7 +497,7 @@ export default function StudentPage() {
                     }
 
                     return (
-                      <label key={fieldKey} className="space-y-2">
+                      <label key={fieldKey} className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
                         <span className="text-sm font-semibold text-slate-900">
                           {question.label}
                         </span>

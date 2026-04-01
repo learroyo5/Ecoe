@@ -37,7 +37,7 @@ export default function StationsPage() {
 
   return (
     <div className="space-y-6">
-      <SectionCard title="Gestion de estaciones" subtitle="Vista resumida del circuito y acceso al constructor">
+      <SectionCard title="Gestion de estaciones" subtitle="Vista resumida del circuito, acceso al constructor y control de avance por estacion.">
         <div className="flex flex-wrap gap-3">
           <Link href="/stations/builder" className="btn-primary">
             Abrir constructor de estacion
@@ -47,7 +47,7 @@ export default function StationsPage() {
           </Link>
         </div>
       </SectionCard>
-      <SectionCard title="Estaciones del ECOE">
+      <SectionCard title="Estaciones del ECOE" subtitle="Cada estacion se presenta como unidad docente y operativa dentro del ECOE activo.">
         {loading ? (
           <p>Cargando estaciones...</p>
         ) : error ? (
@@ -76,7 +76,7 @@ export default function StationsPage() {
                 render: (row) => (
                   <Link
                     href={`/stations/builder?stationId=${String((row as { id?: number }).id ?? "")}`}
-                    className="text-sm font-semibold text-teal-700 underline-offset-4 hover:underline"
+                    className="text-sm font-semibold text-[var(--color-primary)] underline-offset-4 hover:underline"
                   >
                     Abrir y editar
                   </Link>

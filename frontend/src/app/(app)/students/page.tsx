@@ -25,7 +25,7 @@ export default function StudentsPage() {
           <FileImport
             label="Importar estudiantes"
             helper={
-              <div className="space-y-3 rounded-2xl bg-slate-50 p-3">
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3">
                 <p>
                   Usa un archivo Excel o CSV con estos encabezados:
                 </p>
@@ -37,7 +37,7 @@ export default function StudentsPage() {
                 </p>
                 <Link
                   href="/plantilla_estudiantes.csv"
-                  className="inline-block font-semibold text-teal-700 underline-offset-4 hover:underline"
+                  className="inline-block font-semibold text-[var(--color-primary)] underline-offset-4 hover:underline"
                 >
                   Descargar plantilla base CSV
                 </Link>
@@ -78,7 +78,7 @@ export default function StudentsPage() {
           />
         </div>
       </SectionCard>
-      <SectionCard title="Nomina actual">
+      <SectionCard title="Nomina actual" subtitle="Vista operativa para revisar correlativos, estados y consistencia de la carga estudiantil.">
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <button
             type="button"
@@ -150,7 +150,7 @@ export default function StudentsPage() {
                       className={`pill ${
                         isActive
                           ? "pill-ok"
-                          : "border border-amber-300 bg-amber-100 text-amber-900"
+                          : "border border-amber-300 bg-[var(--color-warning-soft)] text-amber-900"
                       }`}
                     >
                       {isActive ? "Activo" : "Suspendido"}

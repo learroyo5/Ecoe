@@ -760,9 +760,9 @@ export default function StationBuilderPage() {
       </section>
 
       {builderScope === "ecoe" ? (
-        <section className="space-y-4 rounded-3xl border border-teal-200 bg-teal-50/70 p-5">
+        <section className="space-y-4 rounded-3xl border border-[var(--color-border-strong)] bg-[var(--color-bg-soft)] p-5">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-700">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-primary)]">
             Tiempos del ECOE
           </p>
           <h4 className="mt-2 text-xl text-slate-900">Define una vez los tiempos oficiales</h4>
@@ -1021,7 +1021,7 @@ export default function StationBuilderPage() {
                       key={option.value}
                       className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 text-sm transition ${
                         checked
-                          ? "border-teal-600 bg-teal-50 text-teal-900"
+                          ? "border-[var(--color-primary)] bg-[var(--color-bg-soft)] text-[var(--color-primary-dark)]"
                           : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
                       }`}
                     >
@@ -1176,7 +1176,7 @@ export default function StationBuilderPage() {
                       formulario del estudiante en la seccion correspondiente.
                     </p>
                     {instrumentMessage ? (
-                      <p className="text-sm text-teal-700">{instrumentMessage}</p>
+                      <p className="text-sm text-[var(--color-primary)]">{instrumentMessage}</p>
                     ) : null}
                   </div>
                 ) : (

@@ -194,8 +194,8 @@ export default function EvaluatorPage() {
           )}
 
           {activeCheckin ? (
-            <div className="rounded-3xl border border-teal-200 bg-teal-50/80 p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-700">
+            <div className="clinical-panel">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-primary)]">
                 Estudiante confirmado
               </p>
               <p className="mt-3 text-lg font-semibold text-slate-900">
@@ -300,7 +300,7 @@ export default function EvaluatorPage() {
                                 disabled={submitted}
                                 className={`flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold transition md:w-auto ${
                                   Number(itemScores[itemKey] ?? 0) > 0
-                                    ? "border-teal-600 bg-teal-50 text-teal-900"
+                                    ? "border-[var(--color-primary)] bg-[var(--color-bg-soft)] text-[var(--color-primary-dark)]"
                                     : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
                                 } ${submitted ? "cursor-not-allowed opacity-70" : ""}`}
                                 onClick={() =>
@@ -315,7 +315,7 @@ export default function EvaluatorPage() {
                                 <span
                                   className={`rounded-full px-3 py-1 text-xs uppercase tracking-[0.12em] ${
                                     Number(itemScores[itemKey] ?? 0) > 0
-                                      ? "bg-teal-700 text-white"
+                                      ? "bg-[var(--color-primary)] text-white"
                                       : "bg-slate-100 text-slate-500"
                                   }`}
                                 >
@@ -353,7 +353,7 @@ export default function EvaluatorPage() {
                   Esta estacion aun no tiene una pauta de evaluacion visible para el evaluador.
                 </div>
               )}
-              <label className="space-y-2">
+              <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
                 <span className="text-sm font-semibold">Puntaje obtenido</span>
                 <input
                   type="number"
@@ -364,7 +364,7 @@ export default function EvaluatorPage() {
                   onChange={(event) => setScoreObtained(event.target.value)}
                 />
               </label>
-              <label className="space-y-2">
+              <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
                 <span className="text-sm font-semibold">Puntaje maximo de la estacion</span>
                 <input
                   value={String(assessmentTool?.max_score ?? maxScore)}
@@ -372,7 +372,7 @@ export default function EvaluatorPage() {
                   className="bg-slate-100 text-slate-600"
                 />
               </label>
-              <label className="space-y-2">
+              <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
                 <span className="text-sm font-semibold">Observacion opcional</span>
                 <textarea
                   rows={5}

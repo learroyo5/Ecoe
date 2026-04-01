@@ -19,7 +19,7 @@ export default function SimulatedPatientPage() {
 
   return (
     <div className="space-y-6">
-      <SectionCard title="Gestor de paciente simulado" subtitle="Guiones y perfil de personaje cargados por estacion">
+      <SectionCard title="Gestor de paciente simulado" subtitle="Construye personajes y guiones reutilizables para estaciones con interaccion clinica.">
         <QuickForm
           fields={[
             { name: "character_name", label: "Nombre personaje" },
@@ -35,7 +35,7 @@ export default function SimulatedPatientPage() {
           }}
         />
       </SectionCard>
-      <SectionCard title="Banco de personajes">
+      <SectionCard title="Banco de personajes" subtitle="Repositorio docente para asignar personajes simulados segun tipo de estacion.">
         {loading ? (
           <p>Cargando pacientes simulados...</p>
         ) : error ? (

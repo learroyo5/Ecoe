@@ -15,31 +15,36 @@ export default function InstrumentsPage() {
 
   return (
     <div className="space-y-6">
-      <SectionCard title="Banco de instrumentos" subtitle="Crear listas de cotejo, rubricas simples y escalas">
-        <button
-          className="btn-primary"
-          onClick={async () => {
-            await api.createInstrument(
-              {
-                name: "Rubrica de comunicacion",
-                tool_type: "rubrica_simple",
-                max_score: 10,
-                free_observation: true,
-                items: [
-                  { label: "Presentacion", score_per_item: 2, order_index: 1 },
-                  { label: "Estructura", score_per_item: 4, order_index: 2 },
-                  { label: "Cierre", score_per_item: 4, order_index: 3 },
-                ],
-              },
-              token!,
-            );
-            setData((await api.instruments(token!)) as Record<string, unknown>[]);
-          }}
-        >
-          Crear instrumento demo
-        </button>
+      <SectionCard title="Banco de instrumentos" subtitle="Repositorio de listas de cotejo, rubricas y escalas para reutilizar en estaciones del ECOE.">
+        <div className="clinical-panel">
+          <p className="text-sm leading-6 text-slate-600">
+            Esta pantalla todavia usa una accion rapida de demostracion. El constructor de estaciones ya permite crear pautas reales dentro del flujo docente.
+          </p>
+          <button
+            className="btn-primary mt-4"
+            onClick={async () => {
+              await api.createInstrument(
+                {
+                  name: "Rubrica de comunicacion",
+                  tool_type: "rubrica_simple",
+                  max_score: 10,
+                  free_observation: true,
+                  items: [
+                    { label: "Presentacion", score_per_item: 2, order_index: 1 },
+                    { label: "Estructura", score_per_item: 4, order_index: 2 },
+                    { label: "Cierre", score_per_item: 4, order_index: 3 },
+                  ],
+                },
+                token!,
+              );
+              setData((await api.instruments(token!)) as Record<string, unknown>[]);
+            }}
+          >
+            Crear instrumento demo
+          </button>
+        </div>
       </SectionCard>
-      <SectionCard title="Instrumentos reutilizables">
+      <SectionCard title="Instrumentos reutilizables" subtitle="Las pautas aqui guardadas pueden vincularse a distintas estaciones del banco o del ECOE activo.">
         {loading ? (
           <p>Cargando instrumentos...</p>
         ) : error ? (
