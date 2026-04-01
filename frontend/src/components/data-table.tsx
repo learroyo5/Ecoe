@@ -12,13 +12,13 @@ export function DataTable<T>({
   rows: T[];
 }) {
   return (
-    <div className="panel-card overflow-hidden">
+    <div className="evaluation-table">
       <div className="overflow-x-auto">
-        <table className="min-w-full text-left text-sm">
-          <thead className="bg-slate-900 text-white">
+        <table>
+          <thead>
             <tr>
               {columns.map((column) => (
-                <th key={String(column.key)} className="px-4 py-3 font-semibold">
+                <th key={String(column.key)}>
                   {column.label}
                 </th>
               ))}
@@ -28,10 +28,10 @@ export function DataTable<T>({
             {rows.map((row, index) => (
             <tr
               key={String((row as { id?: number | string }).id ?? index)}
-              className="border-b border-slate-200/70"
+              className="transition"
             >
                 {columns.map((column) => (
-                  <td key={String(column.key)} className="px-4 py-3 align-top">
+                  <td key={String(column.key)}>
                     {column.render
                       ? column.render(row)
                       : String((row as Record<string, unknown>)[column.key as string] ?? "")}

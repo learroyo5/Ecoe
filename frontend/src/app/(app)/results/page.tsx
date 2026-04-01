@@ -35,7 +35,7 @@ export default function ResultsPage() {
           </a>
         </div>
       </SectionCard>
-      <SectionCard title="Consolidado por estudiante">
+      <SectionCard title="Consolidado por estudiante" subtitle="Vista tipo ficha de resultados, pensada para lectura academica clara y exportacion segura.">
         {loading ? (
           <p>Calculando resultados...</p>
         ) : error ? (

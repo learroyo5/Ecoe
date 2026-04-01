@@ -29,19 +29,19 @@ export default function DashboardPage() {
 
       <SectionCard title="Preparacion del ECOE" subtitle="Resumen operativo del evento vigente">
         <div className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl bg-white/70 p-4">
+          <div className="clinical-panel">
             <p className="text-sm text-slate-500">Pilotaje</p>
             <p className={`mt-2 pill ${data.validation.can_pilot ? "pill-ok" : "pill-warn"}`}>
               {data.validation.can_pilot ? "Listo para pilotaje" : "Pendiente"}
             </p>
           </div>
-          <div className="rounded-2xl bg-white/70 p-4">
+          <div className="clinical-panel">
             <p className="text-sm text-slate-500">Publicacion</p>
             <p className={`mt-2 pill ${data.validation.can_publish ? "pill-ok" : "pill-warn"}`}>
               {data.validation.can_publish ? "Publicable" : "Requiere ajustes"}
             </p>
           </div>
-          <div className="rounded-2xl bg-white/70 p-4">
+          <div className="clinical-panel">
             <p className="text-sm text-slate-500">Sesion en vivo</p>
             <p className="mt-2 text-2xl font-semibold">{data.live_panel.status}</p>
             <p className="text-sm text-slate-600">
@@ -50,7 +50,7 @@ export default function DashboardPage() {
           </div>
         </div>
         {data.validation.warnings.length ? (
-          <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-900">
+          <div className="rounded-2xl border border-amber-200 bg-[var(--color-warning-soft)] p-4 text-sm text-amber-900">
             {data.validation.warnings.map((warning) => (
               <p key={warning}>{warning}</p>
             ))}

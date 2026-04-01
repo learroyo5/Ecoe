@@ -42,7 +42,7 @@ export function QuickForm({
       }}
     >
       {fields.map((field) => (
-        <label key={field.name} className="space-y-2">
+        <label key={field.name} className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
           <span className="text-sm font-semibold text-slate-700">{field.label}</span>
           {field.description ? <p className="text-xs leading-5 text-slate-500">{field.description}</p> : null}
           {field.multiline ? (
@@ -88,8 +88,8 @@ export function FileImport({
   const [message, setMessage] = useState<string | null>(null);
 
   return (
-    <div className="rounded-2xl border border-dashed border-slate-300 p-4">
-      <p className="text-sm font-semibold">{label}</p>
+    <div className="clinical-panel border-dashed">
+      <p className="text-sm font-semibold text-slate-900">{label}</p>
       {helper ? <div className="mt-2 text-xs leading-5 text-slate-600">{helper}</div> : null}
       <input
         type="file"

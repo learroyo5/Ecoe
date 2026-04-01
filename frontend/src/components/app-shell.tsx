@@ -68,19 +68,19 @@ export function AppShell({
           <header className="panel-card z-20 flex flex-col gap-3 p-4 sm:sticky sm:top-4 sm:gap-4 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-700">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--color-primary)]">
                   Modo operativo de estacion
                 </p>
                 <h2 className="mt-1 text-xl sm:mt-2 sm:text-2xl lg:text-3xl">{title}</h2>
                 <p className="mt-1 max-w-2xl text-sm text-slate-600 sm:mt-2">{description}</p>
               </div>
-              <div className="rounded-3xl bg-white/70 px-4 py-3 text-sm">
+              <div className="clinical-panel px-4 py-3 text-sm">
                 <p className="font-semibold">{user?.full_name}</p>
                 <p className="text-slate-500">{user?.role}</p>
               </div>
             </div>
             <div className="grid gap-3 md:grid-cols-[1.4fr_0.6fr]">
-              <div className="rounded-2xl border border-slate-200 bg-white/80 p-3 sm:p-4">
+              <div className="clinical-panel p-3 sm:p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                   ECOE activo
                 </p>
@@ -113,12 +113,12 @@ export function AppShell({
       <main className="min-w-0 flex-1 space-y-6">
         <header className="panel-card flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-700">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--color-primary)]">
               Plataforma operativa
             </p>
             <h2 className="mt-2 text-3xl">{title}</h2>
             <p className="mt-2 max-w-3xl text-sm text-slate-600">{description}</p>
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-white/80 p-4">
+            <div className="clinical-panel mt-4 p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 ECOE en edicion
               </p>
@@ -148,7 +148,7 @@ export function AppShell({
               </div>
             </div>
           </div>
-          <div className="rounded-3xl bg-white/70 p-4 text-sm">
+          <div className="clinical-panel p-4 text-sm">
             <p className="font-semibold">{user?.full_name}</p>
             <p className="text-slate-500">{user?.role}</p>
             <button className="btn-secondary mt-3 w-full" onClick={logout}>
