@@ -56,6 +56,7 @@ from app.services.auth import login_user
 from app.services.dependencies import get_current_user, require_roles
 from app.services.ecoe import (
     build_dashboard,
+    compute_ecoe_validation,
     compute_results,
     export_contingency_pdf,
     export_results_excel,
@@ -1120,16 +1121,73 @@ def create_pilotage(
     db: Session = Depends(get_db),
     user=Depends(require_roles("creador_ecoe", "coeditor_docente", "coordinador_operativo")),
 ):
+    ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
+    if not ecoe_event:
+        raise HTTPException(status_code=404, detail="ECOE no encontrado")
+
+    validation = compute_ecoe_validation(db, ecoe_event)
+    if not validation["can_pilot"]:
+        raise HTTPException(
+            status_code=400,
+            detail="El ECOE aun no cumple condiciones minimas para pilotaje.",
+        )
+
+    scope = payload.scope.strip().lower()
+    if scope not in {"estacion", "circuito_completo"}:
+        raise HTTPException(status_code=400, detail="Alcance de pilotaje no permitido.")
+
+    event_station_ids = set(
+        db.scalars(select(Station.id).where(Station.ecoe_event_id == payload.ecoe_event_id)).all()
+    )
+
+    if scope == "estacion":
+        if len(payload.station_ids) != 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Para pilotar una estacion debes seleccionar exactamente una estacion.",
+            )
+        station_id = int(payload.station_ids[0])
+        if station_id not in event_station_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="La estacion seleccionada no pertenece a este ECOE.",
+            )
+        station_issue = next(
+            (
+                issue
+                for issue in validation["station_issues"]
+                if int(issue["station_id"]) == station_id
+            ),
+            None,
+        )
+        if not station_issue or not station_issue["ready_for_pilot"]:
+            raise HTTPException(
+                status_code=400,
+                detail="La estacion seleccionada aun no esta lista para pilotaje individual.",
+            )
+        station_ids = [station_id]
+    else:
+        has_station_pilot = db.scalar(
+            select(func.count(PilotRun.id)).where(
+                PilotRun.ecoe_event_id == payload.ecoe_event_id,
+                PilotRun.scope == "estacion",
+                PilotRun.archived.is_(False),
+            )
+        )
+        if not has_station_pilot:
+            raise HTTPException(
+                status_code=400,
+                detail="No puedes pilotear el circuito completo sin haber realizado antes al menos un pilotaje individual de estacion.",
+            )
+        station_ids = list(event_station_ids)
+
     pilot_run = PilotRun(
         ecoe_event_id=payload.ecoe_event_id,
         name=payload.name,
-        scope=payload.scope,
+        scope=scope,
     )
     db.add(pilot_run)
     db.flush()
-    station_ids = payload.station_ids or list(
-        db.scalars(select(Station.id).where(Station.ecoe_event_id == payload.ecoe_event_id)).all()
-    )
     for station_id in station_ids:
         db.add(
             PilotRecord(
