@@ -11,6 +11,7 @@ export default function PublicationPage() {
     () => api.validation(eventId, token!) as Promise<Record<string, unknown>>,
     [eventId, token],
   );
+  const blockers = ((data?.blockers as string[] | undefined) ?? []);
 
   return (
     <SectionCard title="Publicacion" subtitle="Revision final antes de abrir la ejecucion real del ECOE y dejar listo el entorno operativo.">
@@ -32,6 +33,22 @@ export default function PublicationPage() {
           {data?.can_publish ? "Listo para publicar" : "Aun no cumple validacion completa"}
         </p>
       </div>
+      {blockers.length ? (
+        <div className="space-y-3">
+          {blockers.map((blocker) => (
+            <div
+              key={blocker}
+              className="rounded-2xl border border-red-200 bg-[var(--color-error-soft)] px-4 py-3 text-sm text-red-900"
+            >
+              {blocker}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-green-200 bg-[var(--color-success-soft)] px-4 py-3 text-sm text-green-900">
+          No se detectan bloqueos estructurales. El ECOE puede avanzar a publicacion cuando corresponda operativamente.
+        </div>
+      )}
     </SectionCard>
   );
 }
