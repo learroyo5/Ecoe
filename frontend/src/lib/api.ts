@@ -41,6 +41,8 @@ export const api = {
   me: (token: string) => request("/auth/me", {}, token),
   listECOE: (token: string) => request("/ecoe", {}, token),
   ecoe: (eventId: number, token: string) => request(`/ecoe/${eventId}`, {}, token),
+  updateECOE: (eventId: number, payload: unknown, token: string) =>
+    request(`/ecoe/${eventId}`, { method: "PUT", body: JSON.stringify(payload) }, token),
   dashboard: (eventId: number, token: string) => request(`/dashboard/${eventId}`, {}, token),
   updateECOETiming: (eventId: number, payload: unknown, token: string) =>
     request(`/ecoe/${eventId}/timing`, { method: "PATCH", body: JSON.stringify(payload) }, token),

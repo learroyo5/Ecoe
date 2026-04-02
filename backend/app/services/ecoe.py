@@ -314,6 +314,32 @@ def update_ecoe_status(db: Session, ecoe_event: ECOEEvent, target_status: str) -
         raise ValueError("El ECOE aun no cumple condiciones para publicacion")
     if target_status == ECOEStatus.en_ejecucion.value and not validation["can_start_live"]:
         raise ValueError("El ECOE aun no esta listo para ejecucion real")
+
+    if target_status == ECOEStatus.publicado.value:
+        live_session = db.scalar(
+            select(LiveSession).where(LiveSession.ecoe_event_id == ecoe_event.id).limit(1)
+        )
+        if not live_session:
+            db.add(
+                LiveSession(
+                    ecoe_event_id=ecoe_event.id,
+                    station_time_seconds=max(1, round(ecoe_event.station_time_minutes * 60)),
+                    transition_time_seconds=max(0, round(ecoe_event.transition_time_minutes * 60)),
+                    remaining_seconds=max(1, round(ecoe_event.station_time_minutes * 60)),
+                    status="ready",
+                )
+            )
+
+        stations = db.scalars(select(Station).where(Station.ecoe_event_id == ecoe_event.id)).all()
+        for station in stations:
+            if station.status not in {
+                StationStatus.activa.value,
+                StationStatus.finalizada.value,
+                StationStatus.cerrada.value,
+            }:
+                station.status = StationStatus.publicada.value
+                db.add(station)
+
     ecoe_event.status = target_status
     db.add(ecoe_event)
     db.commit()
