@@ -226,6 +226,11 @@ button {
   color: #1d4ed8;
 }
 
+.status-badge-muted {
+  background: #eef2f7;
+  color: #475569;
+}
+
 .btn-primary {
   @apply inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold text-white shadow-sm;
   background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));

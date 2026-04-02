@@ -56,6 +56,7 @@ from app.services.auth import login_user
 from app.services.dependencies import get_current_user, require_roles
 from app.services.ecoe import (
     build_dashboard,
+    build_traceability_report,
     compute_ecoe_validation,
     compute_results,
     export_contingency_pdf,
@@ -260,10 +261,28 @@ def update_ecoe(
     db.add(ecoe_event)
     db.commit()
     db.refresh(ecoe_event)
+    previous_status = ecoe_event.status
     try:
-        return update_ecoe_status(db, ecoe_event, payload.status)
+        updated_event = update_ecoe_status(db, ecoe_event, payload.status)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if previous_status != payload.status:
+        db.add(
+            AuditLog(
+                user_email=user.email,
+                action="update_ecoe_status",
+                target_type="ECOEEvent",
+                target_id=str(updated_event.id),
+                payload={
+                    "ecoe_event_id": updated_event.id,
+                    "previous_status": previous_status,
+                    "new_status": payload.status,
+                },
+            )
+        )
+        db.commit()
+        db.refresh(updated_event)
+    return updated_event
 
 
 @router.patch("/ecoe/{ecoe_event_id}/timing", response_model=ECOEEventRead)
@@ -779,6 +798,21 @@ def confirm_station_checkin(
         status="confirmado",
     )
     db.add(checkin)
+    db.flush()
+    db.add(
+        AuditLog(
+            user_email=user.email,
+            action="confirm_station_checkin",
+            target_type="StationCheckIn",
+            target_id=str(checkin.id),
+            payload={
+                "ecoe_event_id": payload.ecoe_event_id,
+                "station_id": payload.station_id,
+                "student_id": student.id,
+                "student_ecoe_number": student.ecoe_number,
+            },
+        )
+    )
     db.commit()
     db.refresh(checkin)
     return {
@@ -1197,6 +1231,20 @@ def create_pilotage(
                 is_test=True,
             )
         )
+    db.add(
+        AuditLog(
+            user_email=user.email,
+            action="create_pilotage",
+            target_type="PilotRun",
+            target_id=str(pilot_run.id),
+            payload={
+                "ecoe_event_id": payload.ecoe_event_id,
+                "scope": scope,
+                "station_ids": station_ids,
+                "name": payload.name,
+            },
+        )
+    )
     db.commit()
     return pilot_run
 
@@ -1317,12 +1365,13 @@ def submit_evaluator_record(
         )
     record = EvaluatorRecord(**payload.model_dump(exclude={"checkin_id"}))
     db.add(record)
+    db.flush()
     db.add(
         AuditLog(
             user_email=user.email,
             action="submit_evaluation",
             target_type="EvaluatorRecord",
-            target_id="new",
+            target_id=str(record.id),
             payload=payload.model_dump(),
         )
     )
@@ -1363,6 +1412,16 @@ def submit_student_response(
         )
     response = StudentResponse(**payload.model_dump(exclude={"checkin_id"}))
     db.add(response)
+    db.flush()
+    db.add(
+        AuditLog(
+            user_email=user.email,
+            action="submit_student_response",
+            target_type="StudentResponse",
+            target_id=str(response.id),
+            payload=payload.model_dump(),
+        )
+    )
     db.commit()
     db.refresh(response)
     return {"saved": True, "response_id": response.id}
@@ -1370,7 +1429,11 @@ def submit_student_response(
 
 @router.get("/results/{ecoe_event_id}")
 def get_results(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    return {"results": persist_results(db, ecoe_event_id)}
+    results = persist_results(db, ecoe_event_id)
+    return {
+        "results": results,
+        **build_traceability_report(db, ecoe_event_id, consolidated_results=results),
+    }
 
 
 @router.get("/results/{ecoe_event_id}/export/excel")
