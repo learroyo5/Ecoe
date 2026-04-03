@@ -1,23 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/lib/auth";
 
-const demoUsers = [
-  ["creator@ecoe.cl", "admin123", "Creador ECOE"],
-  ["coeditor@ecoe.cl", "admin123", "Coeditor docente"],
-  ["eval1@ecoe.cl", "admin123", "Evaluador"],
-  ["student1@ecoe.cl", "admin123", "Estudiante"],
-  ["coord@ecoe.cl", "admin123", "Coordinacion operativa"],
-  ["timer@ecoe.cl", "admin123", "Cronometrador"],
-];
-
 export default function LoginPage() {
-  const { login } = useAuth();
-  const [email, setEmail] = useState("creator@ecoe.cl");
-  const [password, setPassword] = useState("admin123");
+  const { login, token, user } = useAuth();
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!token || !user) {
+      return;
+    }
+    if (user.role === "evaluador") {
+      router.replace("/evaluator");
+      return;
+    }
+    if (user.role === "estudiante") {
+      router.replace("/student");
+      return;
+    }
+    router.replace("/dashboard");
+  }, [router, token, user]);
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-8">
@@ -51,8 +59,11 @@ export default function LoginPage() {
         </section>
 
         <section className="panel-card p-8">
-          <p className="pill pill-ok">Acceso por rol</p>
+          <p className="pill pill-ok">Acceso protegido</p>
           <h2 className="mt-4 text-3xl">Ingresar</h2>
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            Utiliza tu correo institucional y tu contrasena para entrar al entorno operativo de ECOE.
+          </p>
           <form
             className="mt-6 space-y-4"
             onSubmit={async (event) => {
@@ -80,26 +91,6 @@ export default function LoginPage() {
             <button className="btn-primary w-full text-base">Iniciar sesion</button>
             {error ? <p className="text-sm text-[var(--color-error)]">{error}</p> : null}
           </form>
-
-          <div className="mt-8 space-y-3">
-            <p className="text-sm font-semibold text-slate-700">Accesos demo</p>
-            {demoUsers.map(([demoEmail, demoPassword, role]) => (
-              <button
-                key={demoEmail}
-                className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:bg-[var(--color-bg-soft)]"
-                onClick={() => {
-                  setEmail(demoEmail);
-                  setPassword(demoPassword);
-                }}
-              >
-                <span>
-                  <span className="block font-semibold">{role}</span>
-                  <span className="text-sm text-slate-500">{demoEmail}</span>
-                </span>
-                <span className="pill pill-warn">demo</span>
-              </button>
-            ))}
-          </div>
         </section>
       </div>
     </div>

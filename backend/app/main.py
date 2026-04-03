@@ -34,3 +34,8 @@ app.include_router(router, prefix=settings.api_prefix)
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get(f"{settings.api_prefix}/health")
+def api_health():
+    return {"status": "ok"}
