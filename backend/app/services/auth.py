@@ -13,9 +13,8 @@ def login_user(db: Session, email: str, password: str) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales invalidas",
         )
-    token = create_access_token(user.email)
     return {
-        "access_token": token,
+        "access_token": None,
         "token_type": "bearer",
         "user": {
             "id": user.id,
@@ -24,3 +23,9 @@ def login_user(db: Session, email: str, password: str) -> dict:
             "role": user.role.code,
         },
     }
+
+
+def issue_login_token(db: Session, email: str, password: str) -> tuple[dict, str]:
+    payload = login_user(db, email, password)
+    token = create_access_token(payload["user"]["email"])
+    return payload, token

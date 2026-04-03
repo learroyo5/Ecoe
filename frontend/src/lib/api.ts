@@ -17,6 +17,7 @@ async function request<T>(
     ...options,
     headers,
     cache: "no-store",
+    credentials: "include",
   });
 
   if (!response.ok) {
@@ -34,11 +35,12 @@ async function request<T>(
 
 export const api = {
   login: (email: string, password: string) =>
-    request<{ access_token: string; user: Record<string, unknown> }>("/auth/login", {
+    request<{ access_token?: string | null; user: Record<string, unknown> }>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
-  me: (token: string) => request("/auth/me", {}, token),
+  logout: () => request("/auth/logout", { method: "POST" }),
+  me: (token?: string | null) => request("/auth/me", {}, token),
   listECOE: (token: string) => request("/ecoe", {}, token),
   ecoe: (eventId: number, token: string) => request(`/ecoe/${eventId}`, {}, token),
   updateECOE: (eventId: number, payload: unknown, token: string) =>

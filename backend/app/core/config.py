@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     api_prefix: str = "/api"
     secret_key: str = "ecoe-secret-key"
     access_token_expire_minutes: int = 60 * 24
+    auth_cookie_name: str = "ecoe_session"
+    auth_cookie_samesite: str = "lax"
     database_url: str = "postgresql+psycopg://ecoe:ecoe@db:5432/ecoe"
     cors_origins: str = "http://localhost:3000,http://frontend:3000"
     storage_path: str = "/app/storage"

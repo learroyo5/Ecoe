@@ -27,7 +27,7 @@ export function AppShell({
   description: string;
   children: React.ReactNode;
 }) {
-  const { user, token, logout, eventId, setEventId } = useAuth();
+  const { user, token, ready, logout, eventId, setEventId } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const { data: ecoeList } = useApi(
@@ -40,10 +40,10 @@ export function AppShell({
   );
 
   useEffect(() => {
-    if (!token && pathname !== "/login") {
+    if (ready && !token && pathname !== "/login") {
       router.push("/login");
     }
-  }, [pathname, router, token]);
+  }, [pathname, ready, router, token]);
 
   useEffect(() => {
     if (!user) {
@@ -54,6 +54,10 @@ export function AppShell({
       router.replace(targetPath);
     }
   }, [pathname, router, user]);
+
+  if (!ready) {
+    return null;
+  }
 
   if (!token) {
     return null;

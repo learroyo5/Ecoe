@@ -9,6 +9,7 @@ import type { UserSession } from "@/lib/types";
 type AuthContextValue = {
   token: string | null;
   user: UserSession | null;
+  ready: boolean;
   eventId: number;
   setEventId: (value: number) => void;
   login: (email: string, password: string) => Promise<void>;
@@ -28,16 +29,9 @@ function defaultRouteForRole(role: string) {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [token, setToken] = useState<string | null>(() =>
-    typeof window === "undefined" ? null : window.localStorage.getItem("ecoe-token"),
-  );
-  const [user, setUser] = useState<UserSession | null>(() => {
-    if (typeof window === "undefined") {
-      return null;
-    }
-    const storedUser = window.localStorage.getItem("ecoe-user");
-    return storedUser ? (JSON.parse(storedUser) as UserSession) : null;
-  });
+  const [token, setToken] = useState<string | null>(null);
+  const [user, setUser] = useState<UserSession | null>(null);
+  const [ready, setReady] = useState(false);
   const [eventId, setEventIdState] = useState<number>(() => {
     if (typeof window === "undefined") {
       return 1;
@@ -57,40 +51,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(() => {
     setToken(null);
     setUser(null);
-    window.localStorage.removeItem("ecoe-token");
-    window.localStorage.removeItem("ecoe-user");
+    setReady(true);
+    void api.logout().catch(() => undefined);
     router.push("/login");
   }, [router]);
 
   const login = useCallback(async (email: string, password: string) => {
     const response = await api.login(email, password);
-    const authToken = response.access_token;
     const authUser = response.user as UserSession;
-    setToken(authToken);
+    setToken("cookie-session");
     setUser(authUser);
-    window.localStorage.setItem("ecoe-token", authToken);
-    window.localStorage.setItem("ecoe-user", JSON.stringify(authUser));
+    setReady(true);
     router.push(defaultRouteForRole(authUser.role));
   }, [router]);
 
   useEffect(() => {
-    if (!token || user || pathname === "/login") {
-      return;
-    }
+    let active = true;
+
     api
-      .me(token)
+      .me()
       .then((response) => {
+        if (!active) {
+          return;
+        }
+        setToken("cookie-session");
         setUser(response as UserSession);
-        window.localStorage.setItem("ecoe-user", JSON.stringify(response));
+        setReady(true);
       })
       .catch(() => {
-        logout();
+        if (!active) {
+          return;
+        }
+        setToken(null);
+        setUser(null);
+        setReady(true);
+        if (pathname !== "/login") {
+          router.replace("/login");
+        }
       });
-  }, [logout, pathname, token, user]);
+
+    return () => {
+      active = false;
+    };
+  }, [pathname, router]);
 
   const value = useMemo(
-    () => ({ token, user, eventId, setEventId, login, logout }),
-    [eventId, login, logout, setEventId, token, user],
+    () => ({ token, user, ready, eventId, setEventId, login, logout }),
+    [eventId, login, logout, ready, setEventId, token, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

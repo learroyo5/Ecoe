@@ -6,14 +6,14 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 
 export default function LoginPage() {
-  const { login, token, user } = useAuth();
+  const { login, token, user, ready } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!token || !user) {
+    if (!ready || !token || !user) {
       return;
     }
     if (user.role === "evaluador") {
@@ -25,7 +25,7 @@ export default function LoginPage() {
       return;
     }
     router.replace("/dashboard");
-  }, [router, token, user]);
+  }, [ready, router, token, user]);
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-8">

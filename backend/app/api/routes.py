@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
+from fastapi.responses import FileResponse, Response as FastAPIResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -52,7 +52,8 @@ from app.schemas.common import (
     TimerAction,
     Token,
 )
-from app.services.auth import login_user
+from app.core.config import get_settings
+from app.services.auth import issue_login_token
 from app.services.dependencies import get_current_user, require_roles
 from app.services.ecoe import (
     build_dashboard,
@@ -67,6 +68,7 @@ from app.services.ecoe import (
 from app.utils.files import parse_tabular_file
 
 router = APIRouter()
+settings = get_settings()
 
 
 def normalize_rut(value: str | None) -> str:
@@ -198,8 +200,31 @@ def serialize_media_asset(asset: MediaAsset) -> dict:
 
 
 @router.post("/auth/login", response_model=Token)
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
-    return login_user(db, payload.email, payload.password)
+def login(
+    payload: LoginRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    auth_payload, auth_token = issue_login_token(db, payload.email, payload.password)
+    forwarded_proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    secure_cookie = forwarded_proto == "https"
+    response.set_cookie(
+        key=settings.auth_cookie_name,
+        value=auth_token,
+        httponly=True,
+        secure=secure_cookie,
+        samesite=settings.auth_cookie_samesite,
+        max_age=settings.access_token_expire_minutes * 60,
+        path="/",
+    )
+    return auth_payload
+
+
+@router.post("/auth/logout")
+def logout(response: Response):
+    response.delete_cookie(key=settings.auth_cookie_name, path="/")
+    return {"logged_out": True}
 
 
 @router.get("/auth/me")
@@ -1439,7 +1464,7 @@ def get_results(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(
 @router.get("/results/{ecoe_event_id}/export/excel")
 def export_excel(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     content = export_results_excel(db, ecoe_event_id)
-    return Response(
+    return FastAPIResponse(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="ecoe-{ecoe_event_id}.xlsx"'},
@@ -1454,7 +1479,7 @@ def export_pdf(
     user=Depends(get_current_user),
 ):
     content = export_contingency_pdf(db, ecoe_event_id, station_id)
-    return Response(
+    return FastAPIResponse(
         content=content,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="contingencia-{ecoe_event_id}.pdf"'},
