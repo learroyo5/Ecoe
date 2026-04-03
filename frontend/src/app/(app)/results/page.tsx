@@ -71,7 +71,7 @@ export default function ResultsPage() {
         <div className="flex flex-wrap gap-3">
           <a
             className="btn-primary"
-            href={`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api"}/results/${eventId}/export/excel`}
+            href={`${process.env.NEXT_PUBLIC_API_URL ?? "/api"}/results/${eventId}/export/excel`}
             target="_blank"
             rel="noreferrer"
           >
@@ -79,7 +79,7 @@ export default function ResultsPage() {
           </a>
           <a
             className="btn-secondary"
-            href={`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api"}/results/${eventId}/export/pdf`}
+            href={`${process.env.NEXT_PUBLIC_API_URL ?? "/api"}/results/${eventId}/export/pdf`}
             target="_blank"
             rel="noreferrer"
           >

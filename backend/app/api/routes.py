@@ -193,7 +193,7 @@ def serialize_media_asset(asset: MediaAsset) -> dict:
         "content_type": asset.content_type,
         "target_viewer": asset.target_viewer,
         "station_id": asset.station_id,
-        "file_url": f"/backend/api/media/file/{asset.id}",
+        "file_url": f"/api/media/file/{asset.id}",
     }
 
 

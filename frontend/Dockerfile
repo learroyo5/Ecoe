@@ -7,7 +7,7 @@ RUN npm ci
 FROM node:22-alpine AS builder
 
 WORKDIR /app
-ARG NEXT_PUBLIC_API_URL=/backend/api
+ARG NEXT_PUBLIC_API_URL=/api
 ARG INTERNAL_API_URL=http://backend:8000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV INTERNAL_API_URL=$INTERNAL_API_URL
@@ -19,7 +19,7 @@ FROM node:22-alpine AS runner
 
 WORKDIR /app
 ENV NODE_ENV=production
-ENV NEXT_PUBLIC_API_URL=/backend/api
+ENV NEXT_PUBLIC_API_URL=/api
 ENV INTERNAL_API_URL=http://backend:8000
 
 COPY --from=builder /app/package*.json ./

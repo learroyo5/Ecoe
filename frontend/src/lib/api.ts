@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/backend/api";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
 async function request<T>(
   path: string,

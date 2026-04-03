@@ -4,8 +4,8 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
-        source: "/backend/:path*",
-        destination: `${process.env.INTERNAL_API_URL ?? "http://localhost:8000"}/:path*`,
+        source: "/api/:path*",
+        destination: `${process.env.INTERNAL_API_URL ?? "http://localhost:8000"}/api/:path*`,
       },
     ];
   },
