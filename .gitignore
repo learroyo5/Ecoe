@@ -4,6 +4,8 @@
 __pycache__/
 *.pyc
 backend/ecoe.db
+backend/.env
 backend/storage
 frontend/.next
 frontend/node_modules
+datos_proyecto/credenciales_locales.md

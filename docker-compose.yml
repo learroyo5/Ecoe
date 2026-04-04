@@ -22,11 +22,12 @@ services:
       context: ./backend
     container_name: ecoe-backend
     restart: unless-stopped
+    env_file:
+      - ./backend/.env
     environment:
-      DATABASE_URL: postgresql+psycopg://ecoe:ecoe@db:5432/ecoe
-      SECRET_KEY: ecoe-secret-key
-      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000,http://frontend:3000,https://ecoe.drnotus.cl
-      STORAGE_PATH: /app/storage
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://ecoe:ecoe@db:5432/ecoe}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://frontend:3000,https://ecoe.drnotus.cl}
+      STORAGE_PATH: ${STORAGE_PATH:-/app/storage}
     depends_on:
       db:
         condition: service_healthy

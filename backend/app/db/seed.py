@@ -29,6 +29,7 @@ from app.models.enums import ECOEStatus, InstrumentType, RoleCode, SessionMode, 
 def seed_data(db: Session) -> None:
     if db.scalar(select(User).limit(1)):
         return
+    settings = get_settings()
 
     roles = [
         Role(code=RoleCode.creador_ecoe.value, name="Creador ECOE"),
@@ -46,37 +47,37 @@ def seed_data(db: Session) -> None:
         User(
             email="creator@ecoe.cl",
             full_name="Dra. Laura Martinez",
-            hashed_password=get_password_hash("admin123"),
+            hashed_password=get_password_hash(settings.creator_password),
             role_id=role_map[RoleCode.creador_ecoe.value],
         ),
         User(
             email="coeditor@ecoe.cl",
             full_name="Dr. Pablo Rojas",
-            hashed_password=get_password_hash("admin123"),
+            hashed_password=get_password_hash(settings.coeditor_password),
             role_id=role_map[RoleCode.coeditor_docente.value],
         ),
         User(
             email="eval1@ecoe.cl",
             full_name="Enf. Camila Soto",
-            hashed_password=get_password_hash("admin123"),
+            hashed_password=get_password_hash(settings.evaluator_password),
             role_id=role_map[RoleCode.evaluador.value],
         ),
         User(
             email="student1@ecoe.cl",
             full_name="Estudiante 1 Demo",
-            hashed_password=get_password_hash("admin123"),
+            hashed_password=get_password_hash(settings.student_password),
             role_id=role_map[RoleCode.estudiante.value],
         ),
         User(
             email="coord@ecoe.cl",
             full_name="Coordinacion ECOE",
-            hashed_password=get_password_hash("admin123"),
+            hashed_password=get_password_hash(settings.coordinator_password),
             role_id=role_map[RoleCode.coordinador_operativo.value],
         ),
         User(
             email="timer@ecoe.cl",
             full_name="Cronometro Central",
-            hashed_password=get_password_hash("admin123"),
+            hashed_password=get_password_hash(settings.timer_password),
             role_id=role_map[RoleCode.cronometrador.value],
         ),
     ]
