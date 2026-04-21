@@ -8,7 +8,7 @@
 
 ## Estado general
 
-La base del producto ya fue construida y publicada en GitHub. El proyecto corre localmente con Docker Compose y queda preparado para continuar desarrollo incremental desde otro servidor Ubuntu.
+La base del producto ya fue construida y publicada en GitHub. El proyecto corre con Docker Compose en este servidor, tiene salida publica por `nginx` y esta en condiciones de seguir evolucionando desde la rama `main`.
 
 ## Arquitectura implementada
 
@@ -93,6 +93,10 @@ La base del producto ya fue construida y publicada en GitHub. El proyecto corre 
 - `docker compose up --build -d`
 - acceso UI por red local
 - acceso backend por healthcheck y endpoints autenticados
+- verificacion local de `http://127.0.0.1:3000`
+- verificacion local de `http://127.0.0.1:8000/health`
+- verificacion publica de `https://ecoe.drnotus.cl`
+- verificacion publica de `https://ecoe.drnotus.cl/api/health`
 
 ## Decisiones importantes tomadas
 
@@ -110,7 +114,7 @@ La base del producto ya fue construida y publicada en GitHub. El proyecto corre 
 - No hay gestion robusta de archivos multimedia por tipo, preview y permisos finos.
 - No hay migraciones Alembic; las tablas se crean automaticamente.
 - No hay suite formal de tests automatizados.
-- No hay despliegue con Nginx, dominio o HTTPS.
+- La operacion publica depende de configuracion externa de `nginx`, router y Cloudflare, no solo del repo.
 
 ## Repo y continuidad
 
@@ -122,5 +126,5 @@ La base del producto ya fue construida y publicada en GitHub. El proyecto corre 
 
 1. Clonar repo desde GitHub.
 2. Levantar con Docker Compose.
-3. Leer este archivo y `NEXT_STEPS.md`.
+3. Leer `README.md`, este archivo, `NEXT_STEPS.md` y `datos_proyecto/README.md`.
 4. Continuar por iteraciones pequenas con commit frecuente.

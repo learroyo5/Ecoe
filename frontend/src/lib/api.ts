@@ -9,7 +9,9 @@ async function request<T>(
   if (!(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
-  if (token) {
+  // The app uses an HttpOnly cookie for the real session. The string
+  // "cookie-session" is only a client-side marker to know we are logged in.
+  if (token && token !== "cookie-session") {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
@@ -43,8 +45,12 @@ export const api = {
   me: (token?: string | null) => request("/auth/me", {}, token),
   listECOE: (token: string) => request("/ecoe", {}, token),
   ecoe: (eventId: number, token: string) => request(`/ecoe/${eventId}`, {}, token),
+  createECOE: (payload: unknown, token: string) =>
+    request("/ecoe", { method: "POST", body: JSON.stringify(payload) }, token),
   updateECOE: (eventId: number, payload: unknown, token: string) =>
     request(`/ecoe/${eventId}`, { method: "PUT", body: JSON.stringify(payload) }, token),
+  duplicateECOE: (eventId: number, token: string) =>
+    request(`/ecoe/${eventId}/duplicate`, { method: "POST" }, token),
   dashboard: (eventId: number, token: string) => request(`/dashboard/${eventId}`, {}, token),
   updateECOETiming: (eventId: number, payload: unknown, token: string) =>
     request(`/ecoe/${eventId}/timing`, { method: "PATCH", body: JSON.stringify(payload) }, token),

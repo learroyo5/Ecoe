@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth";
 
 const items = [
   { label: "Dashboard", href: "/dashboard" },
+  { label: "ECOE", href: "/ecoe", hiddenFor: ["evaluador"] },
   { label: "Estudiantes", href: "/students", hiddenFor: ["evaluador"] },
   { label: "Evaluadores", href: "/evaluators", hiddenFor: ["evaluador"] },
   { label: "Estaciones", href: "/stations", hiddenFor: ["evaluador"] },

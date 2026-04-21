@@ -57,9 +57,9 @@
 - auditoria expandida
 
 2. Infraestructura
-- reverse proxy con Nginx
-- HTTPS
 - backups de PostgreSQL
+- healthchecks y alertas mas visibles
+- procedimiento simple de rotacion de credenciales
 
 ## Sugerencia de orden de trabajo
 

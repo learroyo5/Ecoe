@@ -88,6 +88,13 @@ Los servicios del proyecto quedaron con:
 
 en `docker-compose.yml`, por lo que deben volver tras reboot si Docker arranca normalmente.
 
+Verificado en este servidor:
+
+- `systemctl is-enabled docker` -> `enabled`
+- `systemctl is-active docker` -> `active`
+- `systemctl is-enabled nginx` -> `enabled`
+- `systemctl is-active nginx` -> `active`
+
 ## Flujo de acceso seguro para desarrollo
 
 Desde el Mac:

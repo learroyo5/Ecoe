@@ -2,6 +2,22 @@
 
 Primera version funcional de una plataforma web para planificacion, pilotaje, ejecucion y cierre de ECOE/OSCE en carreras de la salud.
 
+## Punto de partida
+
+Si vamos a retomar desarrollo sobre este repo, conviene leer en este orden:
+
+1. `README.md`
+2. `PROJECT_STATUS.md`
+3. `NEXT_STEPS.md`
+4. `datos_proyecto/README.md`
+
+Eso deja claro:
+
+- como levantar el stack
+- cual es el estado real del proyecto
+- cual es la prioridad de trabajo
+- donde mirar operacion, credenciales y notas de producto
+
 ## Arquitectura
 
 ```text
@@ -53,6 +69,13 @@ Servicios:
 - Backend: `http://localhost:8000`
 - Docs API: `http://localhost:8000/docs`
 
+Estado verificado en este servidor:
+
+- Docker expone solo a `127.0.0.1`
+- la salida publica actual va por `nginx` del sistema
+- dominio publicado: `https://ecoe.drnotus.cl`
+- health backend publico: `https://ecoe.drnotus.cl/api/health`
+
 Acceso desde otro equipo en la red:
 
 - UI: `http://IP_DEL_SERVIDOR:3000`
@@ -60,13 +83,11 @@ Acceso desde otro equipo en la red:
 
 El frontend ya viene configurado para consumir la API mediante proxy interno (`/backend/api`), por lo que al abrir la UI desde otra maquina no depende de `localhost` del cliente.
 
-## Usuarios demo
+## Credenciales
 
-- `creator@ecoe.cl` / `admin123`
-- `coeditor@ecoe.cl` / `admin123`
-- `eval1@ecoe.cl` / `admin123`
-- `coord@ecoe.cl` / `admin123`
-- `timer@ecoe.cl` / `admin123`
+- Las credenciales activas del servidor actual no son las del README historico.
+- Las claves locales vigentes estan en `backend/.env`.
+- Referencia operativa: `datos_proyecto/credenciales_locales.md`
 
 ## Variables de entorno
 
@@ -103,12 +124,15 @@ npm run dev
 Si quieres exponerlo fuera de la red local en un servidor Ubuntu:
 
 ```bash
-sudo ufw allow 3000/tcp
-sudo ufw allow 8000/tcp
 docker compose up --build -d
 ```
 
-Luego accede desde `http://IP_DEL_SERVIDOR:3000`.
+Para este proyecto, la recomendacion actual no es exponer Docker directo a internet. En este servidor la publicacion se hace con `nginx` como reverse proxy sobre `127.0.0.1`.
+
+Referencia de despliegue:
+
+- `datos_proyecto/operacion_despliegue.md`
+- `datos_proyecto/ajuste_publico_ecoe.md`
 
 ## Endpoints principales
 
@@ -130,6 +154,10 @@ Luego accede desde `http://IP_DEL_SERVIDOR:3000`.
 
 - Backend validado con `fastapi.testclient` usando SQLite para smoke test.
 - Frontend validado con `npm run lint` y `npm run build`.
+- Stack verificado en ejecucion con `docker compose ps`.
+- Frontend accesible en `/login`.
+- Backend respondiendo `GET /health -> 200 OK`.
+- Dominio publico `https://ecoe.drnotus.cl` accesible.
 
 ## Decisiones de esta v1
 
