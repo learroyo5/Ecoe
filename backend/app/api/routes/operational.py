@@ -59,7 +59,7 @@ async def websocket_live_timer(websocket: WebSocket, ecoe_event_id: int):
 @router.get("/live/{ecoe_event_id}")
 def get_live_panel(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     ensure_event_access(db, user, ecoe_event_id,
-                        RoleCode.creador_ecoe.value,
+                        RoleCode.admin_ecoe.value,
                         RoleCode.coordinador_operativo.value,
                         RoleCode.cronometrador.value)
     session = db.scalar(select(LiveSession).where(LiveSession.ecoe_event_id == ecoe_event_id).limit(1))
@@ -73,10 +73,10 @@ def control_timer(
     payload: TimerAction,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coordinador_operativo", "cronometrador")),
+    user=Depends(require_roles("admin_ecoe", "coordinador_operativo", "cronometrador")),
 ):
     ensure_event_access(db, user, payload.ecoe_event_id,
-                        RoleCode.creador_ecoe.value,
+                        RoleCode.admin_ecoe.value,
                         RoleCode.coordinador_operativo.value,
                         RoleCode.cronometrador.value)
     session = db.scalar(
@@ -140,7 +140,7 @@ async def upload_media(
     target_viewer: str = "estudiante",
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
     if target_viewer not in ALLOWED_VIEWERS:
         raise HTTPException(
@@ -183,7 +183,7 @@ def list_media(station_id: int, db: Session = Depends(get_db), user=Depends(get_
 def delete_media(
     asset_id: int,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
     asset = db.get(MediaAsset, asset_id)
     if not asset:
@@ -263,7 +263,7 @@ def list_incidents(
     user=Depends(get_current_user),
 ):
     ensure_event_access(db, user, ecoe_event_id,
-                        RoleCode.creador_ecoe.value,
+                        RoleCode.admin_ecoe.value,
                         RoleCode.coordinador_operativo.value,
                         RoleCode.cronometrador.value)
     stmt = select(Incident).where(Incident.ecoe_event_id == ecoe_event_id).order_by(Incident.created_at.desc())

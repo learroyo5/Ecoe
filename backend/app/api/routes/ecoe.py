@@ -1,7 +1,9 @@
 """ECOE event CRUD routes."""
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -9,11 +11,13 @@ from app.models.entities import (
     AuditLog,
     ECOEPermission,
     ECOEEvent,
+    StaffAssignment,
     Station,
 )
-from app.models.enums import ECOEStatus, RoleCode
+from app.models.enums import ECOEStatus, RoleCode, StationStatus
 from app.schemas.common import (
     DashboardSummary,
+    ECOEDuplicateOptions,
     ECOEEventCreate,
     ECOEEventRead,
     ECOETimingUpdate,
@@ -46,7 +50,7 @@ def list_ecoe(db: Session = Depends(get_db), user=Depends(get_current_user)):
 def get_ecoe(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     ensure_event_access(
         db, user, ecoe_event_id,
-        RoleCode.creador_ecoe.value,
+        RoleCode.admin_ecoe.value,
         RoleCode.coeditor_docente.value,
         RoleCode.coordinador_operativo.value,
         RoleCode.evaluador.value,
@@ -61,7 +65,7 @@ def get_ecoe(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get
 def create_ecoe(
     payload: ECOEEventCreate,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe")),
+    user=Depends(require_roles("admin_ecoe")),
 ):
     ecoe_event = ECOEEvent(**payload.model_dump(), status=ECOEStatus.borrador.value)
     db.add(ecoe_event)
@@ -70,7 +74,7 @@ def create_ecoe(
         ECOEPermission(
             ecoe_event_id=ecoe_event.id,
             user_id=user.id,
-            role_code=RoleCode.creador_ecoe.value,
+            role_code=RoleCode.admin_ecoe.value,
         )
     )
     db.commit()
@@ -83,10 +87,10 @@ def update_ecoe(
     ecoe_event_id: int,
     payload: ECOEEventUpdate,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
     ensure_event_access(db, user, ecoe_event_id,
-                        RoleCode.creador_ecoe.value, RoleCode.coeditor_docente.value)
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     ecoe_event = db.get(ECOEEvent, ecoe_event_id)
     for field, value in payload.model_dump(exclude={"status"}).items():
         setattr(ecoe_event, field, value)
@@ -122,10 +126,10 @@ def update_ecoe_timing(
     ecoe_event_id: int,
     payload: ECOETimingUpdate,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
     ensure_event_access(db, user, ecoe_event_id,
-                        RoleCode.creador_ecoe.value, RoleCode.coeditor_docente.value)
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     ecoe_event = db.get(ECOEEvent, ecoe_event_id)
     ecoe_event.station_time_minutes = payload.station_time_minutes
     ecoe_event.transition_time_minutes = payload.transition_time_minutes
@@ -144,14 +148,19 @@ def update_ecoe_timing(
 @router.post("/ecoe/{ecoe_event_id}/duplicate", response_model=ECOEEventRead)
 def duplicate_ecoe(
     ecoe_event_id: int,
+    payload: ECOEDuplicateOptions = ECOEDuplicateOptions(),
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe")),
+    user=Depends(require_roles("admin_ecoe")),
 ):
-    ensure_event_access(db, user, ecoe_event_id, RoleCode.creador_ecoe.value)
+    ensure_event_access(db, user, ecoe_event_id, RoleCode.admin_ecoe.value)
     ecoe_event = db.get(ECOEEvent, ecoe_event_id)
+
+    clone_name = payload.name.strip() if payload.name.strip() else f"{ecoe_event.name} (copia)"
+    clone_date = payload.new_date if payload.new_date else ecoe_event.date
+
     clone = ECOEEvent(
-        name=f"{ecoe_event.name} (copia)",
-        date=ecoe_event.date,
+        name=clone_name,
+        date=clone_date,
         course_name=ecoe_event.course_name,
         school_name=ecoe_event.school_name,
         responsible_teacher=ecoe_event.responsible_teacher,
@@ -160,20 +169,91 @@ def duplicate_ecoe(
         total_stations=ecoe_event.total_stations,
         station_time_minutes=ecoe_event.station_time_minutes,
         transition_time_minutes=ecoe_event.transition_time_minutes,
-        total_students=ecoe_event.total_students,
+        total_students=0,
         total_groups=ecoe_event.total_groups,
         passing_reference_percent=ecoe_event.passing_reference_percent,
         status=ECOEStatus.borrador.value,
     )
     db.add(clone)
     db.flush()
-    db.add(
-        ECOEPermission(
+
+    # Always copy stations (structure)
+    original_stations = db.scalars(
+        select(Station).where(Station.ecoe_event_id == ecoe_event_id)
+    ).all()
+    station_id_map: dict[int, int] = {}
+    for st in original_stations:
+        new_station = Station(
             ecoe_event_id=clone.id,
-            user_id=user.id,
-            role_code=RoleCode.creador_ecoe.value,
+            template_id=st.template_id,
+            assessment_tool_id=st.assessment_tool_id,
+            simulated_patient_id=st.simulated_patient_id,
+            station_number=st.station_number,
+            name=st.name,
+            station_type=st.station_type,
+            circuit_name=st.circuit_name,
+            station_time_minutes=st.station_time_minutes,
+            transition_time_minutes=st.transition_time_minutes,
+            expected_outcomes=st.expected_outcomes,
+            student_activity=st.student_activity,
+            student_station_instruction=st.student_station_instruction,
+            pre_entry_instruction=st.pre_entry_instruction,
+            evaluator_instruction=st.evaluator_instruction,
+            requires_evaluator=st.requires_evaluator,
+            requires_student_form=st.requires_student_form,
+            uses_multimedia=st.uses_multimedia,
+            uses_simulated_patient=st.uses_simulated_patient,
+            uses_physical_resources=st.uses_physical_resources,
+            max_score=st.max_score,
+            materials=st.materials,
+            clinical_equipment=st.clinical_equipment,
+            simulator=st.simulator,
+            ambience=st.ambience,
+            multimedia_notes=st.multimedia_notes,
+            student_form_definition=st.student_form_definition,
+            contingency_ready=st.contingency_ready,
+            status=StationStatus.en_diseno.value,
         )
-    )
+        db.add(new_station)
+        db.flush()
+        station_id_map[st.id] = new_station.id
+
+    # Optionally copy evaluators with re-mapped station IDs
+    if payload.copy_evaluators:
+        evaluators = db.scalars(
+            select(StaffAssignment).where(
+                StaffAssignment.ecoe_event_id == ecoe_event_id,
+                StaffAssignment.role_code == RoleCode.evaluador.value,
+            )
+        ).all()
+        for ev in evaluators:
+            remapped = [
+                station_id_map[sid] for sid in (ev.station_ids or [])
+                if sid in station_id_map
+            ]
+            db.add(StaffAssignment(
+                ecoe_event_id=clone.id,
+                name=ev.name, last_name=ev.last_name,
+                email=ev.email, role_code=ev.role_code,
+                station_ids=remapped,
+            ))
+
+    db.add(ECOEPermission(
+        ecoe_event_id=clone.id,
+        user_id=user.id,
+        role_code=RoleCode.admin_ecoe.value,
+    ))
+    db.add(AuditLog(
+        user_email=user.email,
+        action="duplicate_ecoe",
+        target_type="ECOEEvent",
+        target_id=str(clone.id),
+        payload={
+            "source_ecoe_id": ecoe_event_id,
+            "stations_copied": len(original_stations),
+            "evaluators_copied": payload.copy_evaluators,
+        },
+    ))
     db.commit()
     db.refresh(clone)
     return clone

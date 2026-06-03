@@ -34,6 +34,10 @@ export default function ECOEPage() {
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
+  const [dupModal, setDupModal] = useState(false);
+  const [dupName, setDupName] = useState("");
+  const [dupDate, setDupDate] = useState("");
+  const [dupCopyEvaluators, setDupCopyEvaluators] = useState(false);
 
   const editableValues = useMemo(() => toEditableValues(ecoeEvent as unknown as Record<string, unknown> | null), [ecoeEvent]);
   const activeValues = formValues ?? editableValues;
@@ -94,18 +98,14 @@ export default function ECOEPage() {
             <div className="flex flex-wrap gap-3">
               <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Guardando..." : "Guardar ECOE"}</button>
               <button type="button" className="btn-secondary" onClick={() => { setFormValues(editableValues); setMessage(null); }} disabled={saving}>Revertir</button>
-              <button type="button" className="btn-secondary" disabled={!ecoeEvent || duplicating || user?.role !== "creador_ecoe"}
-                onClick={async () => {
-                  if (!ecoeEvent || !window.confirm("¿Duplicar este ECOE?")) return;
-                  setDuplicating(true); setMessage(null);
-                  try {
-                    const dup = await api.duplicateECOE(ecoeEvent.id, token!) as ECOEEvent;
-                    await refreshList(dup.id); setEventId(dup.id); setData(dup);
-                    setFormValues(toEditableValues(dup as unknown as Record<string, unknown>));
-                    setMessage("Copia creada y seleccionada.");
-                  } catch (err) { setMessage(err instanceof Error ? err.message : "Error al duplicar."); }
-                  finally { setDuplicating(false); }
-                }}>{duplicating ? "Duplicando..." : "Duplicar ECOE"}</button>
+              <button type="button" className="btn-secondary" disabled={!ecoeEvent || user?.role !== "admin_ecoe"}
+                onClick={() => {
+                  if (!ecoeEvent) return;
+                  setDupName(`${ecoeEvent.name} (copia)`);
+                  setDupDate(ecoeEvent.date ?? "");
+                  setDupCopyEvaluators(false);
+                  setDupModal(true);
+                }}>Duplicar ECOE</button>
             </div>
             <StatusNotice message={message} />
           </form>
@@ -131,6 +131,56 @@ export default function ECOEPage() {
           <StatusNotice message={createMessage} />
         </form>
       </SectionCard>
+
+      {/* Duplicate modal */}
+      {dupModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setDupModal(false)}>
+          <div className="mx-4 w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl animate-fade-in" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-slate-900">Duplicar ECOE</h3>
+            <p className="mt-1 text-sm text-slate-500">La estructura de estaciones siempre se copia. Los estudiantes nunca se copian (es un nuevo grupo).</p>
+
+            <div className="mt-4 space-y-4">
+              <label className="block space-y-1">
+                <span className="text-sm font-semibold text-slate-700">Nombre del nuevo ECOE</span>
+                <input value={dupName} onChange={(e) => setDupName(e.target.value)}
+                  placeholder="Ej: ECOE Medicina Interna 2027" />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-sm font-semibold text-slate-700">Fecha</span>
+                <input type="date" value={dupDate} onChange={(e) => setDupDate(e.target.value)} />
+              </label>
+              <label className="flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 cursor-pointer">
+                <input type="checkbox" checked={dupCopyEvaluators}
+                  onChange={(e) => setDupCopyEvaluators(e.target.checked)}
+                  className="size-4 accent-[var(--color-primary)]" />
+                <span className="text-sm text-slate-700">Copiar también los evaluadores asignados</span>
+              </label>
+            </div>
+
+            <div className="mt-6 flex gap-3 justify-end">
+              <button className="btn-secondary" onClick={() => setDupModal(false)}>Cancelar</button>
+              <button className="btn-primary" disabled={duplicating || !dupName.trim()}
+                onClick={async () => {
+                  if (!ecoeEvent || !dupName.trim()) return;
+                  setDuplicating(true); setMessage(null); setDupModal(false);
+                  try {
+                    const dup = await api.duplicateECOE(ecoeEvent.id, {
+                      name: dupName.trim(),
+                      new_date: dupDate || undefined,
+                      copy_evaluators: dupCopyEvaluators,
+                    }, token!) as ECOEEvent;
+                    await refreshList(dup.id); setEventId(dup.id); setData(dup);
+                    setFormValues(toEditableValues(dup as unknown as Record<string, unknown>));
+                    setMessage("ECOE duplicado. Estructura copiada, estudiantes en blanco.");
+                  } catch (err) { setMessage(err instanceof Error ? err.message : "Error al duplicar."); }
+                  finally { setDuplicating(false); }
+                }}>
+                {duplicating ? "Duplicando..." : "Crear copia"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

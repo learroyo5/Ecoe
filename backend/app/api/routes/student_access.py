@@ -31,10 +31,10 @@ router = APIRouter()
 def student_access_context(
     payload: StudentAccessRequest,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("estudiante", "coordinador_operativo", "creador_ecoe")),
+    user=Depends(require_roles("estudiante", "coordinador_operativo", "admin_ecoe")),
 ):
     ensure_event_access(db, user, payload.ecoe_event_id,
-                        RoleCode.creador_ecoe.value,
+                        RoleCode.admin_ecoe.value,
                         RoleCode.coordinador_operativo.value,
                         RoleCode.estudiante.value)
     student = db.scalar(
@@ -99,10 +99,10 @@ def student_access_context(
 def submit_student_response(
     payload: StudentResponseCreate,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("estudiante", "coordinador_operativo", "creador_ecoe")),
+    user=Depends(require_roles("estudiante", "coordinador_operativo", "admin_ecoe")),
 ):
     ensure_event_access(db, user, payload.ecoe_event_id,
-                        RoleCode.creador_ecoe.value,
+                        RoleCode.admin_ecoe.value,
                         RoleCode.coordinador_operativo.value,
                         RoleCode.estudiante.value)
     if user.role.code == RoleCode.estudiante.value:

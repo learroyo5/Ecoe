@@ -48,13 +48,36 @@ export function AppShell({
             <div className="grid gap-3 md:grid-cols-[1.4fr_0.6fr]">
               <div className="clinical-panel p-3 sm:p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">ECOE activo</p>
-                <p className="mt-1 text-base font-semibold text-slate-900 sm:mt-2 sm:text-lg">
-                  {String(ecoeEvent?.name ?? "ECOE sin nombre visible")}
-                </p>
+                <div className="mt-1 flex items-center gap-2">
+                  <p className="text-base font-semibold text-slate-900 sm:text-lg truncate">
+                    {String(ecoeEvent?.name ?? "ECOE sin nombre visible")}
+                  </p>
+                  {ecoeEvent?.status === "en_ejecucion" ? (
+                    <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">EN VIVO</span>
+                  ) : null}
+                </div>
                 <p className="text-sm text-slate-600">
                   {String(ecoeEvent?.course_name ?? "Curso sin definir")} ·{" "}
                   {String(ecoeEvent?.school_name ?? "Unidad academica sin definir")}
                 </p>
+                {(ecoeList?.length ?? 0) > 1 ? (
+                  <label className="mt-2 flex items-center gap-2 text-sm">
+                    <span className="text-slate-500">Cambiar:</span>
+                    <select
+                      value={String(eventId)}
+                      disabled={ecoeEvent?.status === "en_ejecucion"}
+                      onChange={(e) => setEventId(Number(e.target.value))}
+                      className="text-sm"
+                      title={ecoeEvent?.status === "en_ejecucion" ? "No puedes cambiar de ECOE durante la ejecución en vivo" : "Seleccionar ECOE"}
+                    >
+                      {(ecoeList ?? []).map((ecoe: Record<string, unknown>) => (
+                        <option key={String(ecoe.id)} value={String(ecoe.id)}>
+                          {String(ecoe.name)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
               </div>
               <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-1">
                 <button className="btn-secondary" onClick={logout} aria-label="Cerrar sesion">

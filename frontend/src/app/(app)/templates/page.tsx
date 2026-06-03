@@ -39,17 +39,36 @@ function FeatureToggle({
   onChange: (value: boolean) => void;
 }) {
   return (
-    <label className="flex gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-700">
+    <label
+      className={`flex cursor-pointer items-start gap-3 rounded-2xl border px-4 py-3 transition ${
+        checked
+          ? "border-[var(--color-primary)] bg-[var(--color-bg-soft)]"
+          : "border-slate-200 bg-white hover:border-slate-300"
+      }`}
+    >
       <input
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
-        className="mt-1"
+        className="sr-only"
       />
-      <span className="space-y-1">
-        <span className="block font-semibold text-slate-900">{label}</span>
-        <span className="block text-xs leading-5 text-slate-500">{description}</span>
+      <span
+        className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border-2 transition ${
+          checked
+            ? "border-[var(--color-primary)] bg-[var(--color-primary)]"
+            : "border-slate-300 bg-white"
+        }`}
+      >
+        {checked ? (
+          <svg className="size-3 text-white" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M2 6l3 3 5-6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ) : null}
       </span>
+      <div className="min-w-0 text-sm leading-5">
+        <p className="font-semibold text-slate-900">{label}</p>
+        <p className="text-xs text-slate-500">{description}</p>
+      </div>
     </label>
   );
 }
@@ -169,7 +188,7 @@ export default function TemplatesPage() {
                 formulario del estudiante, multimedia o paciente simulado.
               </p>
             </div>
-            <div className="grid gap-3 lg:grid-cols-2">
+            <div className="space-y-3">
               <FeatureToggle
                 checked={values.requires_evaluator}
                 label="Requiere evaluador"

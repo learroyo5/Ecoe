@@ -1,0 +1,1 @@
+/home/learroyo/Proyectos/agent-skills/AGENTS.md

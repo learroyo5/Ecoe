@@ -77,8 +77,8 @@ export const api = {
     request<ECOEEvent>("/ecoe", { method: "POST", body: JSON.stringify(payload) }, token),
   updateECOE: (eventId: number, payload: Record<string, unknown>, token: string) =>
     request<ECOEEvent>(`/ecoe/${eventId}`, { method: "PUT", body: JSON.stringify(payload) }, token),
-  duplicateECOE: (eventId: number, token: string) =>
-    request<ECOEEvent>(`/ecoe/${eventId}/duplicate`, { method: "POST" }, token),
+  duplicateECOE: (eventId: number, payload: { name?: string; new_date?: string; copy_evaluators?: boolean }, token: string) =>
+    request<ECOEEvent>(`/ecoe/${eventId}/duplicate`, { method: "POST", body: JSON.stringify(payload) }, token),
   dashboard: (eventId: number, token: string) => request<DashboardSummary>(`/dashboard/${eventId}`, {}, token),
   updateECOETiming: (eventId: number, payload: { station_time_minutes: number; transition_time_minutes: number; sync_existing_stations: boolean }, token: string) =>
     request<ECOEEvent>(`/ecoe/${eventId}/timing`, { method: "PATCH", body: JSON.stringify(payload) }, token),

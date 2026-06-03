@@ -1167,23 +1167,34 @@ export default function StationBuilderPage() {
                   return (
                     <label
                       key={option.value}
-                      className={`flex min-h-[96px] w-full min-w-0 cursor-pointer items-start gap-3 overflow-hidden rounded-2xl border px-4 py-3 text-sm transition ${
+                      className={`flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-2xl border px-4 py-4 transition ${
                         checked
-                          ? "border-[var(--color-primary)] bg-[var(--color-bg-soft)] text-[var(--color-primary-dark)]"
-                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                          ? "border-[var(--color-primary)] bg-[var(--color-bg-soft)] shadow-sm"
+                          : "border-slate-200 bg-white hover:border-slate-300"
                       }`}
                     >
+                      <span
+                        className={`flex size-5 shrink-0 items-center justify-center rounded-full border-2 transition ${
+                          checked
+                            ? "border-[var(--color-primary)] bg-[var(--color-primary)]"
+                            : "border-slate-300"
+                        }`}
+                      >
+                        {checked ? (
+                          <span className="size-2 rounded-full bg-white" />
+                        ) : null}
+                      </span>
+                      <span className="min-w-0 break-words text-sm font-semibold text-slate-800">
+                        {option.label}
+                      </span>
                       <input
                         type="radio"
                         name="station_type"
                         value={option.value}
                         checked={checked}
                         onChange={(event) => updateField("station_type", event.target.value)}
-                        className="mt-1 shrink-0"
+                        className="sr-only"
                       />
-                      <span className="min-w-0 break-words font-medium leading-5">
-                        {option.label}
-                      </span>
                     </label>
                   );
                 })}

@@ -33,7 +33,7 @@ def seed_data(db: Session) -> None:
     settings = get_settings()
 
     roles = [
-        Role(code=RoleCode.creador_ecoe.value, name="Creador ECOE"),
+        Role(code=RoleCode.admin_ecoe.value, name="Administrador ECOE"),
         Role(code=RoleCode.coeditor_docente.value, name="Coeditor docente"),
         Role(code=RoleCode.evaluador.value, name="Evaluador"),
         Role(code=RoleCode.estudiante.value, name="Estudiante"),
@@ -46,10 +46,10 @@ def seed_data(db: Session) -> None:
 
     users = [
         User(
-            email="creator@ecoe.cl",
-            full_name="Dra. Laura Martinez",
-            hashed_password=get_password_hash(settings.creator_password),
-            role_id=role_map[RoleCode.creador_ecoe.value],
+            email="admin@ecoe.cl",
+            full_name="Admin ECOE",
+            hashed_password=get_password_hash(settings.admin_password),
+            role_id=role_map[RoleCode.admin_ecoe.value],
         ),
         User(
             email="coeditor@ecoe.cl",
@@ -90,7 +90,7 @@ def seed_data(db: Session) -> None:
         date=date(2026, 4, 15),
         course_name="Medicina Interna",
         school_name="Escuela de Medicina",
-        responsible_teacher="Dra. Laura Martinez",
+        responsible_teacher="Admin ECOE",
         contact_email="ecoe@universidad.cl",
         circuit_mode="paralelo_espejo",
         total_stations=5,
@@ -107,7 +107,7 @@ def seed_data(db: Session) -> None:
         ECOEPermission(
             ecoe_event_id=ecoe.id,
             user_id=users[0].id,
-            role_code=RoleCode.creador_ecoe.value,
+            role_code=RoleCode.admin_ecoe.value,
         )
     )
 

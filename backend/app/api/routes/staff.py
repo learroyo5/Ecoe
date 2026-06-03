@@ -32,7 +32,7 @@ def list_staff(
     user=Depends(get_current_user),
 ):
     ensure_event_access(db, user, ecoe_event_id,
-                        RoleCode.creador_ecoe.value,
+                        RoleCode.admin_ecoe.value,
                         RoleCode.coeditor_docente.value,
                         RoleCode.coordinador_operativo.value)
     stmt = (
@@ -61,10 +61,10 @@ def list_staff(
 def create_staff(
     payload: StaffCreate,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente", "coordinador_operativo")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente", "coordinador_operativo")),
 ):
     ensure_event_access(db, user, payload.ecoe_event_id,
-                        RoleCode.creador_ecoe.value,
+                        RoleCode.admin_ecoe.value,
                         RoleCode.coeditor_docente.value,
                         RoleCode.coordinador_operativo.value)
     email = normalize_email(payload.email)
@@ -105,13 +105,13 @@ def update_staff(
     staff_id: int,
     payload: StaffUpdate,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente", "coordinador_operativo")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente", "coordinador_operativo")),
 ):
     staff = db.get(StaffAssignment, staff_id)
     if not staff:
         raise HTTPException(status_code=404, detail="Evaluador o colaborador no encontrado")
     ensure_event_access(db, user, staff.ecoe_event_id,
-                        RoleCode.creador_ecoe.value,
+                        RoleCode.admin_ecoe.value,
                         RoleCode.coeditor_docente.value,
                         RoleCode.coordinador_operativo.value)
     normalized_role_code = validate_staff_role_code(payload.role_code)
@@ -136,13 +136,13 @@ def update_staff(
 def delete_staff(
     staff_id: int,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
     staff = db.get(StaffAssignment, staff_id)
     if not staff:
         raise HTTPException(status_code=404, detail="Evaluador o colaborador no encontrado")
     ensure_event_access(db, user, staff.ecoe_event_id,
-                        RoleCode.creador_ecoe.value, RoleCode.coeditor_docente.value)
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     db.delete(staff)
     db.commit()
     return {"deleted": True}
@@ -152,10 +152,10 @@ def delete_staff(
 def deduplicate_staff_by_email(
     ecoe_event_id: int,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
     ensure_event_access(db, user, ecoe_event_id,
-                        RoleCode.creador_ecoe.value, RoleCode.coeditor_docente.value)
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     staff_rows = db.scalars(
         select(StaffAssignment)
         .where(StaffAssignment.ecoe_event_id == ecoe_event_id)
@@ -181,10 +181,10 @@ async def import_staff(
     ecoe_event_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
     ensure_event_access(db, user, ecoe_event_id,
-                        RoleCode.creador_ecoe.value, RoleCode.coeditor_docente.value)
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     rows = await parse_tabular_file(file)
     imported = 0
     skipped = 0

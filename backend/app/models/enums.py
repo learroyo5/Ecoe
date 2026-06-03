@@ -2,7 +2,7 @@ from enum import Enum
 
 
 class RoleCode(str, Enum):
-    creador_ecoe = "creador_ecoe"
+    admin_ecoe = "admin_ecoe"
     coeditor_docente = "coeditor_docente"
     evaluador = "evaluador"
     estudiante = "estudiante"

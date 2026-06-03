@@ -54,7 +54,7 @@ STAFF_SCOPED_ROLE_CODES = {
     RoleCode.cronometrador.value,
 }
 ADMIN_EVENT_ROLE_CODES = {
-    RoleCode.creador_ecoe.value,
+    RoleCode.admin_ecoe.value,
     RoleCode.coeditor_docente.value,
     RoleCode.coordinador_operativo.value,
 }
@@ -125,16 +125,16 @@ def get_user_event_roles(db: Session, user: User, ecoe_event_id: int) -> set[str
     normalized_email = normalize_email(user.email)
     user_role = str(user.role.code)
 
-    if user_role == RoleCode.creador_ecoe.value:
+    if user_role == RoleCode.admin_ecoe.value:
         creator_permission = db.scalar(
             select(ECOEPermission).where(
                 ECOEPermission.ecoe_event_id == ecoe_event_id,
                 ECOEPermission.user_id == user.id,
-                ECOEPermission.role_code == RoleCode.creador_ecoe.value,
+                ECOEPermission.role_code == RoleCode.admin_ecoe.value,
             )
         )
         if creator_permission:
-            roles.add(RoleCode.creador_ecoe.value)
+            roles.add(RoleCode.admin_ecoe.value)
 
     if user_role in STAFF_SCOPED_ROLE_CODES:
         staff_assignment = db.scalar(
@@ -184,11 +184,11 @@ def list_accessible_ecoe_events(db: Session, user: User) -> list[ECOEEvent]:
     user_role = str(user.role.code)
     normalized_email = normalize_email(user.email)
 
-    if user_role == RoleCode.creador_ecoe.value:
+    if user_role == RoleCode.admin_ecoe.value:
         event_ids = db.scalars(
             select(ECOEPermission.ecoe_event_id).where(
                 ECOEPermission.user_id == user.id,
-                ECOEPermission.role_code == RoleCode.creador_ecoe.value,
+                ECOEPermission.role_code == RoleCode.admin_ecoe.value,
             )
         ).all()
     elif user_role in STAFF_SCOPED_ROLE_CODES:

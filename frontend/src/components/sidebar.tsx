@@ -8,6 +8,7 @@ import { useECOE } from "@/lib/auth";
 const items = [
   { label: "Dashboard", href: "/dashboard", hiddenFor: ["evaluador", "estudiante"] },
   { label: "ECOE", href: "/ecoe", hiddenFor: ["evaluador", "estudiante"] },
+  { label: "Usuarios", href: "/users", hiddenFor: ["coeditor_docente", "coordinador_operativo", "evaluador", "estudiante", "cronometrador"] },
   { label: "Estudiantes", href: "/students", hiddenFor: ["evaluador", "estudiante"] },
   { label: "Evaluadores", href: "/evaluators", hiddenFor: ["evaluador", "estudiante"] },
   { label: "Estaciones", href: "/stations", hiddenFor: ["evaluador", "estudiante"] },
@@ -20,8 +21,8 @@ const items = [
   { label: "Pilotaje", href: "/pilotage", hiddenFor: ["evaluador", "estudiante"] },
   { label: "Publicacion", href: "/publication", hiddenFor: ["evaluador", "estudiante"] },
   { label: "Panel en vivo", href: "/live", hiddenFor: ["evaluador", "estudiante"] },
-  { label: "Evaluador", href: "/evaluator", hiddenFor: ["creador_ecoe", "coeditor_docente", "coordinador_operativo", "cronometrador", "estudiante"] },
-  { label: "Estudiante", href: "/student", hiddenFor: ["creador_ecoe", "coeditor_docente", "coordinador_operativo", "cronometrador", "evaluador"] },
+  { label: "Evaluador", href: "/evaluator", hiddenFor: ["admin_ecoe", "coeditor_docente", "coordinador_operativo", "cronometrador", "estudiante"] },
+  { label: "Estudiante", href: "/student", hiddenFor: ["admin_ecoe", "coeditor_docente", "coordinador_operativo", "cronometrador", "evaluador"] },
   { label: "Resultados", href: "/results", hiddenFor: ["evaluador", "estudiante"] },
 ];
 

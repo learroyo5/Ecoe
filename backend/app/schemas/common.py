@@ -64,6 +64,12 @@ class ECOETimingUpdate(BaseModel):
     sync_existing_stations: bool = True
 
 
+class ECOEDuplicateOptions(BaseModel):
+    name: str = ""
+    new_date: date | None = None
+    copy_evaluators: bool = False
+
+
 class StudentBase(BaseModel):
     ecoe_event_id: int
     name: str
@@ -279,3 +285,46 @@ class StationCheckInCreate(BaseModel):
 class StudentAccessRequest(BaseModel):
     ecoe_event_id: int
     ecoe_number: str
+
+
+# ── User management ───────────────────────────────────────────────────
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    full_name: str
+    password: str
+    role_code: str
+
+
+class UserUpdate(BaseModel):
+    full_name: str | None = None
+    role_code: str | None = None
+    password: str = ""
+    is_active: bool | None = None
+
+
+class UserRead(ORMBase):
+    id: int
+    email: str
+    full_name: str
+    role_code: str = ""
+    is_active: bool
+
+    @classmethod
+    def model_validate(cls, obj: Any) -> "UserRead":
+        # Extract role_code from the User.role relationship
+        if hasattr(obj, "role") and obj.role:
+            return cls(
+                id=obj.id,
+                email=obj.email,
+                full_name=obj.full_name,
+                role_code=obj.role.code,
+                is_active=obj.is_active,
+            )
+        return cls(
+            id=obj.id,
+            email=obj.email,
+            full_name=obj.full_name,
+            role_code="",
+            is_active=obj.is_active,
+        )

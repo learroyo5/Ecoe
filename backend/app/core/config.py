@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     storage_path: str = "/app/storage"
     default_timer_sound: str = "/app/storage/default-bell.mp3"
     # Default passwords are empty — set them via .env or docker-compose env.
-    creator_password: str = ""
+    admin_password: str = ""
     coeditor_password: str = ""
     evaluator_password: str = ""
     student_password: str = ""

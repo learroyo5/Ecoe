@@ -48,7 +48,7 @@ def list_templates(db: Session = Depends(get_db), user=Depends(get_current_user)
 def create_template(
     payload: StationTemplateCreate,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
     template = StationTemplate(**payload.model_dump())
     db.add(template)
@@ -68,7 +68,7 @@ def list_instruments(db: Session = Depends(get_db), user=Depends(get_current_use
 def create_instrument(
     payload: AssessmentToolCreate,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
     tool = AssessmentTool(
         name=payload.name,
@@ -96,7 +96,7 @@ def list_patients(db: Session = Depends(get_db), user=Depends(get_current_user))
 def create_patient(
     payload: SimulatedPatientCreate,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
     patient = SimulatedPatient(**payload.model_dump())
     db.add(patient)
@@ -116,7 +116,7 @@ def list_station_bank(db: Session = Depends(get_db), user=Depends(get_current_us
 def create_station_bank(
     payload: StationBankCreate,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
     bank_station = StationBank(**payload.model_dump())
     db.add(bank_station)
@@ -130,7 +130,7 @@ def update_station_bank(
     bank_station_id: int,
     payload: StationBankCreate,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
     bank_station = db.get(StationBank, bank_station_id)
     if not bank_station:
@@ -148,7 +148,7 @@ def update_station_bank_status(
     bank_station_id: int,
     payload: StationBankStatusUpdate,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
     bank_station = db.get(StationBank, bank_station_id)
     if not bank_station:
@@ -172,10 +172,10 @@ def list_stations(ecoe_event_id: int, db: Session = Depends(get_db), user=Depend
 def create_station(
     payload: StationCreate,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
     ensure_event_access(db, user, payload.ecoe_event_id,
-                        RoleCode.creador_ecoe.value, RoleCode.coeditor_docente.value)
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
     if not ecoe_event:
         raise HTTPException(status_code=404, detail="ECOE no encontrado")
@@ -201,13 +201,13 @@ def update_station(
     station_id: int,
     payload: StationCreate,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
     station = db.get(Station, station_id)
     if not station:
         raise HTTPException(status_code=404, detail="Estacion no encontrada")
     ensure_event_access(db, user, station.ecoe_event_id,
-                        RoleCode.creador_ecoe.value, RoleCode.coeditor_docente.value)
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
     if not ecoe_event:
         raise HTTPException(status_code=404, detail="ECOE no encontrado")
@@ -233,10 +233,10 @@ def update_station(
 def create_pilotage(
     payload: PilotRunCreate,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente", "coordinador_operativo")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente", "coordinador_operativo")),
 ):
     ensure_event_access(db, user, payload.ecoe_event_id,
-                        RoleCode.creador_ecoe.value,
+                        RoleCode.admin_ecoe.value,
                         RoleCode.coeditor_docente.value,
                         RoleCode.coordinador_operativo.value)
     ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
@@ -304,13 +304,13 @@ def list_pilotage(ecoe_event_id: int, db: Session = Depends(get_db), user=Depend
 def archive_pilotage(
     pilot_run_id: int,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
     run = db.get(PilotRun, pilot_run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Pilotaje no encontrado")
     ensure_event_access(db, user, run.ecoe_event_id,
-                        RoleCode.creador_ecoe.value, RoleCode.coeditor_docente.value)
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     run.archived = True
     db.add(run)
     db.commit()
@@ -321,12 +321,12 @@ def archive_pilotage(
 def delete_pilotage(
     pilot_run_id: int,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe")),
+    user=Depends(require_roles("admin_ecoe")),
 ):
     run = db.get(PilotRun, pilot_run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Pilotaje no encontrado")
-    ensure_event_access(db, user, run.ecoe_event_id, RoleCode.creador_ecoe.value)
+    ensure_event_access(db, user, run.ecoe_event_id, RoleCode.admin_ecoe.value)
     db.delete(run)
     db.commit()
     return {"deleted": True}

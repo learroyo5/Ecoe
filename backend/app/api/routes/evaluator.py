@@ -32,7 +32,7 @@ router = APIRouter()
 @router.get("/evaluator/context/{ecoe_event_id}")
 def evaluator_context(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     ensure_event_access(db, user, ecoe_event_id,
-                        RoleCode.creador_ecoe.value,
+                        RoleCode.admin_ecoe.value,
                         RoleCode.coordinador_operativo.value,
                         RoleCode.evaluador.value)
     assignment = db.scalar(
@@ -115,10 +115,10 @@ def evaluator_context(ecoe_event_id: int, db: Session = Depends(get_db), user=De
 def confirm_station_checkin(
     payload: StationCheckInCreate,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("evaluador", "coordinador_operativo", "creador_ecoe")),
+    user=Depends(require_roles("evaluador", "coordinador_operativo", "admin_ecoe")),
 ):
     ensure_event_access(db, user, payload.ecoe_event_id,
-                        RoleCode.creador_ecoe.value,
+                        RoleCode.admin_ecoe.value,
                         RoleCode.coordinador_operativo.value,
                         RoleCode.evaluador.value)
     station = db.get(Station, payload.station_id)
@@ -202,10 +202,10 @@ def confirm_station_checkin(
 def submit_evaluator_record(
     payload: EvaluatorSubmission,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("evaluador", "coordinador_operativo", "creador_ecoe")),
+    user=Depends(require_roles("evaluador", "coordinador_operativo", "admin_ecoe")),
 ):
     ensure_event_access(db, user, payload.ecoe_event_id,
-                        RoleCode.creador_ecoe.value,
+                        RoleCode.admin_ecoe.value,
                         RoleCode.coordinador_operativo.value,
                         RoleCode.evaluador.value)
     checkin = get_active_checkin(db, payload.ecoe_event_id, payload.station_id,
