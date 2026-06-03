@@ -7,7 +7,7 @@ import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
 import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
-import { ECOEFormFields, buildECOEPayload, toEditableValues } from "@/components/ecoe-form";
+import { ECOEFormFields, buildECOEPayload, toEditableValues, validateECOEPayload, StatusTransitionBar } from "@/components/ecoe-form";
 import type { ECOEEvent } from "@/lib/types";
 
 const DEFAULT_CREATE_VALUES: Record<string, string> = {
@@ -30,10 +30,13 @@ export default function ECOEPage() {
   const [formValues, setFormValues] = useState<Record<string, string> | null>(null);
   const [createValues, setCreateValues] = useState<Record<string, string>>({ ...DEFAULT_CREATE_VALUES });
   const [message, setMessage] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [createMessage, setCreateMessage] = useState<string | null>(null);
+  const [createErrors, setCreateErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
+  const [transitioning, setTransitioning] = useState(false);
   const [dupModal, setDupModal] = useState(false);
   const [dupName, setDupName] = useState("");
   const [dupDate, setDupDate] = useState("");
@@ -50,6 +53,27 @@ export default function ECOEPage() {
 
   const updateField = (name: string, value: string) =>
     setFormValues((c) => ({ ...(c ?? editableValues ?? {}), [name]: value }));
+
+  const handleStatusTransition = async (targetStatus: string) => {
+    if (!ecoeEvent) return;
+    setTransitioning(true); setMessage(null);
+    try {
+      const updated = await api.updateECOE(
+        ecoeEvent.id,
+        { ...buildECOEPayload(activeValues ?? toEditableValues(ecoeEvent as unknown as Record<string, unknown>)!), status: targetStatus },
+        token!,
+      ) as ECOEEvent;
+      setData(updated);
+      setFormValues(toEditableValues(updated as unknown as Record<string, unknown>));
+      await refreshList(updated.id);
+      setMessage(`ECOE ahora en estado: ${targetStatus.replace(/_/g, " ")}`);
+      setErrors({});
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Error al cambiar estado.");
+    } finally {
+      setTransitioning(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -69,7 +93,7 @@ export default function ECOEPage() {
           <div className="clinical-panel">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Selección</p>
             <select className="mt-3" value={String(eventId)}
-              onChange={(e) => { setEventId(Number(e.target.value)); setFormValues(null); setMessage(null); }}>
+              onChange={(e) => { setEventId(Number(e.target.value)); setFormValues(null); setMessage(null); setErrors({}); }}>
               {(ecoeList ?? []).map((e) => <option key={e.id} value={String(e.id)}>{e.name} · {e.course_name}</option>)}
             </select>
           </div>
@@ -84,6 +108,9 @@ export default function ECOEPage() {
           <form className="space-y-4" onSubmit={async (e) => {
             e.preventDefault();
             if (!ecoeEvent) return;
+            const validationErrors = validateECOEPayload(activeValues);
+            setErrors(validationErrors);
+            if (Object.keys(validationErrors).length > 0) return;
             setSaving(true); setMessage(null);
             try {
               const updated = await api.updateECOE(ecoeEvent.id, { ...buildECOEPayload(activeValues), status: activeValues.status }, token!) as ECOEEvent;
@@ -91,13 +118,20 @@ export default function ECOEPage() {
               setFormValues(toEditableValues(updated as unknown as Record<string, unknown>));
               await refreshList(updated.id);
               setMessage("ECOE guardado correctamente.");
+              setErrors({});
             } catch (err) { setMessage(err instanceof Error ? err.message : "Error al guardar."); }
             finally { setSaving(false); }
           }}>
-            <ECOEFormFields values={activeValues} onChange={updateField} includeStatus />
+            <ECOEFormFields values={activeValues} onChange={updateField} errors={errors} />
+            <StatusTransitionBar
+              currentStatus={activeValues.status ?? "borrador"}
+              onTransition={handleStatusTransition}
+              disabled={saving || transitioning}
+              loading={transitioning}
+            />
             <div className="flex flex-wrap gap-3">
               <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Guardando..." : "Guardar ECOE"}</button>
-              <button type="button" className="btn-secondary" onClick={() => { setFormValues(editableValues); setMessage(null); }} disabled={saving}>Revertir</button>
+              <button type="button" className="btn-secondary" onClick={() => { setFormValues(editableValues); setMessage(null); setErrors({}); }} disabled={saving}>Revertir</button>
               <button type="button" className="btn-secondary" disabled={!ecoeEvent || user?.role !== "admin_ecoe"}
                 onClick={() => {
                   if (!ecoeEvent) return;
@@ -116,17 +150,21 @@ export default function ECOEPage() {
       <SectionCard title="Crear nuevo ECOE" subtitle="Nuevo evento desde cero. Quedará en borrador y seleccionado automáticamente.">
         <form className="space-y-4" onSubmit={async (e) => {
           e.preventDefault();
+          const validationErrors = validateECOEPayload(createValues);
+          setCreateErrors(validationErrors);
+          if (Object.keys(validationErrors).length > 0) return;
           setCreating(true); setCreateMessage(null);
           try {
             const created = await api.createECOE(buildECOEPayload(createValues), token!) as ECOEEvent;
             await refreshList(created.id); setEventId(created.id); setData(created);
             setFormValues(toEditableValues(created as unknown as Record<string, unknown>));
             setCreateValues({ ...DEFAULT_CREATE_VALUES });
+            setCreateErrors({});
             setCreateMessage("ECOE creado y seleccionado.");
           } catch (err) { setCreateMessage(err instanceof Error ? err.message : "Error al crear."); }
           finally { setCreating(false); }
         }}>
-          <ECOEFormFields values={createValues} onChange={(n, v) => setCreateValues((c) => ({ ...c, [n]: v }))} />
+          <ECOEFormFields values={createValues} onChange={(n, v) => { setCreateValues((c) => ({ ...c, [n]: v })); setCreateErrors((prev) => { const next = { ...prev }; delete next[n]; return next; }); }} errors={createErrors} />
           <button type="submit" className="btn-primary" disabled={creating}>{creating ? "Creando..." : "Crear nuevo ECOE"}</button>
           <StatusNotice message={createMessage} />
         </form>
