@@ -23,6 +23,7 @@ export default function StudentsPage() {
     const result = await api.students(eventId, token!) as unknown as Record<string, unknown>;
     setData(result);
   };
+  const totalStudents = (data as { total?: number })?.total ?? (Array.isArray(data) ? (data as unknown[]).length : 0);
 
   return (
     <div className="space-y-6">
@@ -148,7 +149,7 @@ export default function StudentsPage() {
         </div>
         <StatusNotice message={message} />
       </SectionCard>
-      <SectionCard title="Nomina actual" subtitle="Vista operativa para revisar correlativos, estados y consistencia de la carga estudiantil.">
+      <SectionCard title="Nomina actual" subtitle={`${totalStudents} estudiantes cargados en este ECOE.`}>
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <button
             type="button"

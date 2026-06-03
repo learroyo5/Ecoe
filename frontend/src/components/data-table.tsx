@@ -96,7 +96,11 @@ export function DataTable<T>({
           </div>
         ) : null}
         <p className="text-sm text-slate-500">
-          {search.trim() ? `${sorted.length} de ${items.length} resultados` : `${items.length} registros`}
+          {isPaginated
+            ? `${items.length} de ${pagination?.total ?? items.length} registros`
+            : search.trim()
+              ? `${sorted.length} de ${items.length} resultados`
+              : `${items.length} registros`}
         </p>
       </div>
 
