@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 
 import { api } from "@/lib/api";
@@ -30,27 +29,63 @@ export default function StudentsPage() {
       <SectionCard title="Gestion de estudiantes" subtitle="Carga masiva por Excel/CSV y alta manual">
         <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
           <FileImport
-            label="Importar estudiantes"
+            label="Importar estudiantes desde archivo"
             helper={
-              <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3">
-                <p>
-                  Usa un archivo Excel o CSV con estos encabezados:
-                </p>
-                <p className="font-semibold text-slate-800">
-                  nombre | apellidos | rut | correo | numero_ecoe | grupo | circuito
-                </p>
-                <p>
-                  El orden puede cambiar, pero los nombres de columna deben coincidir.
-                </p>
-                <p>
-                  El correo debe corresponder a una cuenta existente del sistema con rol estudiante.
-                </p>
-                <Link
-                  href="/plantilla_estudiantes.csv"
-                  className="inline-block font-semibold text-[var(--color-primary)] underline-offset-4 hover:underline"
-                >
-                  Descargar plantilla base CSV
-                </Link>
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4">
+                  <p className="text-sm font-semibold text-blue-900">Como preparar tu archivo</p>
+                  <ol className="mt-2 list-inside list-decimal space-y-1 text-xs leading-5 text-blue-800">
+                    <li>Descarga la plantilla Excel o CSV usando los botones de abajo.</li>
+                    <li>Abre el archivo y completa una fila por cada estudiante.</li>
+                    <li>Los unicos campos obligatorios son: <strong>nombre, apellidos, rut, correo</strong>.</li>
+                    <li>El <strong>Numero ECOE</strong> se asigna automaticamente; puedes dejarlo vacio.</li>
+                    <li>El <strong>correo</strong> debe corresponder a un usuario con rol estudiante ya registrado en el sistema.</li>
+                    <li>Guarda el archivo y arrastralo o seleccionalo en el campo de abajo.</li>
+                  </ol>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Columnas del archivo</p>
+                  <div className="mt-2 overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-left text-slate-500">
+                          <th className="pb-1 pr-3 font-semibold">Columna</th>
+                          <th className="pb-1 pr-3 font-semibold">Obligatorio</th>
+                          <th className="pb-1 font-semibold">Descripcion</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        <tr><td className="py-1 pr-3 font-mono text-slate-700">nombre</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">Nombre del estudiante</td></tr>
+                        <tr><td className="py-1 pr-3 font-mono text-slate-700">apellidos</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">Apellidos completos</td></tr>
+                        <tr><td className="py-1 pr-3 font-mono text-slate-700">rut</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">RUT con guion y digito verificador (ej: 11111111-1)</td></tr>
+                        <tr><td className="py-1 pr-3 font-mono text-slate-700">correo</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">Correo del usuario con rol estudiante</td></tr>
+                        <tr><td className="py-1 pr-3 font-mono text-slate-700">numero_ecoe</td><td className="py-1 pr-3 text-slate-400">No</td><td className="py-1 text-slate-500">Se asigna automaticamente de forma correlativa</td></tr>
+                        <tr><td className="py-1 pr-3 font-mono text-slate-700">grupo</td><td className="py-1 pr-3 text-slate-400">No</td><td className="py-1 text-slate-500">Nombre del grupo (default: Grupo 1)</td></tr>
+                        <tr><td className="py-1 pr-3 font-mono text-slate-700">circuito</td><td className="py-1 pr-3 text-slate-400">No</td><td className="py-1 text-slate-500">Nombre del circuito (default: Circuito A)</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <a
+                    href="/plantilla_estudiantes.xlsx"
+                    download
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700"
+                  >
+                    <svg className="size-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a1 1 0 011 1v7.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L9 10.586V3a1 1 0 011-1z"/><path fillRule="evenodd" d="M3 14a2 2 0 012-2h10a2 2 0 012 2v2a2 2 0 01-2 2H5a2 2 0 01-2-2v-2zm2 0v2h10v-2H5z" clipRule="evenodd"/></svg>
+                    Plantilla Excel
+                  </a>
+                  <a
+                    href="/plantilla_estudiantes.csv"
+                    download
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    <svg className="size-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a1 1 0 011 1v7.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L9 10.586V3a1 1 0 011-1z"/><path fillRule="evenodd" d="M3 14a2 2 0 012-2h10a2 2 0 012 2v2a2 2 0 01-2 2H5a2 2 0 01-2-2v-2zm2 0v2h10v-2H5z" clipRule="evenodd"/></svg>
+                    Plantilla CSV
+                  </a>
+                </div>
               </div>
             }
             onImport={async (file) => {
