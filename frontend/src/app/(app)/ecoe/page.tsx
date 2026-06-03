@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
@@ -84,6 +85,11 @@ export default function ECOEPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Evento activo</p>
             <p className="mt-3 text-2xl font-semibold">{ecoeEvent?.name ?? "Sin cargar"}</p>
             <p className="mt-2 text-sm text-slate-600">{ecoeEvent?.course_name ?? "Curso sin definir"}</p>
+            {ecoeEvent ? (
+              <Link href={`/ecoe/${ecoeEvent.id}`} className="mt-2 inline-block text-sm font-medium text-[var(--color-primary)] hover:underline">
+                Ver detalle completo &rarr;
+              </Link>
+            ) : null}
           </div>
           <div className="clinical-panel">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Estado</p>
