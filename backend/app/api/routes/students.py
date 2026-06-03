@@ -165,6 +165,25 @@ async def import_students(
     ensure_event_access(db, user, ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     rows = await parse_tabular_file(file)
+
+    # Check that required columns exist
+    detected_columns = list(rows[0].keys()) if rows else []
+    expected = {"rut", "correo"}
+    # Accept both Spanish and English column names
+    col_rut = "rut" if "rut" in detected_columns else None
+    col_email = "correo" if "correo" in detected_columns else ("email" if "email" in detected_columns else None)
+
+    if not col_rut or not col_email:
+        return {
+            "imported": 0,
+            "skipped": 0,
+            "skipped_rut_duplicate": 0,
+            "skipped_missing_data": 0,
+            "error": True,
+            "detail": f"El archivo no tiene las columnas requeridas. Columnas detectadas: {detected_columns}. Se espera al menos: rut, correo (o email).",
+            "detected_columns": detected_columns,
+        }
+
     imported: list = []
     skipped_rut_duplicate = 0
     skipped_missing_data = 0

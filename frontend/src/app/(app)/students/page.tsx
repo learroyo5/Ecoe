@@ -94,14 +94,27 @@ export default function StudentsPage() {
                 skipped?: number;
                 skipped_rut_duplicate?: number;
                 skipped_missing_data?: number;
+                error?: boolean;
+                detail?: string;
+                detected_columns?: string[];
               };
               await refresh();
+
+              // If the import returned a structural error (e.g. wrong columns)
+              if (response.error && response.detail) {
+                setMessage(response.detail);
+                return response.detail;
+              }
+
               const imported = response.imported ?? 0;
               const dupes = response.skipped_rut_duplicate ?? 0;
               const missing = response.skipped_missing_data ?? 0;
               const parts: string[] = [`${imported} estudiantes importados.`];
               if (dupes > 0) parts.push(`${dupes} omitidos por RUT duplicado.`);
               if (missing > 0) parts.push(`${missing} omitidos por falta de datos (rut o correo vacio).`);
+              if (imported === 0 && (dupes > 0 || missing > 0)) {
+                parts.push("Verifica que las columnas del archivo se llamen exactamente: nombre, apellidos, rut, correo.");
+              }
               setMessage(parts.join(" "));
               return parts.join(" ");
             }}
