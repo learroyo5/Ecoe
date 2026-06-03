@@ -9,6 +9,7 @@ import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
 import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
+import { MediaPreview } from "@/components/media-preview";
 
 const defaultForm = {
   station_number: "1",
@@ -1837,6 +1838,12 @@ export default function StationBuilderPage() {
                             {String(asset.content_type ?? "tipo no informado")} · visible para{" "}
                             {String(asset.target_viewer ?? "sin definir")}
                           </p>
+                          <div className="mt-2 max-w-xs">
+                            <MediaPreview
+                              asset={asset as unknown as import("@/lib/types").MediaAsset}
+                              token={token!}
+                            />
+                          </div>
                         </div>
                         <button
                           type="button"
