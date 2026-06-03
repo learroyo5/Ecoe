@@ -169,6 +169,9 @@ export type Incident = {
   title: string;
   detail: string;
   severity: string;
+  resolved: boolean;
+  resolved_at: string | null;
+  created_at: string;
 };
 
 export type MediaAsset = {

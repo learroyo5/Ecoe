@@ -195,4 +195,8 @@ export const api = {
 
   // Incidents
   incidents: (eventId: number, token: string) => request<Incident[]>(`/incidents/${eventId}`, {}, token),
+  createIncident: (payload: { ecoe_event_id: number; station_id?: number | null; title: string; detail?: string; severity?: string }, token: string) =>
+    request<Incident>("/incidents", { method: "POST", body: JSON.stringify(payload) }, token),
+  resolveIncident: (incidentId: number, resolved: boolean, token: string) =>
+    request<Incident>(`/incidents/${incidentId}/resolve`, { method: "PATCH", body: JSON.stringify({ resolved }) }, token),
 };

@@ -392,6 +392,8 @@ class Incident(Base, TimestampMixin):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     detail: Mapped[str] = mapped_column(Text, nullable=False)
     severity: Mapped[str] = mapped_column(String(32), default="media")
+    resolved: Mapped[bool] = mapped_column(Boolean, default=False)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class ContingencyExport(Base, TimestampMixin):

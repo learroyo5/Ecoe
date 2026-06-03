@@ -1,5 +1,6 @@
 """Live panel, timer control, media, validation, results, and incidents routes."""
 
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
@@ -16,7 +17,7 @@ from app.models.entities import (
     Station,
 )
 from app.models.enums import RoleCode
-from app.schemas.common import TimerAction
+from app.schemas.common import IncidentCreate, IncidentResolve, TimerAction
 from app.services.dependencies import get_current_user, require_roles
 from app.services.ecoe import (
     build_dashboard,
@@ -253,6 +254,87 @@ def export_pdf(
 
 
 # ── Incidents ──────────────────────────────────────────────────────────
+
+@router.post("/incidents")
+def create_incident(
+    payload: IncidentCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("admin_ecoe", "coordinador_operativo", "cronometrador")),
+):
+    ensure_event_access(db, user, payload.ecoe_event_id,
+                        RoleCode.admin_ecoe.value,
+                        RoleCode.coordinador_operativo.value,
+                        RoleCode.cronometrador.value)
+    incident = Incident(
+        ecoe_event_id=payload.ecoe_event_id,
+        station_id=payload.station_id,
+        title=payload.title,
+        detail=payload.detail,
+        severity=payload.severity,
+    )
+    db.add(incident)
+    db.commit()
+    db.refresh(incident)
+
+    # Broadcast to WebSocket clients
+    background_tasks.add_task(
+        live_timer.broadcast,
+        payload.ecoe_event_id,
+        {
+            "type": "incident_created",
+            "ecoe_event_id": payload.ecoe_event_id,
+            "incident": {
+                "id": incident.id,
+                "station_id": incident.station_id,
+                "title": incident.title,
+                "detail": incident.detail,
+                "severity": incident.severity,
+                "resolved": incident.resolved,
+                "created_at": str(incident.created_at),
+            },
+        },
+    )
+
+    return incident
+
+
+@router.patch("/incidents/{incident_id}/resolve")
+def resolve_incident(
+    incident_id: int,
+    payload: IncidentResolve,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("admin_ecoe", "coordinador_operativo", "cronometrador")),
+):
+    incident = db.get(Incident, incident_id)
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incidencia no encontrada")
+    ensure_event_access(db, user, incident.ecoe_event_id,
+                        RoleCode.admin_ecoe.value,
+                        RoleCode.coordinador_operativo.value,
+                        RoleCode.cronometrador.value)
+
+    incident.resolved = payload.resolved
+    incident.resolved_at = datetime.utcnow() if payload.resolved else None
+    db.add(incident)
+    db.commit()
+    db.refresh(incident)
+
+    # Broadcast update to WebSocket clients
+    background_tasks.add_task(
+        live_timer.broadcast,
+        incident.ecoe_event_id,
+        {
+            "type": "incident_resolved",
+            "ecoe_event_id": incident.ecoe_event_id,
+            "incident_id": incident.id,
+            "resolved": incident.resolved,
+        },
+    )
+
+    return incident
+
 
 @router.get("/incidents/{ecoe_event_id}")
 def list_incidents(

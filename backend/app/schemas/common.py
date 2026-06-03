@@ -287,6 +287,20 @@ class StudentAccessRequest(BaseModel):
     ecoe_number: str
 
 
+# ── Incidents ─────────────────────────────────────────────────────────
+
+class IncidentCreate(BaseModel):
+    ecoe_event_id: int
+    station_id: int | None = None
+    title: str
+    detail: str = ""
+    severity: str = "media"
+
+
+class IncidentResolve(BaseModel):
+    resolved: bool = True
+
+
 # ── User management ───────────────────────────────────────────────────
 
 class UserCreate(BaseModel):
