@@ -3,35 +3,35 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { useAuth } from "@/lib/auth";
+import { useECOE } from "@/lib/auth";
 
 const items = [
-  { label: "Dashboard", href: "/dashboard" },
-  { label: "ECOE", href: "/ecoe", hiddenFor: ["evaluador"] },
-  { label: "Estudiantes", href: "/students", hiddenFor: ["evaluador"] },
-  { label: "Evaluadores", href: "/evaluators", hiddenFor: ["evaluador"] },
-  { label: "Estaciones", href: "/stations", hiddenFor: ["evaluador"] },
-  { label: "Banco de estaciones", href: "/station-bank", hiddenFor: ["evaluador"] },
-  { label: "Constructor", href: "/stations/builder", hiddenFor: ["evaluador"] },
-  { label: "Plantillas", href: "/templates", hiddenFor: ["evaluador"] },
-  { label: "Instrumentos", href: "/instruments", hiddenFor: ["evaluador"] },
-  { label: "Paciente simulado", href: "/simulated-patient", hiddenFor: ["evaluador"] },
-  { label: "Validacion", href: "/validation", hiddenFor: ["evaluador"] },
-  { label: "Pilotaje", href: "/pilotage", hiddenFor: ["evaluador"] },
-  { label: "Publicacion", href: "/publication", hiddenFor: ["evaluador"] },
-  { label: "Panel en vivo", href: "/live", hiddenFor: ["evaluador"] },
-  { label: "Evaluador", href: "/evaluator" },
-  { label: "Estudiante", href: "/student", hiddenFor: ["evaluador"] },
-  { label: "Resultados", href: "/results", hiddenFor: ["evaluador"] },
+  { label: "Dashboard", href: "/dashboard", hiddenFor: ["evaluador", "estudiante"] },
+  { label: "ECOE", href: "/ecoe", hiddenFor: ["evaluador", "estudiante"] },
+  { label: "Estudiantes", href: "/students", hiddenFor: ["evaluador", "estudiante"] },
+  { label: "Evaluadores", href: "/evaluators", hiddenFor: ["evaluador", "estudiante"] },
+  { label: "Estaciones", href: "/stations", hiddenFor: ["evaluador", "estudiante"] },
+  { label: "Banco de estaciones", href: "/station-bank", hiddenFor: ["evaluador", "estudiante"] },
+  { label: "Constructor", href: "/stations/builder", hiddenFor: ["evaluador", "estudiante"] },
+  { label: "Plantillas", href: "/templates", hiddenFor: ["evaluador", "estudiante"] },
+  { label: "Instrumentos", href: "/instruments", hiddenFor: ["evaluador", "estudiante"] },
+  { label: "Paciente simulado", href: "/simulated-patient", hiddenFor: ["evaluador", "estudiante"] },
+  { label: "Validacion", href: "/validation", hiddenFor: ["evaluador", "estudiante"] },
+  { label: "Pilotaje", href: "/pilotage", hiddenFor: ["evaluador", "estudiante"] },
+  { label: "Publicacion", href: "/publication", hiddenFor: ["evaluador", "estudiante"] },
+  { label: "Panel en vivo", href: "/live", hiddenFor: ["evaluador", "estudiante"] },
+  { label: "Evaluador", href: "/evaluator", hiddenFor: ["creador_ecoe", "coeditor_docente", "coordinador_operativo", "cronometrador", "estudiante"] },
+  { label: "Estudiante", href: "/student", hiddenFor: ["creador_ecoe", "coeditor_docente", "coordinador_operativo", "cronometrador", "evaluador"] },
+  { label: "Resultados", href: "/results", hiddenFor: ["evaluador", "estudiante"] },
 ];
 
-export function Sidebar() {
+export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { user } = useECOE();
   const visibleItems = items.filter((item) => !item.hiddenFor?.includes(user?.role ?? ""));
 
   return (
-    <aside className="panel-card sticky top-4 h-fit">
+    <aside className="panel-card h-full lg:h-fit lg:sticky lg:top-4 overflow-y-auto">
       <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--color-primary)]">
         DRNOTUS · ECOE
       </p>
@@ -46,7 +46,8 @@ export function Sidebar() {
             <Link
               key={href}
               href={href}
-              className={`block rounded-2xl px-4 py-3 text-sm ${
+              onClick={onNavigate}
+              className={`block rounded-2xl px-4 py-3 text-sm transition ${
                 active
                   ? "bg-[linear-gradient(135deg,var(--color-primary),var(--color-primary-dark))] font-semibold text-white shadow-sm"
                   : "bg-white/70 text-slate-700 hover:bg-[var(--color-bg-soft)]"

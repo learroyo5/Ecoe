@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
 import { DataTable } from "@/components/data-table";
 import { SectionCard } from "@/components/section-card";
@@ -18,8 +18,12 @@ const bankStatusOptions = [
 ];
 
 export default function StationBankPage() {
-  const { token, user } = useAuth();
+  const { token, user } = useECOE();
   const router = useRouter();
+  const { data: templates } = useApi(
+    () => api.templates(token!) as Promise<Record<string, unknown>[]>,
+    [token],
+  );
   const { data, loading, error, setData } = useApi(
     () => api.stationBank(token!) as Promise<Record<string, unknown>[]>,
     [token],
@@ -75,8 +79,13 @@ export default function StationBankPage() {
               {
                 key: "template_id",
                 label: "Plantilla",
-                render: (row) =>
-                  String((row as { template_id?: number | null }).template_id ?? "Sin plantilla"),
+                render: (row) => {
+                  const templateId = (row as { template_id?: number | null }).template_id;
+                  const template = (templates ?? []).find(
+                    (item) => Number(item.id) === Number(templateId),
+                  );
+                  return String(template?.name ?? "Sin plantilla");
+                },
               },
               {
                 key: "status",

@@ -5,13 +5,13 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
 import { DataTable } from "@/components/data-table";
 import { SectionCard } from "@/components/section-card";
 
 export default function StationsPage() {
-  const { token, eventId, user } = useAuth();
+  const { token, eventId, user } = useECOE();
   const router = useRouter();
   const { data, loading, error } = useApi(
     () => api.stations(eventId, token!) as Promise<Record<string, unknown>[]>,
@@ -28,7 +28,7 @@ export default function StationsPage() {
     return (
       <SectionCard
         title="Acceso restringido"
-        subtitle="El perfil evaluador no puede entrar a la gestion de estaciones."
+        subtitle="El perfil evaluador no puede entrar a la gestión de estaciones."
       >
         <p>Te estamos redirigiendo a tu interfaz operativa.</p>
       </SectionCard>
@@ -37,17 +37,17 @@ export default function StationsPage() {
 
   return (
     <div className="space-y-6">
-      <SectionCard title="Gestion de estaciones" subtitle="Vista resumida del circuito, acceso al constructor y control de avance por estacion.">
+      <SectionCard title="Gestión de estaciones" subtitle="Vista resumida del circuito, acceso al constructor y control de avance por estación.">
         <div className="flex flex-wrap gap-3">
           <Link href="/stations/builder" className="btn-primary">
-            Abrir constructor de estacion
+            Abrir constructor de estación
           </Link>
           <Link href="/station-bank" className="btn-secondary">
             Abrir banco de estaciones
           </Link>
         </div>
       </SectionCard>
-      <SectionCard title="Estaciones del ECOE" subtitle="Cada estacion se presenta como unidad docente y operativa dentro del ECOE activo.">
+      <SectionCard title="Estaciones del ECOE" subtitle="Cada estación se presenta como unidad docente y operativa dentro del ECOE activo.">
         {loading ? (
           <p>Cargando estaciones...</p>
         ) : error ? (

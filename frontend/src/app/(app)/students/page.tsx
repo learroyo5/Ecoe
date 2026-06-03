@@ -1,22 +1,29 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
 import { DataTable } from "@/components/data-table";
-import { FileImport, QuickForm } from "@/components/forms";
+import { FileImport, QuickForm, StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 
 export default function StudentsPage() {
-  const { token, eventId } = useAuth();
+  const { token, eventId } = useECOE();
+  const [page, setPage] = useState(1);
   const { data, loading, error, setData } = useApi(
-    () => api.students(eventId, token!) as Promise<Record<string, unknown>[]>,
-    [eventId, token],
+    () => api.students(eventId, token!) as unknown as Promise<Record<string, unknown>>,
+    [eventId, token, page],
   );
+  const [message, setMessage] = useState<string | null>(null);
+  const [processingAction, setProcessingAction] = useState<string | null>(null);
 
-  const refresh = async () => setData((await api.students(eventId, token!)) as Record<string, unknown>[]);
+  const refresh = async () => {
+    const result = await api.students(eventId, token!) as unknown as Record<string, unknown>;
+    setData(result);
+  };
 
   return (
     <div className="space-y-6">
@@ -35,6 +42,9 @@ export default function StudentsPage() {
                 <p>
                   El orden puede cambiar, pero los nombres de columna deben coincidir.
                 </p>
+                <p>
+                  El correo debe corresponder a una cuenta existente del sistema con rol estudiante.
+                </p>
                 <Link
                   href="/plantilla_estudiantes.csv"
                   className="inline-block font-semibold text-[var(--color-primary)] underline-offset-4 hover:underline"
@@ -49,6 +59,9 @@ export default function StudentsPage() {
                 skipped?: number;
               };
               await refresh();
+              setMessage(
+                `Carga completada: ${response.imported ?? 0} estudiantes importados y ${response.skipped ?? 0} omitidos por RUT duplicado.`,
+              );
               return `Carga completada: ${response.imported ?? 0} estudiantes importados y ${response.skipped ?? 0} omitidos por RUT duplicado.`;
             }}
           />
@@ -60,23 +73,26 @@ export default function StudentsPage() {
               { name: "email", label: "Correo", type: "email" },
               {
                 name: "group_name",
-                label: "Grupo/circuito",
-                description: "El numero ECOE se asigna automaticamente en forma correlativa.",
+                label: "Grupo",
+                description: "El número ECOE se asigna automáticamente en forma correlativa.",
               },
+              { name: "circuit_name", label: "Circuito", description: "Ejemplo: Circuito A" },
             ]}
             onSubmit={async (values) => {
               await api.createStudent(
                 {
                   ecoe_event_id: eventId,
-                  circuit_name: values.group_name ?? "Circuito A",
+                  circuit_name: values.circuit_name ?? "Circuito A",
                   ...values,
                 },
                 token!,
               );
               await refresh();
+              setMessage("Estudiante guardado correctamente.");
             }}
           />
         </div>
+        <StatusNotice message={message} />
       </SectionCard>
       <SectionCard title="Nomina actual" subtitle="Vista operativa para revisar correlativos, estados y consistencia de la carga estudiantil.">
         <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -88,18 +104,34 @@ export default function StudentsPage() {
                 "Se reasignara el Numero ECOE de todos los estudiantes en forma correlativa segun el orden de carga. ¿Quieres continuar?",
               );
               if (!confirmed) {
+                setMessage("La reasignación de Número ECOE fue cancelada.");
                 return;
               }
-              const response = (await api.renumberStudents(eventId, token!)) as {
-                updated?: number;
-              };
-              await refresh();
-              window.alert(
-                `Renumeracion completada: ${response.updated ?? 0} estudiantes quedaron con Numero ECOE correlativo.`,
-              );
+              setProcessingAction("renumber-students");
+              setMessage(null);
+              try {
+                const response = (await api.renumberStudents(eventId, token!)) as {
+                  updated?: number;
+                };
+                await refresh();
+                setMessage(
+                  `Renumeración completada: ${response.updated ?? 0} estudiantes quedaron con Número ECOE correlativo.`,
+                );
+              } catch (actionError) {
+                setMessage(
+                  actionError instanceof Error
+                    ? actionError.message
+                    : "No se pudo reasignar el Número ECOE.",
+                );
+              } finally {
+                setProcessingAction(null);
+              }
             }}
+            disabled={processingAction === "renumber-students"}
           >
-            Reasignar Numero ECOE
+            {processingAction === "renumber-students"
+              ? "Reasignando..."
+              : "Reasignar Número ECOE"}
           </button>
           <button
             type="button"
@@ -109,30 +141,50 @@ export default function StudentsPage() {
                 "Se revisaran los estudiantes de este ECOE y se borraran los duplicados por RUT, conservando el primer registro cargado. ¿Quieres continuar?",
               );
               if (!confirmed) {
+                setMessage("La limpieza de duplicados por RUT fue cancelada.");
                 return;
               }
-              const response = (await api.deduplicateStudentsByRut(eventId, token!)) as {
-                removed?: number;
-              };
-              await refresh();
-              window.alert(
-                `Limpieza completada: ${response.removed ?? 0} registros duplicados fueron eliminados.`,
-              );
+              setProcessingAction("deduplicate-students");
+              setMessage(null);
+              try {
+                const response = (await api.deduplicateStudentsByRut(eventId, token!)) as {
+                  removed?: number;
+                };
+                await refresh();
+                setMessage(
+                  `Limpieza completada: ${response.removed ?? 0} registros duplicados fueron eliminados.`,
+                );
+              } catch (actionError) {
+                setMessage(
+                  actionError instanceof Error
+                    ? actionError.message
+                    : "No se pudo completar la limpieza de duplicados.",
+                );
+              } finally {
+                setProcessingAction(null);
+              }
             }}
+            disabled={processingAction === "deduplicate-students"}
           >
-            Limpiar duplicados por RUT
+            {processingAction === "deduplicate-students"
+              ? "Limpiando duplicados..."
+              : "Limpiar duplicados por RUT"}
           </button>
           <p className="text-sm text-slate-600">
             El sistema ahora asigna el Numero ECOE en forma correlativa para nuevas cargas y altas manuales.
           </p>
         </div>
+        <StatusNotice message={message} />
         {loading ? (
           <p>Cargando estudiantes...</p>
         ) : error ? (
           <p>{error}</p>
         ) : (
           <DataTable
-            rows={data ?? []}
+            rows={(data?.items as Record<string, unknown>[]) ?? (Array.isArray(data) ? data as Record<string, unknown>[] : [])}
+            searchKeys={["name", "last_name", "rut", "email", "ecoe_number"]}
+            paginated={!!data?.items}
+            onPageChange={setPage}
             columns={[
               { key: "ecoe_number", label: "N ECOE" },
               { key: "name", label: "Nombre" },
@@ -176,17 +228,40 @@ export default function StudentsPage() {
                               : "Este estudiante volvera a estado Activo. ¿Quieres continuar?",
                           );
                           if (!confirmed) {
+                            setMessage("El cambio de estado del estudiante fue cancelado.");
                             return;
                           }
-                          await api.updateStudentStatus(
-                            Number(student.id),
-                            { is_active: !isActive },
-                            token!,
-                          );
-                          await refresh();
+                          setProcessingAction(`status-${String(student.id ?? "")}`);
+                          setMessage(null);
+                          try {
+                            await api.updateStudentStatus(
+                              Number(student.id),
+                              { is_active: !isActive },
+                              token!,
+                            );
+                            await refresh();
+                            setMessage(
+                              isActive
+                                ? "Estudiante suspendido correctamente."
+                                : "Estudiante reactivado correctamente.",
+                            );
+                          } catch (actionError) {
+                            setMessage(
+                              actionError instanceof Error
+                                ? actionError.message
+                                : "No se pudo actualizar el estado del estudiante.",
+                            );
+                          } finally {
+                            setProcessingAction(null);
+                          }
                         }}
+                        disabled={processingAction === `status-${String(student.id ?? "")}`}
                       >
-                        {isActive ? "Suspender" : "Reactivar"}
+                        {processingAction === `status-${String(student.id ?? "")}`
+                          ? "Guardando..."
+                          : isActive
+                            ? "Suspender"
+                            : "Reactivar"}
                       </button>
                       <button
                         type="button"
@@ -196,13 +271,30 @@ export default function StudentsPage() {
                             "Vas a borrar este estudiante de forma permanente. Esta accion no se puede deshacer. ¿Quieres continuar?",
                           );
                           if (!confirmed) {
+                            setMessage("El borrado del estudiante fue cancelado.");
                             return;
                           }
-                          await api.deleteStudent(Number(student.id), token!);
-                          await refresh();
+                          setProcessingAction(`delete-${String(student.id ?? "")}`);
+                          setMessage(null);
+                          try {
+                            await api.deleteStudent(Number(student.id), token!);
+                            await refresh();
+                            setMessage("Estudiante borrado correctamente.");
+                          } catch (actionError) {
+                            setMessage(
+                              actionError instanceof Error
+                                ? actionError.message
+                                : "No se pudo borrar el estudiante.",
+                            );
+                          } finally {
+                            setProcessingAction(null);
+                          }
                         }}
+                        disabled={processingAction === `delete-${String(student.id ?? "")}`}
                       >
-                        Borrar
+                        {processingAction === `delete-${String(student.id ?? "")}`
+                          ? "Borrando..."
+                          : "Borrar"}
                       </button>
                     </div>
                   );

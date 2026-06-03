@@ -3,12 +3,13 @@
 import { useState } from "react";
 
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
+import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 
 export default function PublicationPage() {
-  const { token, eventId } = useAuth();
+  const { token, eventId } = useECOE();
   const { data, setData } = useApi(
     () => api.validation(eventId, token!) as Promise<Record<string, unknown>>,
     [eventId, token],
@@ -23,7 +24,7 @@ export default function PublicationPage() {
   const isPublished = String(ecoeEvent?.status ?? "") === "publicado";
 
   return (
-    <SectionCard title="Publicacion" subtitle="Revision final antes de abrir la ejecucion real del ECOE y dejar listo el entorno operativo.">
+    <SectionCard title="Publicación" subtitle="Revisión final antes de abrir la ejecución real del ECOE y dejar listo el entorno operativo.">
       <div className="grid gap-4 md:grid-cols-2">
         <div className="clinical-panel">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Estaciones completas</p>
@@ -43,7 +44,7 @@ export default function PublicationPage() {
             {String(ecoeEvent?.status ?? "sin_estado")}
           </span>
           <p className="text-sm leading-6 text-slate-600">
-            Publicar este ECOE deja creada la sesion en vivo base y marca las estaciones listas como publicadas.
+            Publicar este ECOE deja creada la sesión en vivo base y marca las estaciones listas como publicadas.
           </p>
         </div>
         <button
@@ -54,7 +55,7 @@ export default function PublicationPage() {
               return;
             }
             const confirmed = window.confirm(
-              "Vas a publicar este ECOE. La sesion en vivo quedara preparada y el evento pasara a estado publicado. ¿Quieres continuar?",
+              "Vas a publicar este ECOE. La sesión en vivo quedará preparada y el evento pasará a estado publicado. ¿Quieres continuar?",
             );
             if (!confirmed) {
               return;
@@ -72,7 +73,7 @@ export default function PublicationPage() {
               );
               const updatedValidation = (await api.validation(eventId, token!)) as Record<string, unknown>;
               setData(updatedValidation);
-              setMessage("ECOE publicado correctamente. La base operativa para ejecucion real ya quedo preparada.");
+              setMessage("ECOE publicado correctamente. La base operativa para la ejecución real ya quedó preparada.");
             } catch (publishError) {
               setMessage(
                 publishError instanceof Error
@@ -90,7 +91,7 @@ export default function PublicationPage() {
       <div className="rounded-[28px] bg-[linear-gradient(135deg,var(--color-primary-dark),var(--color-primary))] p-5 text-white shadow-[0_18px_40px_rgba(27,73,101,0.18)]">
         <p className="text-sm uppercase tracking-[0.18em] text-slate-100/80">Estado</p>
         <p className="mt-2 text-2xl font-semibold">
-          {data?.can_publish ? "Listo para publicar" : "Aun no cumple validacion completa"}
+          {data?.can_publish ? "Listo para publicar" : "Aún no cumple validación completa"}
         </p>
       </div>
       {blockers.length ? (
@@ -106,10 +107,10 @@ export default function PublicationPage() {
         </div>
       ) : (
         <div className="rounded-2xl border border-green-200 bg-[var(--color-success-soft)] px-4 py-3 text-sm text-green-900">
-          No se detectan bloqueos estructurales. El ECOE puede avanzar a publicacion cuando corresponda operativamente.
+          No se detectan bloqueos estructurales. El ECOE puede avanzar a publicación cuando corresponda operativamente.
         </div>
       )}
-      {message ? <p className="text-sm text-slate-600">{message}</p> : null}
+      <StatusNotice message={message} />
     </SectionCard>
   );
 }

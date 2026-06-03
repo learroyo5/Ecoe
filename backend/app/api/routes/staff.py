@@ -1,0 +1,221 @@
+"""Staff management routes."""
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
+from app.models.entities import StaffAssignment
+from app.models.enums import RoleCode
+from app.schemas.common import StaffCreate, StaffUpdate
+from app.services.dependencies import get_current_user, require_roles
+from app.utils.files import parse_tabular_file
+from app.utils.helpers import (
+    ensure_event_access,
+    ensure_matching_operational_user,
+    ensure_primary_station_assignment,
+    normalize_email,
+    normalize_station_ids,
+    validate_staff_role_code,
+)
+from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginate_query
+
+router = APIRouter()
+
+
+@router.get("/staff/{ecoe_event_id}")
+def list_staff(
+    ecoe_event_id: int,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.creador_ecoe.value,
+                        RoleCode.coeditor_docente.value,
+                        RoleCode.coordinador_operativo.value)
+    stmt = (
+        select(StaffAssignment)
+        .where(StaffAssignment.ecoe_event_id == ecoe_event_id)
+        .order_by(StaffAssignment.last_name.asc(), StaffAssignment.name.asc(), StaffAssignment.id.asc())
+    )
+    result = paginate_query(db, stmt, page=page, page_size=page_size)
+    staff_rows = result["items"]
+    changed = False
+    for staff in staff_rows:
+        _, staff_changed = ensure_primary_station_assignment(staff)
+        if staff_changed:
+            db.add(staff)
+            changed = True
+    if changed:
+        db.commit()
+        for staff in staff_rows:
+            db.refresh(staff)
+    return result
+
+
+
+
+@router.post("/staff")
+def create_staff(
+    payload: StaffCreate,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("creador_ecoe", "coeditor_docente", "coordinador_operativo")),
+):
+    ensure_event_access(db, user, payload.ecoe_event_id,
+                        RoleCode.creador_ecoe.value,
+                        RoleCode.coeditor_docente.value,
+                        RoleCode.coordinador_operativo.value)
+    email = normalize_email(payload.email)
+    normalized_role_code = validate_staff_role_code(payload.role_code)
+    ensure_matching_operational_user(db, email=email, expected_role=normalized_role_code)
+    existing = db.scalar(
+        select(StaffAssignment).where(
+            StaffAssignment.ecoe_event_id == payload.ecoe_event_id,
+            StaffAssignment.email == email,
+        )
+    )
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail="Ya existe un evaluador o colaborador con ese correo en este ECOE",
+        )
+    station_ids = normalize_station_ids(payload.station_ids)
+    if normalized_role_code == RoleCode.evaluador.value and not station_ids:
+        raise HTTPException(status_code=400, detail="El evaluador debe tener una estacion principal asignada")
+    if station_ids:
+        from app.models.entities import Station
+        station_obj = db.get(Station, station_ids[0])
+        if not station_obj or station_obj.ecoe_event_id != payload.ecoe_event_id:
+            raise HTTPException(status_code=400, detail="La estacion asignada no pertenece a este ECOE")
+    staff_data = payload.model_dump()
+    staff_data["email"] = email
+    staff_data["role_code"] = normalized_role_code
+    staff_data["station_ids"] = station_ids
+    staff = StaffAssignment(**staff_data)
+    db.add(staff)
+    db.commit()
+    db.refresh(staff)
+    return staff
+
+
+@router.patch("/staff/{staff_id}")
+def update_staff(
+    staff_id: int,
+    payload: StaffUpdate,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("creador_ecoe", "coeditor_docente", "coordinador_operativo")),
+):
+    staff = db.get(StaffAssignment, staff_id)
+    if not staff:
+        raise HTTPException(status_code=404, detail="Evaluador o colaborador no encontrado")
+    ensure_event_access(db, user, staff.ecoe_event_id,
+                        RoleCode.creador_ecoe.value,
+                        RoleCode.coeditor_docente.value,
+                        RoleCode.coordinador_operativo.value)
+    normalized_role_code = validate_staff_role_code(payload.role_code)
+    ensure_matching_operational_user(db, email=staff.email, expected_role=normalized_role_code)
+    station_ids = normalize_station_ids(payload.station_ids)
+    if normalized_role_code == RoleCode.evaluador.value and not station_ids:
+        raise HTTPException(status_code=400, detail="El evaluador debe tener una estacion principal asignada")
+    if station_ids:
+        from app.models.entities import Station
+        station_obj = db.get(Station, station_ids[0])
+        if not station_obj or station_obj.ecoe_event_id != staff.ecoe_event_id:
+            raise HTTPException(status_code=400, detail="La estacion asignada no pertenece a este ECOE")
+    staff.role_code = normalized_role_code
+    staff.station_ids = station_ids
+    db.add(staff)
+    db.commit()
+    db.refresh(staff)
+    return staff
+
+
+@router.delete("/staff/{staff_id}")
+def delete_staff(
+    staff_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+):
+    staff = db.get(StaffAssignment, staff_id)
+    if not staff:
+        raise HTTPException(status_code=404, detail="Evaluador o colaborador no encontrado")
+    ensure_event_access(db, user, staff.ecoe_event_id,
+                        RoleCode.creador_ecoe.value, RoleCode.coeditor_docente.value)
+    db.delete(staff)
+    db.commit()
+    return {"deleted": True}
+
+
+@router.post("/staff/{ecoe_event_id}/deduplicate-email")
+def deduplicate_staff_by_email(
+    ecoe_event_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+):
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.creador_ecoe.value, RoleCode.coeditor_docente.value)
+    staff_rows = db.scalars(
+        select(StaffAssignment)
+        .where(StaffAssignment.ecoe_event_id == ecoe_event_id)
+        .order_by(StaffAssignment.created_at.asc(), StaffAssignment.id.asc())
+    ).all()
+    seen_emails: set[str] = set()
+    removed = 0
+    for staff in staff_rows:
+        email = normalize_email(staff.email)
+        if not email:
+            continue
+        if email in seen_emails:
+            db.delete(staff)
+            removed += 1
+            continue
+        seen_emails.add(email)
+    db.commit()
+    return {"removed": removed}
+
+
+@router.post("/staff/import")
+async def import_staff(
+    ecoe_event_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+):
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.creador_ecoe.value, RoleCode.coeditor_docente.value)
+    rows = await parse_tabular_file(file)
+    imported = 0
+    skipped = 0
+    existing_emails = {
+        normalize_email(email)
+        for email in db.scalars(
+            select(StaffAssignment.email).where(StaffAssignment.ecoe_event_id == ecoe_event_id)
+        ).all()
+    }
+    for row in rows:
+        email = normalize_email(row.get("correo", row.get("email", "")))
+        if not email or email in existing_emails:
+            skipped += 1
+            continue
+        role_code = validate_staff_role_code(row.get("rol", row.get("role_code", "evaluador")))
+        try:
+            ensure_matching_operational_user(db, email=email, expected_role=role_code)
+        except HTTPException:
+            skipped += 1
+            continue
+        db.add(
+            StaffAssignment(
+                ecoe_event_id=ecoe_event_id,
+                name=row.get("nombre", row.get("name", "")),
+                last_name=row.get("apellidos", row.get("last_name", "")),
+                email=email,
+                role_code=role_code,
+                station_ids=[],
+            )
+        )
+        imported += 1
+        existing_emails.add(email)
+    db.commit()
+    return {"imported": imported, "skipped": skipped}

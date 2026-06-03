@@ -1,14 +1,14 @@
 "use client";
 
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
 import { DataTable } from "@/components/data-table";
 import { QuickForm } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 
 export default function SimulatedPatientPage() {
-  const { token } = useAuth();
+  const { token } = useECOE();
   const { data, loading, error, setData } = useApi(
     () => api.simulatedPatients(token!) as Promise<Record<string, unknown>[]>,
     [token],

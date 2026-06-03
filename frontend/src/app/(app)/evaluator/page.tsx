@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
+import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 
 export default function EvaluatorPage() {
-  const { token, eventId, user } = useAuth();
+  const { token, eventId, user } = useECOE();
   const { data: context, setData: setContext } = useApi(
     () => api.evaluatorContext(eventId, token!) as Promise<Record<string, unknown>>,
     [eventId, token],
@@ -17,20 +18,30 @@ export default function EvaluatorPage() {
   const [scoreObtained, setScoreObtained] = useState("0");
   const [observation, setObservation] = useState("");
   const [message, setMessage] = useState<string | null>(null);
-  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
-  const [submitted, setSubmitted] = useState(false);
-  const [itemScores, setItemScores] = useState<Record<string, number>>({});
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [confirmingStudent, setConfirmingStudent] = useState(false);
+  const [submittingEvaluation, setSubmittingEvaluation] = useState(false);
+  const [itemScoreState, setItemScoreState] = useState<{
+    checkinId: string;
+    scores: Record<string, number>;
+  }>({
+    checkinId: "",
+    scores: {},
+  });
 
   const stations = (context?.stations as Record<string, unknown>[] | undefined) ?? [];
   const assignedStation = stations[0];
   const activeCheckin = (context?.active_checkin as Record<string, unknown> | null | undefined) ?? null;
   const stationLabel = assignedStation
     ? `${String(assignedStation.station_number)} - ${String(assignedStation.name)}`
-    : "Sin estacion asignada";
+    : "Sin estación asignada";
   const stationId = Number(assignedStation?.id ?? 0);
   const maxScore = String(assignedStation?.max_score ?? "0");
-  const timerDurationSeconds = Number(activeCheckin?.station_time_minutes ?? assignedStation?.station_time_minutes ?? 0) * 60;
+  const timerDurationSeconds =
+    Number(activeCheckin?.station_time_minutes ?? assignedStation?.station_time_minutes ?? 0) *
+    60;
   const confirmedAt = String(activeCheckin?.confirmed_at ?? "");
+  const activeCheckinId = String(activeCheckin?.id ?? "");
   const assessmentTool = (activeCheckin?.assessment_tool ??
     assignedStation?.assessment_tool) as
     | {
@@ -47,42 +58,49 @@ export default function EvaluatorPage() {
         }>;
       }
     | undefined;
-  const assessmentItems = assessmentTool?.items ?? [];
-
-  useEffect(() => {
+  const assessmentItems = useMemo(() => assessmentTool?.items ?? [], [assessmentTool]);
+  const submitted = Boolean(activeCheckin?.evaluator_submission_exists);
+  const evaluatorInstruction = String(
+    activeCheckin?.evaluator_instruction ?? assignedStation?.evaluator_instruction ?? "",
+  ).trim();
+  const initialItemScores = useMemo(() => {
     const nextScores: Record<string, number> = {};
     for (const item of assessmentItems) {
       nextScores[String(item.id ?? item.order_index ?? "")] = 0;
     }
-    setItemScores(nextScores);
-  }, [activeCheckin?.id, assessmentItems]);
-
-  useEffect(() => {
-    setSubmitted(Boolean(activeCheckin?.evaluator_submission_exists));
-  }, [activeCheckin]);
+    return nextScores;
+  }, [assessmentItems]);
+  const itemScores =
+    itemScoreState.checkinId === activeCheckinId ? itemScoreState.scores : initialItemScores;
 
   useEffect(() => {
     if (!activeCheckin || !confirmedAt || !timerDurationSeconds) {
-      setRemainingSeconds(timerDurationSeconds || null);
       return;
     }
 
-    const updateTimer = () => {
-      const elapsedSeconds = Math.max(
-        0,
-        Math.floor((Date.now() - new Date(confirmedAt).getTime()) / 1000),
-      );
-      setRemainingSeconds(Math.max(timerDurationSeconds - elapsedSeconds, 0));
-    };
-
-    updateTimer();
-    const intervalId = window.setInterval(updateTimer, 1000);
+    const intervalId = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
     return () => window.clearInterval(intervalId);
   }, [activeCheckin, confirmedAt, timerDurationSeconds]);
 
+  const remainingSeconds = useMemo(() => {
+    if (!activeCheckin) {
+      return null;
+    }
+    if (!confirmedAt || !timerDurationSeconds) {
+      return timerDurationSeconds || null;
+    }
+    const elapsedSeconds = Math.max(
+      0,
+      Math.floor((nowMs - new Date(confirmedAt).getTime()) / 1000),
+    );
+    return Math.max(timerDurationSeconds - elapsedSeconds, 0);
+  }, [activeCheckin, confirmedAt, nowMs, timerDurationSeconds]);
+
   const timerLabel = useMemo(() => {
     if (remainingSeconds === null) {
-      return "Sin cronometro activo";
+      return "Sin cronómetro activo";
     }
     const minutes = Math.floor(remainingSeconds / 60);
     const seconds = remainingSeconds % 60;
@@ -94,13 +112,22 @@ export default function EvaluatorPage() {
     [itemScores],
   );
 
+  const updateItemScore = (itemKey: string, value: number) => {
+    setItemScoreState((current) => ({
+      checkinId: activeCheckinId,
+      scores: {
+        ...(current.checkinId === activeCheckinId ? current.scores : initialItemScores),
+        [itemKey]: value,
+      },
+    }));
+  };
+
   const resetForNextStudent = (notice: string) => {
     setEcoeNumber("");
     setScoreObtained("0");
     setObservation("");
-    setSubmitted(false);
-    setItemScores({});
-    setRemainingSeconds(Number(assignedStation?.station_time_minutes ?? 0) * 60 || null);
+    setItemScoreState({ checkinId: "", scores: {} });
+    setNowMs(Date.now());
     setContext((current) => (current ? { ...current, active_checkin: null } : current));
     setMessage(notice);
   };
@@ -108,13 +135,13 @@ export default function EvaluatorPage() {
   return (
     <SectionCard
       title="Interfaz del evaluador"
-      subtitle="Confirma primero al estudiante correcto y luego registra la evaluacion sobre esa misma sesion."
+      subtitle="Confirma primero al estudiante correcto y luego registra la evaluación sobre esa misma sesión."
     >
       <div className="grid gap-4 lg:gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <section className="space-y-4 rounded-3xl border border-slate-200 bg-white/80 p-4 lg:p-5">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Estacion asignada
+              Estación asignada
             </p>
             <h3 className="mt-2 text-2xl text-slate-900">{stationLabel}</h3>
             <p className="mt-2 text-sm text-slate-600">
@@ -124,11 +151,11 @@ export default function EvaluatorPage() {
 
           <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Tiempo visible de la estacion
+              Tiempo visible de la estación
             </p>
             <p className="mt-2 text-3xl font-semibold text-slate-900">{timerLabel}</p>
             <p className="mt-2 text-sm text-slate-600">
-              El evaluador visualiza el tiempo, pero el cierre de su evaluacion sigue siendo manual.
+              El evaluador visualiza el tiempo, pero el cierre de su evaluación sigue siendo manual.
             </p>
           </div>
 
@@ -138,6 +165,7 @@ export default function EvaluatorPage() {
               onSubmit={async (event) => {
                 event.preventDefault();
                 setMessage(null);
+                setConfirmingStudent(true);
                 try {
                   const checkin = (await api.confirmStationCheckin(
                     {
@@ -168,10 +196,26 @@ export default function EvaluatorPage() {
                   setScoreObtained("0");
                   setObservation("");
                   setEcoeNumber("");
-                  setSubmitted(false);
-                  setMessage("Estudiante confirmado correctamente para esta estacion.");
+                  setItemScoreState({
+                    checkinId: String(checkin.checkin_id ?? ""),
+                    scores: Object.fromEntries(
+                      (
+                        (
+                          checkin.assessment_tool as
+                            | {
+                                items?: Array<{ id?: number; order_index?: number }>;
+                              }
+                            | undefined
+                        )?.items ?? []
+                      ).map((item) => [String(item.id ?? item.order_index ?? ""), 0]),
+                    ),
+                  });
+                  setNowMs(Date.now());
+                  setMessage("Estudiante confirmado correctamente para esta estación.");
                 } catch (error) {
                   setMessage(error instanceof Error ? error.message : "No se pudo confirmar.");
+                } finally {
+                  setConfirmingStudent(false);
                 }
               }}
             >
@@ -185,7 +229,9 @@ export default function EvaluatorPage() {
                   placeholder="Ejemplo: 008"
                 />
               </label>
-              <button className="btn-primary w-full">Confirmar ingreso del estudiante</button>
+              <button className="btn-primary w-full" disabled={confirmingStudent}>
+                {confirmingStudent ? "Confirmando..." : "Confirmar ingreso del estudiante"}
+              </button>
             </form>
           ) : (
             <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -202,7 +248,7 @@ export default function EvaluatorPage() {
                 {String(activeCheckin.student_ecoe_number)} · {String(activeCheckin.student_name)}
               </p>
               <p className="mt-2 text-sm text-slate-600">
-                Verifica siempre numero y nombre antes de evaluar.
+                Verifica siempre número y nombre antes de evaluar.
               </p>
             </div>
           ) : null}
@@ -211,15 +257,25 @@ export default function EvaluatorPage() {
         <section className="space-y-4 rounded-3xl border border-slate-200 bg-white/80 p-4 lg:p-5">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Registro de evaluacion
+              Registro de evaluación
             </p>
-            <h3 className="mt-2 text-2xl text-slate-900">Pauta de la estacion</h3>
+            <h3 className="mt-2 text-2xl text-slate-900">Pauta de la estación</h3>
           </div>
+          {evaluatorInstruction ? (
+            <div className="clinical-panel">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-primary)]">
+                Guía para el evaluador
+              </p>
+              <p className="mt-4 text-base leading-7 text-slate-800">
+                {evaluatorInstruction}
+              </p>
+            </div>
+          ) : null}
 
           {!activeCheckin ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              Primero confirma al estudiante con su Numero ECOE. Cuando envies la evaluacion, esta
-              vista se limpiara para identificar al siguiente estudiante.
+              Primero confirma al estudiante con su Número ECOE. Cuando envíes la evaluación, esta
+              vista se limpiará para identificar al siguiente estudiante.
             </div>
           ) : (
             <form
@@ -227,12 +283,13 @@ export default function EvaluatorPage() {
               onSubmit={async (event) => {
                 event.preventDefault();
                 const confirmed = window.confirm(
-                  "Vas a enviar la evaluacion final de esta estacion. Luego no se podra modificar durante el ECOE. ¿Quieres continuar?",
+                  "Vas a enviar la evaluación final de esta estación. Luego no se podrá modificar durante el ECOE. ¿Quieres continuar?",
                 );
                 if (!confirmed) {
                   return;
                 }
                 setMessage(null);
+                setSubmittingEvaluation(true);
                 try {
                   await api.submitEvaluator(
                     {
@@ -254,10 +311,12 @@ export default function EvaluatorPage() {
                     token!,
                   );
                   resetForNextStudent(
-                    "Evaluacion enviada correctamente. Ingresa el Numero ECOE del siguiente estudiante.",
+                    "Evaluación enviada correctamente. Ingresa el Número ECOE del siguiente estudiante.",
                   );
                 } catch (error) {
                   setMessage(error instanceof Error ? error.message : "No se pudo guardar.");
+                } finally {
+                  setSubmittingEvaluation(false);
                 }
               }}
             >
@@ -269,7 +328,7 @@ export default function EvaluatorPage() {
                 <div className="space-y-4 rounded-2xl border border-slate-200 bg-white/80 p-4">
                   <div>
                     <p className="text-sm font-semibold text-slate-900">
-                      {String(assessmentTool.name ?? "Pauta de evaluacion")}
+                      {String(assessmentTool.name ?? "Pauta de evaluación")}
                     </p>
                     <p className="mt-1 text-sm text-slate-600">
                       Tipo: {String(assessmentTool.tool_type ?? "sin definir")}
@@ -291,7 +350,7 @@ export default function EvaluatorPage() {
                                 {index + 1}. {String(item.label ?? "")}
                               </p>
                               <p className="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500">
-                                Puntaje maximo: {maxItemScore}
+                                Puntaje máximo: {maxItemScore}
                               </p>
                             </div>
                             {isChecklist ? (
@@ -304,11 +363,10 @@ export default function EvaluatorPage() {
                                     : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
                                 } ${submitted ? "cursor-not-allowed opacity-70" : ""}`}
                                 onClick={() =>
-                                  setItemScores((current) => ({
-                                    ...current,
-                                    [itemKey]:
-                                      Number(current[itemKey] ?? 0) > 0 ? 0 : maxItemScore,
-                                  }))
+                                  updateItemScore(
+                                    itemKey,
+                                    Number(itemScores[itemKey] ?? 0) > 0 ? 0 : maxItemScore,
+                                  )
                                 }
                               >
                                 <span>Cumplido</span>
@@ -319,7 +377,7 @@ export default function EvaluatorPage() {
                                       : "bg-slate-100 text-slate-500"
                                   }`}
                                 >
-                                  {Number(itemScores[itemKey] ?? 0) > 0 ? "Si" : "No"}
+                                  {Number(itemScores[itemKey] ?? 0) > 0 ? "Sí" : "No"}
                                 </span>
                               </button>
                             ) : (
@@ -332,13 +390,13 @@ export default function EvaluatorPage() {
                                 value={String(itemScores[itemKey] ?? 0)}
                                 disabled={submitted}
                                 onChange={(event) =>
-                                  setItemScores((current) => ({
-                                    ...current,
-                                    [itemKey]: Math.min(
+                                  updateItemScore(
+                                    itemKey,
+                                    Math.min(
                                       maxItemScore,
                                       Math.max(0, Number(event.target.value) || 0),
                                     ),
-                                  }))
+                                  )
                                 }
                               />
                             )}
@@ -373,28 +431,35 @@ export default function EvaluatorPage() {
                 />
               </label>
               <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
-                <span className="text-sm font-semibold">Observacion opcional</span>
+                <span className="text-sm font-semibold">Observación opcional</span>
                 <textarea
                   rows={5}
                   value={observation}
                   disabled={submitted}
                   onChange={(event) => setObservation(event.target.value)}
-                  placeholder="Comentario breve para retroalimentacion o trazabilidad."
+                  placeholder="Comentario breve para retroalimentación o trazabilidad."
                 />
               </label>
-              <button className="btn-primary w-full text-base" disabled={submitted}>
-                {submitted ? "Evaluacion ya enviada" : "Guardar evaluacion"}
+              <button
+                className="btn-primary w-full text-base"
+                disabled={submitted || submittingEvaluation}
+              >
+                {submitted
+                  ? "Evaluación ya enviada"
+                  : submittingEvaluation
+                    ? "Guardando evaluación..."
+                    : "Guardar evaluación"}
               </button>
               {submitted ? (
                 <p className="text-sm text-amber-700">
-                  Esta evaluacion ya fue enviada y quedo cerrada para edicion durante el ECOE.
+                  Esta evaluación ya fue enviada y quedó cerrada para edición durante el ECOE.
                 </p>
               ) : null}
             </form>
           )}
         </section>
       </div>
-      {message ? <p className="mt-4 text-sm text-slate-600">{message}</p> : null}
+      <StatusNotice message={message} className="mt-4" />
     </SectionCard>
   );
 }

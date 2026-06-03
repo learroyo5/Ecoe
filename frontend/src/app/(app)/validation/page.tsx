@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
+
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
 import { SectionCard } from "@/components/section-card";
 
@@ -56,7 +58,7 @@ function CheckList({
 }
 
 export default function ValidationPage() {
-  const { token, eventId } = useAuth();
+  const { token, eventId } = useECOE();
   const { data, loading, error } = useApi(
     () => api.validation(eventId, token!) as Promise<Record<string, unknown>>,
     [eventId, token],
@@ -75,6 +77,17 @@ export default function ValidationPage() {
         title="Validacion previa"
         subtitle="Chequeos estructurados antes de pilotar, publicar o iniciar la ejecucion real del ECOE."
       >
+        <div className="mb-4 flex flex-wrap gap-3">
+          <Link href="/stations" className="btn-secondary">
+            Revisar estaciones
+          </Link>
+          <Link href="/evaluators" className="btn-secondary">
+            Revisar evaluadores
+          </Link>
+          <Link href="/publication" className="btn-secondary">
+            Ir a publicación
+          </Link>
+        </div>
         {loading ? <p>Validando configuracion...</p> : null}
         {error ? <p>{error}</p> : null}
         {data ? (
@@ -187,6 +200,20 @@ export default function ValidationPage() {
                 >
                   {issue.ready_for_pilot ? "Lista para pilotaje" : "Con faltantes"}
                 </span>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-3">
+                <Link
+                  href={`/stations/builder?stationId=${String(issue.station_id ?? "")}`}
+                  className="text-sm font-semibold text-[var(--color-primary)] underline-offset-4 hover:underline"
+                >
+                  Abrir estación
+                </Link>
+                <Link
+                  href="/evaluators"
+                  className="text-sm font-semibold text-slate-700 underline-offset-4 hover:underline"
+                >
+                  Revisar asignaciones
+                </Link>
               </div>
 
               {issue.blockers?.length ? (

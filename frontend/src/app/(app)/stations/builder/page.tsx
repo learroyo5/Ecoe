@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
+import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 
 const defaultForm = {
@@ -23,6 +24,21 @@ const defaultForm = {
   materials: "",
   multimedia_notes: "",
 };
+
+const defaultInstrumentDraft: InstrumentDraft = {
+  name: "",
+  tool_type: "lista_cotejo",
+  free_observation: true,
+  items: [
+    { label: "", score_per_item: "1" },
+    { label: "", score_per_item: "1" },
+    { label: "", score_per_item: "1" },
+  ],
+};
+
+const defaultStudentQuestions: StudentQuestion[] = [
+  { prompt: "", type: "single_choice", optionsText: "" },
+];
 
 const stationTypeOptions = [
   { value: "procedimental", label: "Procedimental" },
@@ -49,6 +65,43 @@ type StudentQuestion = {
   optionsText: string;
 };
 
+function createBuilderSnapshot({
+  builderScope,
+  form,
+  selectedAssessmentToolId,
+  selectedTemplateId,
+  selectedPatientId,
+  instrumentDraft,
+  studentQuestions,
+  bankStatus,
+  assessmentMode,
+}: {
+  builderScope: "bank" | "ecoe";
+  form: typeof defaultForm;
+  selectedAssessmentToolId: string;
+  selectedTemplateId: string;
+  selectedPatientId: string;
+  instrumentDraft: InstrumentDraft;
+  studentQuestions: StudentQuestion[];
+  bankStatus: string;
+  assessmentMode: AssessmentMode;
+}) {
+  return JSON.stringify({
+    builderScope,
+    form: {
+      ...form,
+      station_number: builderScope === "ecoe" ? "" : form.station_number,
+    },
+    selectedAssessmentToolId,
+    selectedTemplateId,
+    selectedPatientId,
+    instrumentDraft,
+    studentQuestions,
+    bankStatus,
+    assessmentMode,
+  });
+}
+
 type FieldConfigItem = {
   label: string;
   description: string;
@@ -58,74 +111,74 @@ type FieldConfigItem = {
 
 const fieldConfig: Record<FormKey, FieldConfigItem> = {
   station_number: {
-    label: "Numero correlativo de la estacion",
+    label: "Número correlativo de la estación",
     description:
-      "Este numero se asigna automaticamente segun las estaciones ya creadas en este ECOE.",
-    placeholder: "Se asigna automaticamente",
+      "Este número se asigna automáticamente según las estaciones ya creadas en este ECOE.",
+    placeholder: "Se asigna automáticamente",
   },
   name: {
-    label: "Nombre breve de la estacion",
-    description: "Escribe un titulo claro para identificar rapidamente el caso o procedimiento.",
-    placeholder: "Ejemplo: Dolor toracico en urgencia",
+    label: "Nombre breve de la estación",
+    description: "Escribe un título claro para identificar rápidamente el caso o procedimiento.",
+    placeholder: "Ejemplo: Dolor torácico en urgencia",
   },
   station_type: {
-    label: "Tipo de estacion",
+    label: "Tipo de estación",
     description:
-      "Selecciona la naturaleza pedagogica de la estacion. La modalidad operativa se define mas abajo en la plantilla de referencia.",
+      "Selecciona la naturaleza pedagógica de la estación. La modalidad operativa se define más abajo, en la plantilla de referencia.",
   },
   circuit_name: {
     label: "Circuito asignado",
-    description: "Indica en que circuito operativo se ubicara esta estacion.",
+    description: "Indica en qué circuito operativo se ubicará esta estación.",
   },
   expected_outcomes: {
-    label: "Aprendizajes o desempenos esperados",
-    description: "Describe que deberia demostrar el estudiante al finalizar esta estacion.",
-    placeholder: "Ejemplo: Reconoce signos de alarma, prioriza diagnosticos y comunica un plan inicial seguro.",
+    label: "Aprendizajes o desempeños esperados",
+    description: "Describe qué debería demostrar el estudiante al finalizar esta estación.",
+    placeholder: "Ejemplo: Reconoce signos de alarma, prioriza diagnósticos y comunica un plan inicial seguro.",
     multiline: true,
   },
   student_activity: {
-    label: "Actividad especifica del estudiante",
+    label: "Actividad específica del estudiante",
     description:
-      "Describe la tarea, procedimiento o desempeno central que realizara el estudiante en esta estacion.",
+      "Describe la tarea, el procedimiento o el desempeño central que realizará el estudiante en esta estación.",
     placeholder:
       "Ejemplo: Realizar anamnesis focalizada, examinar al paciente y comunicar una conducta inicial segura.",
     multiline: true,
   },
   student_station_instruction: {
-    label: "Instrucciones dentro de la estacion para el estudiante",
+    label: "Instrucciones dentro de la estación para el estudiante",
     description:
-      "Escribe la indicacion precisa que el estudiante debe seguir una vez que ya esta dentro de la estacion.",
+      "Escribe la indicación precisa que el estudiante debe seguir una vez que ya esté dentro de la estación.",
     placeholder:
       "Ejemplo: Salude al paciente, explique el procedimiento y luego ejecute la tarea siguiendo el orden esperado.",
     multiline: true,
   },
   pre_entry_instruction: {
-    label: "Instruccion previa de ingreso",
-    description: "Texto breve que el estudiante leeria antes de entrar a la estacion.",
-    placeholder: "Ejemplo: Revise el motivo de consulta y preparese para realizar una anamnesis focalizada.",
+    label: "Instrucción previa de ingreso",
+    description: "Texto breve que el estudiante leería antes de entrar a la estación.",
+    placeholder: "Ejemplo: Revise el motivo de consulta y prepárese para realizar una anamnesis focalizada.",
     multiline: true,
   },
   evaluator_instruction: {
-    label: "Guia para el evaluador",
-    description: "Indica en que debe fijarse el evaluador y como debe registrar la observacion.",
-    placeholder: "Ejemplo: Observe estructura de la entrevista, seguridad del abordaje y comunicacion con el paciente.",
+    label: "Guía para el evaluador",
+    description: "Indica en qué debe fijarse el evaluador y cómo debe registrar la observación.",
+    placeholder: "Ejemplo: Observe la estructura de la entrevista, la seguridad del abordaje y la comunicación con el paciente.",
     multiline: true,
   },
   max_score: {
-    label: "Puntaje maximo",
-    description: "Puntaje total que podra obtener el estudiante en esta estacion.",
+    label: "Puntaje máximo",
+    description: "Puntaje total que podrá obtener el estudiante en esta estación.",
     placeholder: "Ejemplo: 20",
   },
   materials: {
-    label: "Materiales y recursos fisicos",
-    description: "Lista el equipamiento, insumos o documentos necesarios para montar la estacion.",
-    placeholder: "Ejemplo: Fonendoscopio, tensiometro, ficha clinica impresa, guantes y lapiz.",
+    label: "Materiales y recursos físicos",
+    description: "Lista el equipamiento, los insumos o los documentos necesarios para montar la estación.",
+    placeholder: "Ejemplo: Fonendoscopio, tensiómetro, ficha clínica impresa, guantes y lápiz.",
     multiline: true,
   },
   multimedia_notes: {
     label: "Indicaciones sobre material multimedia",
-    description: "Especifica si se usara audio, video, PDF o imagen y en que momento debe mostrarse.",
-    placeholder: "Ejemplo: Mostrar ECG inicial al minuto 2 y radiografia de torax solo si el estudiante la solicita.",
+    description: "Especifica si se usará audio, video, PDF o imagen, y en qué momento debe mostrarse.",
+    placeholder: "Ejemplo: Mostrar ECG inicial al minuto 2 y radiografía de tórax solo si el estudiante la solicita.",
     multiline: true,
   },
 };
@@ -142,11 +195,11 @@ function FieldBlock({
   wide?: boolean;
 }) {
   return (
-    <label className={`space-y-2 ${wide ? "lg:col-span-2" : ""}`}>
-      <span className="text-sm font-semibold text-slate-800">{label}</span>
-      <p className="text-xs leading-5 text-slate-500">{description}</p>
+    <div className={`min-w-0 space-y-2 ${wide ? "lg:col-span-2" : ""}`}>
+      <span className="block text-sm font-semibold text-slate-800">{label}</span>
+      <p className="block text-xs leading-5 text-slate-500">{description}</p>
       {children}
-    </label>
+    </div>
   );
 }
 
@@ -155,26 +208,54 @@ function BuilderSection({
   title,
   subtitle,
   expanded,
+  completed = false,
   onToggle,
   children,
+  sectionRef,
 }: {
   index: number;
   title: string;
   subtitle: string;
   expanded: boolean;
+  completed?: boolean;
   onToggle: () => void;
   children: React.ReactNode;
+  sectionRef?: (node: HTMLElement | null) => void;
 }) {
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white/90">
+    <section
+      ref={sectionRef}
+      className={`scroll-mt-24 rounded-3xl border bg-white/90 transition ${
+        expanded
+          ? "border-teal-200 shadow-[0_18px_40px_-32px_rgba(13,148,136,0.55)]"
+          : "border-slate-200"
+      }`}
+    >
       <button
         type="button"
         className="flex w-full items-start justify-between gap-4 px-5 py-5 text-left"
         onClick={onToggle}
       >
         <div>
-          <div className="inline-flex rounded-full bg-teal-700 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white">
-            Paso {index}
+          <div className="flex flex-wrap items-center gap-2">
+            <div
+              className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white ${
+                completed ? "bg-emerald-600" : "bg-teal-700"
+              }`}
+            >
+              {completed ? `Paso ${index} listo` : `Paso ${index}`}
+            </div>
+            <span
+              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${
+                completed
+                  ? "bg-emerald-100 text-emerald-700"
+                  : expanded
+                    ? "bg-teal-100 text-teal-700"
+                    : "bg-slate-100 text-slate-500"
+              }`}
+            >
+              {completed ? "Completo" : expanded ? "Activo" : "Pendiente"}
+            </span>
           </div>
           <h4 className="mt-2 text-xl text-slate-900">{title}</h4>
           <p className="mt-1 text-sm leading-6 text-slate-600">{subtitle}</p>
@@ -192,56 +273,37 @@ const instrumentTypeOptions = [
   {
     value: "lista_cotejo",
     label: "Lista de cotejo",
-    description: "Sirve cuando quieres verificar pasos o conductas observables como cumplido/no cumplido o con puntaje por item.",
+    description: "Sirve cuando quieres verificar pasos o conductas observables como cumplido/no cumplido o con puntaje por ítem.",
   },
   {
     value: "rubrica_simple",
-    label: "Rubrica simple",
-    description: "Sirve cuando necesitas valorar la calidad del desempeno en criterios como estructura, comunicacion o seguridad.",
+    label: "Rúbrica simple",
+    description: "Sirve cuando necesitas valorar la calidad del desempeño en criterios como estructura, comunicación o seguridad.",
   },
   {
     value: "escala_puntaje",
     label: "Escala de puntaje",
-    description: "Sirve cuando prefieres una pauta corta con criterios puntuables sin tanto detalle descriptivo.",
-  },
-];
-
-const builderFlowSteps = [
-  {
-    title: "Elige desde donde nace la estacion",
-    description: "Define si partes desde cero, desde el banco o si estas ajustando una estacion ya creada.",
-  },
-  {
-    title: "Define la base pedagogica",
-    description: "Aclara el nombre, el tipo y el desempeno central que quieres observar en el estudiante.",
-  },
-  {
-    title: "Configura como funcionara",
-    description: "Completa plantilla, pauta, instrucciones, tiempos y formulario segun corresponda.",
-  },
-  {
-    title: "Revisa recursos y guarda",
-    description: "Confirma materiales, multimedia y decide si la estacion queda solo en este ECOE o tambien en el banco.",
+    description: "Sirve cuando prefieres una pauta corta, con criterios puntuables y menos detalle descriptivo.",
   },
 ];
 
 const builderOriginOptions = [
   {
-    label: "Estacion nueva del ECOE",
+    label: "Estación nueva del ECOE",
     description:
-      "Construye una estacion especifica para el ECOE que estas editando ahora.",
+      "Construye una estación específica para el ECOE que estás editando ahora.",
     href: "/stations/builder",
   },
   {
-    label: "Usar una estacion del banco",
+    label: "Usar una estación del banco",
     description:
-      "Carga una estacion estandar ya aprobada o piloteada y adaptala al ECOE actual.",
+      "Carga una estación estándar ya aprobada o piloteada, y adáptala al ECOE actual.",
     href: "/station-bank",
   },
   {
     label: "Crear o editar banco de estaciones",
     description:
-      "Trabaja sobre estaciones reutilizables del hospital o de la institucion.",
+      "Trabaja sobre estaciones reutilizables del hospital o de la institución.",
     href: "/stations/builder?scope=bank",
   },
 ];
@@ -249,7 +311,7 @@ const builderOriginOptions = [
 export default function StationBuilderPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { token, eventId, user } = useAuth();
+  const { token, eventId, user } = useECOE();
   const builderScope = searchParams.get("scope") === "bank" ? "bank" : "ecoe";
   const editingStationId = Number(searchParams.get("stationId") ?? "");
   const isEditing = Number.isFinite(editingStationId) && editingStationId > 0;
@@ -259,10 +321,6 @@ export default function StationBuilderPage() {
   const useBankStationId = Number(searchParams.get("useBankStationId") ?? "");
   const isUsingBankStation =
     builderScope === "ecoe" && Number.isFinite(useBankStationId) && useBankStationId > 0;
-  const { data: ecoeEvent, setData: setECOEEvent } = useApi(
-    () => api.ecoe(eventId, token!) as Promise<Record<string, unknown>>,
-    [eventId, token],
-  );
   const { data: templates } = useApi(
     () => api.templates(token!) as Promise<Record<string, unknown>[]>,
     [token],
@@ -295,46 +353,42 @@ export default function StationBuilderPage() {
   const [selectedAssessmentToolId, setSelectedAssessmentToolId] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
-  const [instrumentDraft, setInstrumentDraft] = useState<InstrumentDraft>({
-    name: "",
-    tool_type: "lista_cotejo",
-    free_observation: true,
-    items: [
-      { label: "", score_per_item: "1" },
-      { label: "", score_per_item: "1" },
-      { label: "", score_per_item: "1" },
-    ],
-  });
-  const [studentQuestions, setStudentQuestions] = useState<StudentQuestion[]>([
-    { prompt: "", type: "single_choice", optionsText: "" },
-  ]);
-  const [timingForm, setTimingForm] = useState({
-    station_time_minutes: "8",
-    transition_time_minutes: "2",
-  });
+  const [instrumentDraft, setInstrumentDraft] = useState<InstrumentDraft>(defaultInstrumentDraft);
+  const [studentQuestions, setStudentQuestions] =
+    useState<StudentQuestion[]>(defaultStudentQuestions);
   const [bankStatus, setBankStatus] = useState("en_diseno");
   const [expandedSection, setExpandedSection] = useState<1 | 2 | 3 | 4>(1);
   const [mediaTargetViewer, setMediaTargetViewer] = useState("estudiante");
   const [mediaMessage, setMediaMessage] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [timingMessage, setTimingMessage] = useState<string | null>(null);
   const [instrumentMessage, setInstrumentMessage] = useState<string | null>(null);
-
-  const stationTime = String(ecoeEvent?.station_time_minutes ?? timingForm.station_time_minutes);
-  const transitionTime = String(
-    ecoeEvent?.transition_time_minutes ?? timingForm.transition_time_minutes,
-  );
+  const [isSaving, setIsSaving] = useState(false);
+  const sectionRefs = useRef<Record<1 | 2 | 3 | 4, HTMLElement | null>>({
+    1: null,
+    2: null,
+    3: null,
+    4: null,
+  });
+  const pendingScrollSectionRef = useRef<1 | 2 | 3 | 4 | null>(null);
   const selectedTemplate =
     (templates ?? []).find((template) => String(template.id) === selectedTemplateId) ?? null;
+  const selectedTemplateConfig =
+    ((selectedTemplate?.default_configuration as Record<string, unknown> | undefined) ?? {});
   const selectedBankStation =
     (bankStations ?? []).find((station) => String(station.id) === String(useBankStationId)) ?? null;
   const selectedTemplateCategory = String(selectedTemplate?.category ?? "").toLowerCase();
   const templateUsesStudentForm =
-    selectedTemplateCategory.includes("formulario") || selectedTemplateCategory.includes("hibrid");
+    Boolean(selectedTemplateConfig.requires_student_form) ||
+    selectedTemplateCategory.includes("formulario") ||
+    selectedTemplateCategory.includes("hibrid");
   const templateUsesMultimedia =
-    selectedTemplateCategory.includes("multimedia") || selectedTemplateCategory.includes("hibrid");
+    Boolean(selectedTemplateConfig.uses_multimedia) ||
+    selectedTemplateCategory.includes("multimedia") ||
+    selectedTemplateCategory.includes("hibrid");
   const templateUsesSimulatedPatient =
-    selectedTemplateCategory.includes("paciente") || selectedTemplateCategory.includes("hibrid");
+    Boolean(selectedTemplateConfig.uses_simulated_patient) ||
+    selectedTemplateCategory.includes("paciente") ||
+    selectedTemplateCategory.includes("hibrid");
   const nextStationNumber = String(
     ((stations ?? []).reduce((max, station) => {
       const value = Number(station.station_number ?? 0);
@@ -343,7 +397,7 @@ export default function StationBuilderPage() {
   );
 
   const bankStatusOptions = [
-    { value: "en_diseno", label: "En diseno" },
+    { value: "en_diseno", label: "En diseño" },
     { value: "piloteada", label: "Piloteada" },
     { value: "aprobada", label: "Aprobada" },
     { value: "archivada", label: "Archivada" },
@@ -352,6 +406,104 @@ export default function StationBuilderPage() {
   const updateField = (key: FormKey, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
   };
+
+  const hasStudentQuestions = studentQuestions.some((question) => {
+    const prompt = question.prompt.trim();
+    if (!prompt) {
+      return false;
+    }
+    if (question.type === "short_text") {
+      return true;
+    }
+    return question.optionsText
+      .split("\n")
+      .map((option) => option.trim())
+      .filter(Boolean).length > 0;
+  });
+
+  const stepCompletion: Record<1 | 2 | 3 | 4, boolean> = {
+    1:
+      Boolean(form.name.trim()) &&
+      Boolean(form.station_type.trim()) &&
+      Boolean(form.expected_outcomes.trim()) &&
+      Boolean(form.student_activity.trim()),
+    2:
+      Boolean(selectedAssessmentToolId) &&
+      (!templateUsesSimulatedPatient || Boolean(selectedPatientId)),
+    3:
+      Boolean(form.pre_entry_instruction.trim()) &&
+      Boolean(form.student_station_instruction.trim()) &&
+      Boolean(form.evaluator_instruction.trim()) &&
+      (!templateUsesStudentForm || hasStudentQuestions),
+    4:
+      Boolean(form.materials.trim()) &&
+      (!templateUsesMultimedia ||
+        Boolean(form.multimedia_notes.trim()) ||
+        Boolean((mediaAssets ?? []).length)),
+  };
+  const completedSteps = (Object.values(stepCompletion).filter(Boolean).length);
+  const completionPercent = Math.round((completedSteps / 4) * 100);
+  const currentBuilderSnapshot = useMemo(
+    () =>
+      createBuilderSnapshot({
+        builderScope,
+        form,
+        selectedAssessmentToolId,
+        selectedTemplateId,
+        selectedPatientId,
+        instrumentDraft,
+        studentQuestions,
+        bankStatus,
+        assessmentMode,
+      }),
+    [
+      assessmentMode,
+      bankStatus,
+      builderScope,
+      form,
+      instrumentDraft,
+      selectedAssessmentToolId,
+      selectedPatientId,
+      selectedTemplateId,
+      studentQuestions,
+    ],
+  );
+  const [savedSnapshot, setSavedSnapshot] = useState(currentBuilderSnapshot);
+  const hasUnsavedChanges = currentBuilderSnapshot !== savedSnapshot;
+  const saveButtonLabel = isSaving
+    ? "Guardando..."
+    : hasUnsavedChanges
+      ? builderScope === "bank"
+        ? isEditingBankStation
+          ? "Guardar cambios en banco"
+          : "Guardar estación en banco"
+        : isEditing
+          ? "Guardar cambios"
+          : "Guardar estación"
+      : "Cambios guardados";
+
+  const builderFlowSteps = [
+    {
+      index: 1 as const,
+      title: "Origen y base",
+      description: "Selecciona el origen y define la identidad pedagógica central de la estación.",
+    },
+    {
+      index: 2 as const,
+      title: "Configuración académica",
+      description: "Activa la plantilla, la pauta y los apoyos que habilitan el flujo real.",
+    },
+    {
+      index: 3 as const,
+      title: "Instrucciones operativas",
+      description: "Redacta con claridad lo que verá el estudiante y cómo registrará el evaluador.",
+    },
+    {
+      index: 4 as const,
+      title: "Recursos y cierre",
+      description: "Completa materiales, multimedia y deja la estación lista para guardarse.",
+    },
+  ];
 
   const updateInstrumentItem = (
     index: number,
@@ -408,19 +560,6 @@ export default function StationBuilderPage() {
     );
   };
 
-  const resetInstrumentDraft = () => {
-    setInstrumentDraft({
-      name: "",
-      tool_type: "lista_cotejo",
-      free_observation: true,
-      items: [
-        { label: "", score_per_item: "1" },
-        { label: "", score_per_item: "1" },
-        { label: "", score_per_item: "1" },
-      ],
-    });
-  };
-
   const buildInstrumentPayload = () => {
     const cleanItems = instrumentDraft.items
       .map((item, index) => ({
@@ -431,7 +570,7 @@ export default function StationBuilderPage() {
       .filter((item) => item.label && item.score_per_item > 0);
 
     if (!instrumentDraft.name.trim()) {
-      throw new Error("Debes escribir un nombre para la pauta de evaluacion.");
+      throw new Error("Debes escribir un nombre para la pauta de evaluación.");
     }
 
     if (!cleanItems.length) {
@@ -464,7 +603,7 @@ export default function StationBuilderPage() {
     });
     setSelectedAssessmentToolId(String(createdInstrument.id));
     setAssessmentMode("existing");
-    setInstrumentMessage("Pauta guardada correctamente y asociada a esta estacion.");
+    setInstrumentMessage("Pauta guardada correctamente y asociada a esta estación.");
     return createdInstrument;
   };
 
@@ -495,13 +634,6 @@ export default function StationBuilderPage() {
         )}
       </FieldBlock>
     );
-  };
-
-  const syncTimingFromEvent = (eventData: Record<string, unknown>) => {
-    setTimingForm({
-      station_time_minutes: String(eventData.station_time_minutes ?? "8"),
-      transition_time_minutes: String(eventData.transition_time_minutes ?? "2"),
-    });
   };
 
   const buildStudentFormDefinition = () => ({
@@ -566,8 +698,8 @@ export default function StationBuilderPage() {
     status: bankStatus,
   });
 
-  const applyStationLikeData = (station: Record<string, unknown>) => {
-    setForm({
+  const applyStationLikeData = useCallback((station: Record<string, unknown>) => {
+    const nextForm = {
       station_number: String(station.station_number ?? nextStationNumber),
       name: String(station.name ?? ""),
       station_type: String(station.station_type ?? "procedimental"),
@@ -580,34 +712,64 @@ export default function StationBuilderPage() {
       max_score: String(station.max_score ?? "0"),
       materials: String(station.materials ?? ""),
       multimedia_notes: String(station.multimedia_notes ?? ""),
-    });
-    setSelectedTemplateId(station.template_id ? String(station.template_id) : "");
-    setSelectedPatientId(station.simulated_patient_id ? String(station.simulated_patient_id) : "");
-    setSelectedAssessmentToolId(
-      station.assessment_tool_id ? String(station.assessment_tool_id) : "",
-    );
+    };
+    const nextSelectedTemplateId = station.template_id ? String(station.template_id) : "";
+    const nextSelectedPatientId = station.simulated_patient_id
+      ? String(station.simulated_patient_id)
+      : "";
+    const nextSelectedAssessmentToolId = station.assessment_tool_id
+      ? String(station.assessment_tool_id)
+      : "";
+    const nextBankStatus = String(station.status ?? "en_diseno");
     setAssessmentMode("existing");
-    setBankStatus(String(station.status ?? "en_diseno"));
-
     const rawQuestions = (
       station.student_form_definition as { questions?: Record<string, unknown>[] } | undefined
     )?.questions;
+    const nextStudentQuestions =
+      Array.isArray(rawQuestions) && rawQuestions.length
+        ? rawQuestions.map((question) => ({
+            prompt: String(question.label ?? ""),
+            type: String(question.type ?? "single_choice"),
+            optionsText: Array.isArray(question.options)
+              ? (question.options as unknown[]).map((option) => String(option)).join("\n")
+              : "",
+          }))
+        : defaultStudentQuestions;
 
-    if (Array.isArray(rawQuestions) && rawQuestions.length) {
-      setStudentQuestions(
-        rawQuestions.map((question) => ({
-          prompt: String(question.label ?? ""),
-          type: String(question.type ?? "single_choice"),
-          optionsText: Array.isArray(question.options)
-            ? (question.options as unknown[]).map((option) => String(option)).join("\n")
-            : "",
-        })),
-      );
-      return;
+    setForm(nextForm);
+    setSelectedTemplateId(nextSelectedTemplateId);
+    setSelectedPatientId(nextSelectedPatientId);
+    setSelectedAssessmentToolId(nextSelectedAssessmentToolId);
+    setBankStatus(nextBankStatus);
+    setStudentQuestions(nextStudentQuestions);
+    setSavedSnapshot(
+      createBuilderSnapshot({
+        builderScope,
+        form: nextForm,
+        selectedAssessmentToolId: nextSelectedAssessmentToolId,
+        selectedTemplateId: nextSelectedTemplateId,
+        selectedPatientId: nextSelectedPatientId,
+        instrumentDraft: defaultInstrumentDraft,
+        studentQuestions: nextStudentQuestions,
+        bankStatus: nextBankStatus,
+        assessmentMode: "existing",
+      }),
+    );
+  }, [builderScope, nextStationNumber]);
+
+  const openSection = useCallback((section: 1 | 2 | 3 | 4) => {
+    pendingScrollSectionRef.current = section;
+    setExpandedSection(section);
+  }, []);
+
+  const confirmDiscardChanges = useCallback(() => {
+    if (!hasUnsavedChanges) {
+      return true;
     }
-
-    setStudentQuestions([{ prompt: "", type: "single_choice", optionsText: "" }]);
-  };
+    return window.confirm(
+      "Tienes cambios sin guardar en esta estación. Si sales ahora, podrías perderlos. ¿Quieres salir de todos modos?",
+    );
+  }, [hasUnsavedChanges]);
 
   useEffect(() => {
     if (user?.role === "evaluador") {
@@ -616,10 +778,17 @@ export default function StationBuilderPage() {
   }, [router, user?.role]);
 
   useEffect(() => {
-    if (ecoeEvent) {
-      syncTimingFromEvent(ecoeEvent);
-    }
-  }, [ecoeEvent]);
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedChanges) {
+        return;
+      }
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedChanges]);
 
   useEffect(() => {
     setForm((current) =>
@@ -655,7 +824,7 @@ export default function StationBuilderPage() {
       return;
     }
     applyStationLikeData(station);
-  }, [builderScope, editingStationId, isEditing, nextStationNumber, stations]);
+  }, [applyStationLikeData, builderScope, editingStationId, isEditing, nextStationNumber, stations]);
 
   useEffect(() => {
     if (!isEditingBankStation || !bankStations?.length) {
@@ -666,7 +835,7 @@ export default function StationBuilderPage() {
       return;
     }
     applyStationLikeData(bankStation);
-  }, [bankStations, editingBankStationId, isEditingBankStation]);
+  }, [applyStationLikeData, bankStations, editingBankStationId, isEditingBankStation]);
 
   useEffect(() => {
     if (!isUsingBankStation || isEditing || builderScope !== "ecoe" || !selectedBankStation) {
@@ -674,9 +843,29 @@ export default function StationBuilderPage() {
     }
     applyStationLikeData(selectedBankStation);
     setMessage(
-      `Estas creando una estacion del ECOE a partir del banco: ${String(selectedBankStation.name ?? "")}.`,
+      `Estás creando una estación del ECOE a partir del banco: ${String(selectedBankStation.name ?? "")}.`,
     );
-  }, [builderScope, isEditing, isUsingBankStation, selectedBankStation]);
+  }, [applyStationLikeData, builderScope, isEditing, isUsingBankStation, selectedBankStation]);
+
+  useEffect(() => {
+    if (pendingScrollSectionRef.current !== expandedSection) {
+      return;
+    }
+
+    const target = sectionRefs.current[expandedSection];
+    if (!target) {
+      return;
+    }
+
+    const scrollToSection = () => {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      pendingScrollSectionRef.current = null;
+    };
+
+    if (typeof window !== "undefined") {
+      window.setTimeout(scrollToSection, 40);
+    }
+  }, [expandedSection]);
 
   if (user?.role === "evaluador") {
     return (
@@ -694,49 +883,84 @@ export default function StationBuilderPage() {
       <section className="space-y-4 rounded-3xl border border-indigo-200 bg-indigo-50/70 p-5">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-700">
-            Ruta de construccion
+            Ruta de trabajo
           </p>
           <h2 className="mt-2 text-2xl text-slate-950">
             {builderScope === "bank"
               ? isEditingBankStation
-                ? "Editar estacion del banco"
+                ? "Editar estación del banco"
                 : "Constructor del banco de estaciones"
               : isEditing
-                ? "Editar estacion"
+                ? "Editar estación"
                 : "Constructor de estaciones"}
           </h2>
           <p className="mt-1 text-sm font-medium text-slate-700">
-            Sigue este orden hacia abajo. Primero define lo grande y luego completa los detalles.
+            Haz clic en cada paso para abrirlo, completarlo y avanzar con menos ruido visual.
           </p>
         </div>
 
-        <div className="space-y-3">
+        <div className="grid gap-3 lg:grid-cols-2">
           {builderFlowSteps.map((step, index) => (
-            <div key={step.title} className="space-y-3">
-              <button
-                type="button"
-                className={`w-full rounded-2xl border px-4 py-4 text-left transition ${
-                  expandedSection === index + 1
-                    ? "border-teal-600 bg-white text-slate-900"
-                    : "border-indigo-200 bg-white/80 text-slate-700 hover:border-indigo-300"
-                }`}
-                onClick={() => setExpandedSection((index + 1) as 1 | 2 | 3 | 4)}
-              >
-                <div className="flex items-start gap-4">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-700 text-sm font-semibold text-white">
-                    {index + 1}
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold">{step.title}</p>
-                    <p className="mt-1 text-xs leading-5 text-slate-600">{step.description}</p>
-                  </div>
+            <button
+              key={step.title}
+              type="button"
+              className={`rounded-2xl border px-4 py-4 text-left transition ${
+                expandedSection === step.index
+                  ? "border-teal-600 bg-white text-slate-900 shadow-sm"
+                  : "border-indigo-200 bg-white/80 text-slate-700 hover:border-indigo-300"
+              }`}
+              onClick={() => openSection(step.index)}
+            >
+              <div className="flex items-start gap-4">
+                <div
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
+                    stepCompletion[step.index]
+                      ? "bg-emerald-600 text-white"
+                      : "bg-teal-700 text-white"
+                  }`}
+                >
+                  {stepCompletion[step.index] ? "✓" : index + 1}
                 </div>
-              </button>
-              {index < builderFlowSteps.length - 1 ? (
-                <div className="flex justify-center text-xl text-indigo-400">↓</div>
-              ) : null}
-            </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold">{step.title}</p>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${
+                        stepCompletion[step.index]
+                          ? "bg-emerald-100 text-emerald-700"
+                          : expandedSection === step.index
+                            ? "bg-teal-100 text-teal-700"
+                            : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {stepCompletion[step.index] ? "Completo" : expandedSection === step.index ? "En curso" : "Pendiente"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">{step.description}</p>
+                </div>
+              </div>
+            </button>
           ))}
+        </div>
+
+        <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                Avance del constructor
+              </p>
+              <p className="mt-1 text-sm text-slate-700">
+                {completedSteps} de 4 pasos completos. El constructor te lleva al inicio del bloque activo.
+              </p>
+            </div>
+            <p className="text-sm font-semibold text-slate-900">{completionPercent}%</p>
+          </div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-500 transition-all"
+              style={{ width: `${completionPercent}%` }}
+            />
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -747,115 +971,28 @@ export default function StationBuilderPage() {
                 : "Modo: creando banco"
               : isUsingBankStation
                 ? "Modo: desde banco hacia ECOE"
-                : isEditing
-                  ? "Modo: editando ECOE"
-                  : "Modo: nueva estacion del ECOE"}
+              : isEditing
+                ? "Modo: editando ECOE"
+                : "Modo: nueva estación del ECOE"}
           </span>
           {builderScope === "bank" ? (
             <span className="rounded-full bg-white px-3 py-1 text-xs text-slate-600">
-              Estacion reutilizable para futuros ECOE
+              Estación reutilizable para futuros ECOE
             </span>
           ) : null}
         </div>
       </section>
-
-      {builderScope === "ecoe" ? (
-        <section className="space-y-4 rounded-3xl border border-[var(--color-border-strong)] bg-[var(--color-bg-soft)] p-5">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-primary)]">
-            Tiempos del ECOE
-          </p>
-          <h4 className="mt-2 text-xl text-slate-900">Define una vez los tiempos oficiales</h4>
-          <p className="mt-1 text-sm text-slate-700">
-            Estos tiempos se aplican a todas las estaciones del mismo ECOE para mantener la congruencia del examen.
-          </p>
-        </div>
-        <form
-          className="grid gap-4 lg:grid-cols-2"
-          onSubmit={async (event) => {
-            event.preventDefault();
-            setTimingMessage(null);
-            try {
-              const updated = (await api.updateECOETiming(
-                eventId,
-                {
-                  station_time_minutes: Number(timingForm.station_time_minutes),
-                  transition_time_minutes: Number(timingForm.transition_time_minutes),
-                  sync_existing_stations: true,
-                },
-                token!,
-              )) as Record<string, unknown>;
-              setECOEEvent(updated);
-              syncTimingFromEvent(updated);
-              setTimingMessage("Los tiempos generales del ECOE fueron actualizados para todas las estaciones.");
-            } catch (error) {
-              setTimingMessage(
-                error instanceof Error ? error.message : "No se pudieron actualizar los tiempos.",
-              );
-            }
-          }}
-        >
-          <FieldBlock
-            label="Tiempo oficial por estacion"
-            description="Minutos disponibles para resolver cada estacion del ECOE."
-          >
-            <input
-              type="number"
-              min="0.1"
-              step="0.1"
-              value={timingForm.station_time_minutes}
-              onChange={(event) =>
-                setTimingForm((current) => ({
-                  ...current,
-                  station_time_minutes: event.target.value,
-                }))
-              }
-            />
-          </FieldBlock>
-          <FieldBlock
-            label="Tiempo oficial de transicion"
-            description="Minutos de cambio entre una estacion y la siguiente."
-          >
-            <input
-              type="number"
-              min="0"
-              step="0.1"
-              value={timingForm.transition_time_minutes}
-              onChange={(event) =>
-                setTimingForm((current) => ({
-                  ...current,
-                  transition_time_minutes: event.target.value,
-                }))
-              }
-            />
-          </FieldBlock>
-          <div className="lg:col-span-2 flex flex-wrap items-center gap-3">
-            <button className="btn-secondary" type="submit">
-              Guardar tiempos generales
-            </button>
-            <p className="text-sm text-slate-600">
-              Tiempo actual del ECOE: {stationTime} min por estacion y {transitionTime} min de transicion.
-            </p>
-          </div>
-          <p className="lg:col-span-2 text-xs leading-5 text-slate-600">
-            Puedes usar fracciones de minuto. Ejemplo: `0.5` equivale a 30 segundos.
-          </p>
-          {timingMessage ? (
-            <p className="lg:col-span-2 text-sm text-slate-700">{timingMessage}</p>
-          ) : null}
-        </form>
-        </section>
-      ) : null}
 
       <form
         className="space-y-6"
         onSubmit={async (event) => {
           event.preventDefault();
           setMessage(null);
+          setIsSaving(true);
           try {
             if (assessmentMode === "create") {
               throw new Error(
-                "Debes guardar primero la pauta de evaluacion antes de guardar los cambios de la estacion.",
+                "Debes guardar primero la pauta de evaluación antes de guardar los cambios de la estación.",
               );
             }
 
@@ -867,7 +1004,7 @@ export default function StationBuilderPage() {
                 !bankPayload.student_form_definition.questions.length
               ) {
                 throw new Error(
-                  "Debes agregar al menos una pregunta en el formulario del estudiante para este tipo de estacion del banco.",
+                  "Debes agregar al menos una pregunta en el formulario del estudiante para este tipo de estación del banco.",
                 );
               }
 
@@ -882,7 +1019,8 @@ export default function StationBuilderPage() {
                     Number(station.id) === editingBankStationId ? updatedBankStation : station,
                   ),
                 );
-                setMessage("Estacion del banco actualizada correctamente.");
+                setMessage("Estación del banco actualizada correctamente.");
+                setSavedSnapshot(currentBuilderSnapshot);
                 return;
               }
 
@@ -891,7 +1029,8 @@ export default function StationBuilderPage() {
                 token!,
               )) as Record<string, unknown>;
               setBankStations((current) => [createdBankStation, ...(current ?? [])]);
-              setMessage("Estacion del banco guardada correctamente.");
+              setMessage("Estación del banco guardada correctamente.");
+              setSavedSnapshot(currentBuilderSnapshot);
               router.replace(`/stations/builder?scope=bank&bankStationId=${String(createdBankStation.id)}`);
               return;
             }
@@ -903,7 +1042,7 @@ export default function StationBuilderPage() {
               !payload.student_form_definition.questions.length
             ) {
               throw new Error(
-                "Debes agregar al menos una pregunta en el formulario del estudiante para este tipo de estacion.",
+                "Debes agregar al menos una pregunta en el formulario del estudiante para este tipo de estación.",
               );
             }
 
@@ -918,7 +1057,8 @@ export default function StationBuilderPage() {
                   Number(station.id) === editingStationId ? updatedStation : station,
                 ),
               );
-              setMessage("Estacion actualizada correctamente.");
+              setMessage("Estación actualizada correctamente.");
+              setSavedSnapshot(currentBuilderSnapshot);
               return;
             }
 
@@ -927,32 +1067,33 @@ export default function StationBuilderPage() {
               token!,
             )) as Record<string, unknown>;
             setStations((current) => [...(current ?? []), createdStation]);
-            setMessage("Estacion creada correctamente.");
-            setForm({ ...defaultForm, station_number: String(Number(nextStationNumber) + 1) });
-            setSelectedAssessmentToolId("");
-            setSelectedTemplateId("");
-            setSelectedPatientId("");
-            setAssessmentMode("existing");
-            setStudentQuestions([{ prompt: "", type: "single_choice", optionsText: "" }]);
-            resetInstrumentDraft();
-            setInstrumentMessage(null);
+            setMessage(
+              "Estación creada correctamente. Ya puedes seguir editándola y cargar recursos si hace falta.",
+            );
+            router.replace(`/stations/builder?stationId=${String(createdStation.id)}`);
           } catch (error) {
             setMessage(error instanceof Error ? error.message : "No se pudo guardar.");
+          } finally {
+            setIsSaving(false);
           }
         }}
       >
         <BuilderSection
           index={1}
-          title="Origen y base de la estacion"
-          subtitle="Primero define desde donde nace esta estacion y luego completa su identidad pedagogica central."
+          title="Origen y base de la estación"
+          subtitle="Primero define desde dónde nace esta estación y luego completa su identidad pedagógica central."
           expanded={expandedSection === 1}
-          onToggle={() => setExpandedSection(1)}
+          completed={stepCompletion[1]}
+          onToggle={() => openSection(1)}
+          sectionRef={(node) => {
+            sectionRefs.current[1] = node;
+          }}
         >
           <div className="mb-5 space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
             <div>
-              <p className="text-sm font-semibold text-slate-900">Origen de la estacion</p>
+              <p className="text-sm font-semibold text-slate-900">Origen de la estación</p>
               <p className="mt-1 text-xs leading-5 text-slate-600">
-                Esta decision ordena el resto del trabajo. Elige desde donde quieres construir.
+                Esta decisión ordena el resto del trabajo. Elige desde dónde quieres construir.
               </p>
             </div>
             <div className="grid gap-3 lg:grid-cols-3">
@@ -966,6 +1107,12 @@ export default function StationBuilderPage() {
                   <Link
                     key={option.label}
                     href={option.href}
+                    onClick={(event) => {
+                      if (confirmDiscardChanges()) {
+                        return;
+                      }
+                      event.preventDefault();
+                    }}
                     className={`rounded-2xl border px-4 py-4 transition ${
                       isActive
                         ? "border-teal-600 bg-white text-slate-900"
@@ -993,8 +1140,8 @@ export default function StationBuilderPage() {
               </FieldBlock>
             ) : (
               <FieldBlock
-                label="Estado de la estacion en el banco"
-                description="Indica si esta estacion esta aun en diseno, si ya fue piloteada o si ya esta aprobada para reutilizacion."
+                label="Estado de la estación en el banco"
+                description="Indica si esta estación aún está en diseño, si ya fue piloteada o si ya está aprobada para reutilización."
               >
                 <select
                   value={bankStatus}
@@ -1012,14 +1159,15 @@ export default function StationBuilderPage() {
             <FieldBlock
               label={fieldConfig.station_type.label}
               description={fieldConfig.station_type.description}
+              wide
             >
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid items-stretch gap-3 md:grid-cols-3">
                 {stationTypeOptions.map((option) => {
                   const checked = form.station_type === option.value;
                   return (
                     <label
                       key={option.value}
-                      className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 text-sm transition ${
+                      className={`flex min-h-[96px] w-full min-w-0 cursor-pointer items-start gap-3 overflow-hidden rounded-2xl border px-4 py-3 text-sm transition ${
                         checked
                           ? "border-[var(--color-primary)] bg-[var(--color-bg-soft)] text-[var(--color-primary-dark)]"
                           : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
@@ -1031,8 +1179,11 @@ export default function StationBuilderPage() {
                         value={option.value}
                         checked={checked}
                         onChange={(event) => updateField("station_type", event.target.value)}
+                        className="mt-1 shrink-0"
                       />
-                      <span className="font-medium">{option.label}</span>
+                      <span className="min-w-0 break-words font-medium leading-5">
+                        {option.label}
+                      </span>
                     </label>
                   );
                 })}
@@ -1057,7 +1208,7 @@ export default function StationBuilderPage() {
             ) : (
               <FieldBlock
                 label="Circuito sugerido"
-                description="Puedes dejar un circuito de referencia aunque despues el ECOE concreto lo cambie."
+                description="Puedes dejar un circuito de referencia, aunque después el ECOE concreto lo cambie."
               >
                 <select
                   value={form.circuit_name}
@@ -1073,15 +1224,28 @@ export default function StationBuilderPage() {
             )}
             {renderTextField("expected_outcomes")}
             {renderTextField("student_activity")}
+            <div className="lg:col-span-2 flex justify-end">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => openSection(2)}
+              >
+                Continuar a configuración
+              </button>
+            </div>
           </div>
         </BuilderSection>
 
         <BuilderSection
           index={2}
-          title="Configuracion academica"
-          subtitle="Aqui decides la plantilla, la pauta y los apoyos que activan el flujo real de la estacion."
+          title="Configuración académica"
+          subtitle="Aquí decides la plantilla, la pauta y los apoyos que activan el flujo real de la estación."
           expanded={expandedSection === 2}
-          onToggle={() => setExpandedSection(2)}
+          completed={stepCompletion[2]}
+          onToggle={() => openSection(2)}
+          sectionRef={(node) => {
+            sectionRefs.current[2] = node;
+          }}
         >
           <div className="grid gap-4 lg:grid-cols-2">
             <FieldBlock
@@ -1100,20 +1264,20 @@ export default function StationBuilderPage() {
                 ))}
               </select>
               <p className="text-xs leading-5 text-slate-500">
-                Aqui se define la modalidad operativa de la estacion, por ejemplo si usara
+                Aquí se define la modalidad operativa de la estación, por ejemplo, si usará
                 formulario del estudiante, apoyo multimedia, paciente simulado o una modalidad
-                hibrida.
+                híbrida.
               </p>
               {selectedTemplate ? (
                 <p className="text-xs leading-5 text-slate-600">
-                  Plantilla seleccionada: {String(selectedTemplate.name)} · categoria{" "}
-                  {String(selectedTemplate.category ?? "sin categoria")}
+                  Plantilla seleccionada: {String(selectedTemplate.name)} · categoría{" "}
+                  {String(selectedTemplate.category ?? "sin categoría")}
                 </p>
               ) : null}
               <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs leading-6 text-slate-600">
-                Esta decision afecta el flujo posterior. Por ejemplo:
+                Esta decisión afecta el flujo posterior. Por ejemplo:
                 {` `}
-                `Hibrida` combina evaluador, formulario y multimedia;
+                `Híbrida` combina evaluador, formulario y multimedia;
                 {` `}
                 `Formulario estudiante` activa preguntas para el estudiante;
                 {` `}
@@ -1121,8 +1285,8 @@ export default function StationBuilderPage() {
               </div>
             </FieldBlock>
             <FieldBlock
-              label="Instrumento de evaluacion"
-              description="Define aqui mismo la pauta que completara el evaluador o reutiliza una ya creada."
+              label="Instrumento de evaluación"
+              description="Define aquí mismo la pauta que completará el evaluador o reutiliza una ya creada."
               wide
             >
               <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
@@ -1145,21 +1309,21 @@ export default function StationBuilderPage() {
                       setInstrumentMessage(null);
                     }}
                   >
-                    Crear pauta en esta estacion
+                    Crear pauta en esta estación
                   </button>
                 </div>
 
                 {assessmentMode === "existing" ? (
                   <div className="space-y-3">
                     <p className="text-sm text-slate-600">
-                      Elige una pauta ya creada si quieres reutilizarla tal como esta.
+                      Elige una pauta ya creada si quieres reutilizarla tal como está.
                     </p>
                     <select
                       name="assessment_tool_id"
                       value={selectedAssessmentToolId}
                       onChange={(event) => setSelectedAssessmentToolId(event.target.value)}
                     >
-                      <option value="">Aun sin instrumento asignado</option>
+                      <option value="">Aún sin instrumento asignado</option>
                       {(instruments ?? []).map((instrument) => (
                         <option key={String(instrument.id)} value={String(instrument.id)}>
                           {String(instrument.name)}
@@ -1167,13 +1331,13 @@ export default function StationBuilderPage() {
                       ))}
                     </select>
                     <p className="text-xs leading-5 text-slate-500">
-                      Las pautas creadas para este ECOE quedan guardadas en el Banco de instrumentos
+                      Las pautas creadas para este ECOE quedan guardadas en el banco de instrumentos
                       y luego puedes reutilizarlas en otras estaciones.
                     </p>
                     <p className="text-xs leading-5 text-slate-500">
                       Si lo que necesitas es que el estudiante responda preguntas en pantalla, eso
                       no se configura en esta pauta. Debes usar la plantilla adecuada y completar el
-                      formulario del estudiante en la seccion correspondiente.
+                      formulario del estudiante en la sección correspondiente.
                     </p>
                     {instrumentMessage ? (
                       <p className="text-sm text-[var(--color-primary)]">{instrumentMessage}</p>
@@ -1184,11 +1348,11 @@ export default function StationBuilderPage() {
                     <div className="flex items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-white/80 p-4">
                       <div className="space-y-1">
                         <p className="text-sm font-semibold text-slate-800">
-                          Construye aqui la pauta exacta que vera el evaluador en esta estacion.
+                          Construye aquí la pauta exacta que verá el evaluador en esta estación.
                         </p>
                         <p className="text-xs leading-5 text-slate-500">
-                          Esta pauta se guardara en el Banco de instrumentos para que despues puedas
-                          reutilizarla o editarla con mas calma.
+                          Esta pauta se guardará en el banco de instrumentos para que después puedas
+                          reutilizarla o editarla con más calma.
                         </p>
                       </div>
                       <button
@@ -1198,7 +1362,7 @@ export default function StationBuilderPage() {
                           setAssessmentMode("existing");
                           setInstrumentMessage(null);
                         }}
-                        aria-label="Cerrar creacion de pauta"
+                        aria-label="Cerrar creación de pauta"
                       >
                         X
                       </button>
@@ -1206,11 +1370,11 @@ export default function StationBuilderPage() {
 
                     <FieldBlock
                       label="Nombre de la pauta"
-                      description="Escribe un nombre claro para reconocer esta pauta despues."
+                      description="Escribe un nombre claro para reconocer esta pauta después."
                     >
                       <input
                         value={instrumentDraft.name}
-                        placeholder="Ejemplo: Lista de cotejo - dolor toracico"
+                        placeholder="Ejemplo: Lista de cotejo - dolor torácico"
                         onChange={(event) =>
                           setInstrumentDraft((current) => ({
                             ...current,
@@ -1222,7 +1386,7 @@ export default function StationBuilderPage() {
 
                     <FieldBlock
                       label="Tipo de pauta"
-                      description="Selecciona la forma en que el evaluador calificara el desempeno."
+                      description="Selecciona la forma en que el evaluador calificará el desempeño."
                     >
                       <select
                         value={instrumentDraft.tool_type}
@@ -1260,16 +1424,16 @@ export default function StationBuilderPage() {
                           }))
                         }
                       />
-                      Permitir observacion libre adicional para el evaluador
+                      Permitir observación libre adicional para el evaluador
                     </label>
 
                     <div className="space-y-3">
                       <div>
                         <h5 className="text-sm font-semibold text-slate-800">
-                          Criterios o items de evaluacion
+                          Criterios o ítems de evaluación
                         </h5>
                         <p className="mt-1 text-xs leading-5 text-slate-500">
-                          Agrega aqui los pasos, conductas o criterios que debera marcar el evaluador.
+                          Agrega aquí los pasos, conductas o criterios que deberá marcar el evaluador.
                         </p>
                       </div>
 
@@ -1340,7 +1504,7 @@ export default function StationBuilderPage() {
                         Guardar pauta
                       </button>
                       <p className="text-sm text-slate-600">
-                        Este paso guarda la pauta y la deja seleccionada para la estacion.
+                        Este paso guarda la pauta y la deja seleccionada para la estación.
                       </p>
                     </div>
                     {instrumentMessage ? (
@@ -1352,13 +1516,13 @@ export default function StationBuilderPage() {
             </FieldBlock>
             <FieldBlock
               label="Paciente simulado asociado"
-              description="Vincula un personaje solo si la estacion requiere interaccion con paciente simulado."
+              description="Vincula un personaje solo si la estación requiere interacción con paciente simulado."
             >
               <select
                 value={selectedPatientId}
                 onChange={(event) => setSelectedPatientId(event.target.value)}
               >
-                <option value="">No aplica para esta estacion</option>
+                <option value="">No aplica para esta estación</option>
                 {(patients ?? []).map((patient) => (
                   <option key={String(patient.id)} value={String(patient.id)}>
                     {String(patient.character_name)}
@@ -1370,7 +1534,7 @@ export default function StationBuilderPage() {
               label={fieldConfig.max_score.label}
               description={
                 assessmentMode === "create"
-                  ? "Este puntaje se calcula automaticamente segun la suma de los criterios de la pauta que estas creando."
+                  ? "Este puntaje se calcula automáticamente según la suma de los criterios de la pauta que estás creando."
                   : fieldConfig.max_score.description
               }
             >
@@ -1384,13 +1548,22 @@ export default function StationBuilderPage() {
             </FieldBlock>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 lg:col-span-2">
               {assessmentMode === "create"
-                ? `El puntaje total de la estacion se calcula automaticamente desde la pauta que estas construyendo: ${form.max_score} puntos.`
-                : "Si reutilizas una pauta existente, revisa que el puntaje total de la estacion coincida con el instrumento seleccionado."}
+                ? `El puntaje total de la estación se calcula automáticamente desde la pauta que estás construyendo: ${form.max_score} puntos.`
+                : "Si reutilizas una pauta existente, revisa que el puntaje total de la estación coincida con el instrumento seleccionado."}
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 lg:col-span-2">
-              Piensa este bloque como el puente entre el diseno docente y la ejecucion real:
-              aqui defines que vera el evaluador, si el estudiante respondera en pantalla y si la
-              estacion dependera de multimedia o paciente simulado.
+              Piensa este bloque como el puente entre el diseño docente y la ejecución real:
+              aquí defines qué verá el evaluador, si el estudiante responderá en pantalla y si la
+              estación dependerá de multimedia o paciente simulado.
+            </div>
+            <div className="lg:col-span-2 flex justify-end">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => openSection(3)}
+              >
+                Continuar a instrucciones
+              </button>
             </div>
           </div>
         </BuilderSection>
@@ -1398,14 +1571,14 @@ export default function StationBuilderPage() {
         {templateUsesStudentForm ? (
           <section className="space-y-4 rounded-3xl border border-indigo-200 bg-indigo-50/70 p-5">
             <div>
-              <h4 className="text-xl text-slate-900">Formulario que respondera el estudiante</h4>
+              <h4 className="text-xl text-slate-900">Formulario que responderá el estudiante</h4>
               <p className="mt-1 text-sm text-slate-700">
                 Esta mini ventana se activa porque la plantilla seleccionada requiere respuesta del
-                estudiante en interfaz. Define aqui las preguntas que vera dentro de la estacion.
+                estudiante en interfaz. Define aquí las preguntas que verá dentro de la estación.
               </p>
             </div>
             <div className="rounded-2xl border border-indigo-200 bg-white/90 px-4 py-3 text-sm leading-6 text-slate-700">
-              Lo que escribas aqui es exactamente lo que luego aparecera en la vista del
+              Lo que escribas aquí es exactamente lo que luego aparecerá en la vista del
               estudiante. Conviene usar preguntas cortas, claras y sin dobles interpretaciones.
             </div>
             <div className="space-y-4">
@@ -1421,7 +1594,7 @@ export default function StationBuilderPage() {
                     <textarea
                       rows={3}
                       value={question.prompt}
-                      placeholder="Ejemplo: Cual es el diagnostico sindromatico mas probable en este caso?"
+                      placeholder="Ejemplo: ¿Cuál es el diagnóstico sindromático más probable en este caso?"
                       onChange={(event) =>
                         updateStudentQuestion(index, "prompt", event.target.value)
                       }
@@ -1430,7 +1603,7 @@ export default function StationBuilderPage() {
                   <div className="space-y-4">
                     <FieldBlock
                       label="Tipo de respuesta"
-                      description="Selecciona el formato de respuesta que vera el estudiante."
+                      description="Selecciona el formato de respuesta que verá el estudiante."
                     >
                       <select
                         value={question.type}
@@ -1438,20 +1611,20 @@ export default function StationBuilderPage() {
                           updateStudentQuestion(index, "type", event.target.value)
                         }
                       >
-                        <option value="single_choice">Seleccion unica</option>
-                        <option value="multiple_choice">Seleccion multiple</option>
+                        <option value="single_choice">Selección única</option>
+                        <option value="multiple_choice">Selección múltiple</option>
                         <option value="short_text">Respuesta breve</option>
                       </select>
                     </FieldBlock>
                     {question.type !== "short_text" ? (
                       <FieldBlock
                         label="Opciones de respuesta"
-                        description="Escribe una opcion por linea en el orden en que deberian aparecer."
+                        description="Escribe una opción por línea, en el orden en que deberían aparecer."
                       >
                         <textarea
                           rows={4}
                           value={question.optionsText}
-                          placeholder={"Opcion A\nOpcion B\nOpcion C"}
+                          placeholder={"Opción A\nOpción B\nOpción C"}
                           onChange={(event) =>
                             updateStudentQuestion(index, "optionsText", event.target.value)
                           }
@@ -1481,7 +1654,7 @@ export default function StationBuilderPage() {
                   onClick={async () => {
                     if (!isEditing) {
                       setMessage(
-                        "Para guardar solo el formulario del estudiante, primero guarda la estacion y luego vuelve a editarla.",
+                        "Para guardar solo el formulario del estudiante, primero guarda la estación y luego vuelve a editarla.",
                       );
                       return;
                     }
@@ -1498,6 +1671,7 @@ export default function StationBuilderPage() {
                         ),
                       );
                       setMessage("Formulario del estudiante guardado correctamente.");
+                      setSavedSnapshot(currentBuilderSnapshot);
                     } catch (error) {
                       setMessage(
                         error instanceof Error
@@ -1510,7 +1684,7 @@ export default function StationBuilderPage() {
                   Guardar formulario
                 </button>
                 <p className="text-sm text-slate-600">
-                  Este formulario queda guardado dentro de la estacion y se usara despues en la
+                  Este formulario queda guardado dentro de la estación y se usará después en la
                   interfaz del estudiante.
                 </p>
               </div>
@@ -1520,26 +1694,36 @@ export default function StationBuilderPage() {
 
         <BuilderSection
           index={3}
-          title="Instrucciones y tiempos"
-          subtitle="Define lo que guiara al estudiante y al evaluador durante la ejecucion real. Los tiempos ya estan fijados a nivel general para todo el ECOE."
+          title="Instrucciones operativas"
+          subtitle="Define lo que guiará al estudiante y al evaluador durante la ejecución real, sin mezclarlo con configuraciones generales del ECOE."
           expanded={expandedSection === 3}
-          onToggle={() => setExpandedSection(3)}
+          completed={stepCompletion[3]}
+          onToggle={() => openSection(3)}
+          sectionRef={(node) => {
+            sectionRefs.current[3] = node;
+          }}
         >
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 lg:col-span-2">
-              Esta estacion heredara automaticamente el tiempo oficial del ECOE: {stationTime} minutos de resolucion y {transitionTime} minutos de transicion.
-            </div>
             {renderTextField("pre_entry_instruction")}
             {renderTextField("student_station_instruction")}
             <div className="lg:col-span-2">{renderTextField("evaluator_instruction")}</div>
             <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 lg:col-span-2">
-              Regla practica:
+              Regla práctica:
               {` `}
-              `Instruccion previa de ingreso` es lo que orienta antes de entrar;
+              `Instrucción previa de ingreso` es lo que orienta antes de entrar;
               {` `}
-              `Instrucciones dentro de la estacion` es la orden operativa principal del estudiante;
+              `Instrucciones dentro de la estación` es la orden operativa principal del estudiante;
               {` `}
-              `Guia para el evaluador` es lo que ordena la observacion y el registro.
+              `Guía para el evaluador` es lo que ordena la observación y el registro.
+            </div>
+            <div className="lg:col-span-2 flex justify-end">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => openSection(4)}
+              >
+                Continuar a recursos
+              </button>
             </div>
           </div>
         </BuilderSection>
@@ -1547,25 +1731,29 @@ export default function StationBuilderPage() {
         <BuilderSection
           index={4}
           title="Recursos y contingencia"
-          subtitle="Cierra aqui todo lo necesario para montar la estacion sin incertidumbre el dia del ECOE."
+          subtitle="Cierra aquí todo lo necesario para montar la estación sin incertidumbre el día del ECOE."
           expanded={expandedSection === 4}
-          onToggle={() => setExpandedSection(4)}
+          completed={stepCompletion[4]}
+          onToggle={() => openSection(4)}
+          sectionRef={(node) => {
+            sectionRefs.current[4] = node;
+          }}
         >
           <div className="grid gap-4 lg:grid-cols-2">
             {renderTextField("materials")}
             {renderTextField("multimedia_notes")}
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700">
-            Este bloque no solo documenta materiales: tambien ayuda a que coordinacion, docente y
-            evaluador sepan que debe estar disponible, que archivo se mostrara y que hacer si falta
-            algun recurso.
+            Este bloque no solo documenta materiales: también ayuda a que coordinación, docente y
+            evaluador sepan qué debe estar disponible, qué archivo se mostrará y qué hacer si falta
+            algún recurso.
           </div>
           <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5">
             <div>
-              <h5 className="text-lg font-semibold text-slate-900">Archivos multimedia de la estacion</h5>
+              <h5 className="text-lg font-semibold text-slate-900">Archivos multimedia de la estación</h5>
               <p className="mt-1 text-sm text-slate-600">
-                Puedes cargar audio, video, PDF, imagenes y documentos Word para usarlos en la
-                estacion. Si la estacion aun no ha sido guardada, primero debes guardarla y luego
+                Puedes cargar audio, video, PDF, imágenes y documentos Word para usarlos en la
+                estación. Si la estación aún no ha sido guardada, primero debes guardarla y luego
                 volver a editarla para adjuntar archivos.
               </p>
             </div>
@@ -1575,7 +1763,7 @@ export default function StationBuilderPage() {
                 <div className="grid gap-4 md:grid-cols-[0.7fr_1.3fr]">
                   <FieldBlock
                     label="Visible para"
-                    description="Indica a quien se le mostrara este recurso dentro del flujo."
+                    description="Indica a quién se le mostrará este recurso dentro del flujo."
                   >
                     <select
                       value={mediaTargetViewer}
@@ -1584,12 +1772,12 @@ export default function StationBuilderPage() {
                       <option value="estudiante">Estudiante</option>
                       <option value="evaluador">Evaluador</option>
                       <option value="paciente_simulado">Paciente simulado</option>
-                      <option value="coordinacion">Coordinacion</option>
+                      <option value="coordinacion">Coordinación</option>
                     </select>
                   </FieldBlock>
                   <FieldBlock
                     label="Cargar archivo"
-                    description="Formatos sugeridos: audio, video, PDF, imagenes y documentos .doc o .docx."
+                    description="Formatos sugeridos: audio, video, PDF, imágenes y documentos .doc o .docx."
                   >
                     <input
                       type="file"
@@ -1644,7 +1832,7 @@ export default function StationBuilderPage() {
                           className="btn-secondary"
                           onClick={async () => {
                             const confirmed = window.confirm(
-                              "Vas a borrar este archivo multimedia de la estacion. ¿Quieres continuar?",
+                              "Vas a borrar este archivo multimedia de la estación. ¿Quieres continuar?",
                             );
                             if (!confirmed) {
                               return;
@@ -1673,7 +1861,7 @@ export default function StationBuilderPage() {
                     ))
                   ) : (
                     <p className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-                      Aun no hay archivos multimedia cargados para esta estacion.
+                      Aún no hay archivos multimedia cargados para esta estación.
                     </p>
                   )}
                 </div>
@@ -1683,23 +1871,41 @@ export default function StationBuilderPage() {
             ) : (
               <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                 {builderScope === "bank"
-                  ? "La carga multimedia sigue asociada a estaciones del ECOE. En el banco deja aqui las indicaciones y define despues los archivos concretos en la estacion operativa."
-                  : "Guarda primero la estacion y luego vuelve a abrirla para cargar archivos multimedia."}
+                  ? "La carga multimedia sigue asociada a estaciones del ECOE. En el banco, deja aquí las indicaciones y define después los archivos concretos en la estación operativa."
+                  : "Guarda primero la estación y luego vuelve a abrirla para cargar archivos multimedia."}
               </p>
             )}
           </div>
         </BuilderSection>
 
         <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4">
-          <button className="btn-primary">
-            {builderScope === "bank"
-              ? isEditingBankStation
-                ? "Guardar cambios en banco"
-                : "Guardar estacion en banco"
-              : isEditing
-                ? "Guardar cambios"
-                : "Guardar estacion"}
+          <button
+            className={`btn-primary transition-all ${
+              isSaving
+                ? "cursor-wait opacity-90"
+                : hasUnsavedChanges
+                  ? "shadow-[0_12px_30px_-18px_rgba(13,148,136,0.75)]"
+                  : "border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700"
+            }`}
+            disabled={isSaving}
+          >
+            {saveButtonLabel}
           </button>
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+              isSaving
+                ? "bg-slate-100 text-slate-600"
+                : hasUnsavedChanges
+                  ? "bg-amber-100 text-amber-800"
+                  : "bg-emerald-100 text-emerald-800"
+            }`}
+          >
+            {isSaving
+              ? "Guardando ahora"
+              : hasUnsavedChanges
+                ? "Hay cambios pendientes"
+                : "Todo guardado"}
+          </span>
           {builderScope === "ecoe" ? (
             <button
               type="button"
@@ -1709,7 +1915,7 @@ export default function StationBuilderPage() {
                 try {
                   if (assessmentMode === "create") {
                     throw new Error(
-                      "Debes guardar primero la pauta de evaluacion antes de guardar esta estacion en el banco.",
+                      "Debes guardar primero la pauta de evaluación antes de guardar esta estación en el banco.",
                     );
                   }
                   const createdBankStation = (await api.createStationBank(
@@ -1717,12 +1923,12 @@ export default function StationBuilderPage() {
                     token!,
                   )) as Record<string, unknown>;
                   setBankStations((current) => [createdBankStation, ...(current ?? [])]);
-                  setMessage("La estacion fue guardada tambien en el banco de estaciones.");
+                  setMessage("La estación fue guardada también en el banco de estaciones.");
                 } catch (error) {
                   setMessage(
                     error instanceof Error
                       ? error.message
-                      : "No se pudo guardar la estacion en el banco.",
+                      : "No se pudo guardar la estación en el banco.",
                   );
                 }
               }}
@@ -1733,29 +1939,35 @@ export default function StationBuilderPage() {
           <Link
             href={builderScope === "bank" ? "/station-bank" : "/stations"}
             className="btn-secondary"
+            onClick={(event) => {
+              if (confirmDiscardChanges()) {
+                return;
+              }
+              event.preventDefault();
+            }}
           >
             Volver al listado
           </Link>
           <p className="text-sm text-slate-500">
             {builderScope === "bank"
-              ? "Las estaciones del banco quedan disponibles para reutilizacion posterior en ECOE reales y pueden marcarse como piloteadas o aprobadas."
+              ? "Las estaciones del banco quedan disponibles para reutilización posterior en ECOE reales y pueden marcarse como piloteadas o aprobadas."
               : isEditing
-                ? "Los cambios se guardan sobre la estacion existente, manteniendo su lugar en el circuito."
-                : "La estacion se crea en estado de diseno para que puedas seguir afinandola despues."}
+                ? "Los cambios se guardan sobre la estación existente, manteniendo su lugar en el circuito."
+                : "La estación se crea en estado de diseño para que puedas seguir afinándola después."}
           </p>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-700">
           Antes de cerrar esta pantalla, confirma mentalmente estas cuatro preguntas:
           {` `}
-          el estudiante sabe exactamente que debe hacer;
+          ¿el estudiante sabe exactamente qué debe hacer?;
           {` `}
-          el evaluador sabe exactamente que debe observar;
+          ¿el evaluador sabe exactamente qué debe observar?;
           {` `}
-          la pauta o formulario quedaron guardados;
+          ¿la pauta o el formulario quedaron guardados?;
           {` `}
-          y los recursos necesarios quedaron descritos o cargados.
+          ¿y los recursos necesarios quedaron descritos o cargados?
         </div>
-        {message ? <p className="text-sm text-slate-600">{message}</p> : null}
+        <StatusNotice message={message} />
       </form>
     </SectionCard>
   );

@@ -6,7 +6,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "Proyecto Tecnologico ECOE"
     api_prefix: str = "/api"
-    secret_key: str = "ecoe-secret-key"
+    # SECURITY: secret_key MUST be set via .env in production.
+    # The default below is only for local development with Docker Compose.
+    secret_key: str = ""
     access_token_expire_minutes: int = 60 * 24
     auth_cookie_name: str = "ecoe_session"
     auth_cookie_samesite: str = "lax"
@@ -14,12 +16,13 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000,http://frontend:3000"
     storage_path: str = "/app/storage"
     default_timer_sound: str = "/app/storage/default-bell.mp3"
-    creator_password: str = "change-me-creator"
-    coeditor_password: str = "change-me-coeditor"
-    evaluator_password: str = "change-me-evaluator"
-    student_password: str = "change-me-student"
-    coordinator_password: str = "change-me-coordinator"
-    timer_password: str = "change-me-timer"
+    # Default passwords are empty — set them via .env or docker-compose env.
+    creator_password: str = ""
+    coeditor_password: str = ""
+    evaluator_password: str = ""
+    student_password: str = ""
+    coordinator_password: str = ""
+    timer_password: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

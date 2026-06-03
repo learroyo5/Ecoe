@@ -13,6 +13,11 @@ def login_user(db: Session, email: str, password: str) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales invalidas",
         )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="La cuenta se encuentra inactiva",
+        )
     return {
         "access_token": None,
         "token_type": "bearer",

@@ -1,3 +1,5 @@
+/** Core domain types for the ECOE platform. */
+
 export type UserSession = {
   id: number;
   email: string;
@@ -25,6 +27,160 @@ export type ECOEEvent = {
   updated_at: string;
 };
 
+export type Student = {
+  id: number;
+  ecoe_event_id: number;
+  name: string;
+  last_name: string;
+  rut: string;
+  email: string;
+  ecoe_number: string;
+  group_name: string;
+  circuit_name: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StaffAssignment = {
+  id: number;
+  ecoe_event_id: number;
+  name: string;
+  last_name: string;
+  email: string;
+  role_code: string;
+  station_ids: number[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type Station = {
+  id: number;
+  ecoe_event_id: number;
+  template_id: number | null;
+  assessment_tool_id: number | null;
+  simulated_patient_id: number | null;
+  station_number: number;
+  name: string;
+  station_type: string;
+  circuit_name: string;
+  station_time_minutes: number;
+  transition_time_minutes: number;
+  expected_outcomes: string;
+  student_activity: string;
+  student_station_instruction: string;
+  pre_entry_instruction: string;
+  evaluator_instruction: string;
+  requires_evaluator: boolean;
+  requires_student_form: boolean;
+  uses_multimedia: boolean;
+  uses_simulated_patient: boolean;
+  uses_physical_resources: boolean;
+  max_score: number;
+  materials: string;
+  clinical_equipment: string;
+  simulator: string;
+  ambience: string;
+  multimedia_notes: string;
+  student_form_definition: Record<string, unknown>;
+  contingency_ready: boolean;
+  status: string;
+};
+
+export type AssessmentTool = {
+  id: number;
+  name: string;
+  tool_type: string;
+  max_score: number;
+  free_observation: boolean;
+  items?: AssessmentItem[];
+};
+
+export type AssessmentItem = {
+  id: number;
+  label: string;
+  score_per_item: number;
+  order_index: number;
+};
+
+export type StationTemplate = {
+  id: number;
+  name: string;
+  category: string;
+  description: string;
+  default_configuration: Record<string, unknown>;
+};
+
+export type SimulatedPatient = {
+  id: number;
+  character_name: string;
+  summary_profile: string;
+  base_story: string;
+  key_answers: string;
+  emotional_tone: string;
+  special_instructions: string;
+};
+
+export type StationBank = {
+  id: number;
+  template_id: number | null;
+  assessment_tool_id: number | null;
+  simulated_patient_id: number | null;
+  name: string;
+  station_type: string;
+  circuit_name: string;
+  expected_outcomes: string;
+  student_activity: string;
+  pre_entry_instruction: string;
+  evaluator_instruction: string;
+  requires_evaluator: boolean;
+  requires_student_form: boolean;
+  uses_multimedia: boolean;
+  uses_simulated_patient: boolean;
+  max_score: number;
+  status: string;
+};
+
+export type PilotRun = {
+  id: number;
+  ecoe_event_id: number;
+  name: string;
+  scope: string;
+  archived: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LiveSession = {
+  id: number;
+  ecoe_event_id: number;
+  mode: string;
+  status: string;
+  station_time_seconds: number;
+  transition_time_seconds: number;
+  current_station_index: number;
+  remaining_seconds: number;
+};
+
+export type Incident = {
+  id: number;
+  ecoe_event_id: number;
+  station_id: number | null;
+  title: string;
+  detail: string;
+  severity: string;
+};
+
+export type MediaAsset = {
+  id: number;
+  filename: string;
+  original_name: string;
+  content_type: string;
+  target_viewer: string;
+  station_id: number | null;
+  file_url: string;
+};
+
 export type DashboardSummary = {
   active_ecoe: {
     id: number;
@@ -34,16 +190,7 @@ export type DashboardSummary = {
     course_name: string;
   };
   totals: Record<string, number>;
-  validation: {
-    can_pilot: boolean;
-    can_publish: boolean;
-    can_start_live: boolean;
-    warnings: string[];
-    students_count: number;
-    station_count: number;
-    pilot_count: number;
-    complete_stations: number;
-  };
+  validation: ECOEValidation;
   timeline: Array<{ label: string; status: string; circuit: string }>;
   live_panel: {
     status: string;
@@ -51,3 +198,146 @@ export type DashboardSummary = {
     remaining_seconds: number;
   };
 };
+
+export type ECOEValidation = {
+  students_count: number;
+  station_count: number;
+  pilot_count: number;
+  complete_stations: number;
+  can_pilot: boolean;
+  can_publish: boolean;
+  can_start_live: boolean;
+  warnings: string[];
+  blockers: string[];
+  pilot_checks: CheckItem[];
+  publication_checks: CheckItem[];
+  live_checks: CheckItem[];
+  station_issues: StationIssue[];
+};
+
+export type CheckItem = {
+  label: string;
+  ok: boolean;
+  detail: string;
+};
+
+export type StationIssue = {
+  station_id: number;
+  station_number: number;
+  station_name: string;
+  circuit_name: string;
+  ready_for_pilot: boolean;
+  blockers: string[];
+  warnings: string[];
+};
+
+export type EvaluatorContext = {
+  assignment: StaffAssignment | null;
+  stations: Station[];
+  active_checkin: ActiveCheckin | null;
+};
+
+export type ActiveCheckin = {
+  id: number;
+  station_id: number;
+  student_id: number;
+  status: string;
+  student_name: string;
+  student_ecoe_number: string;
+  station_name: string;
+  station_number: number;
+  assessment_tool: Record<string, unknown> | null;
+  evaluator_instruction: string;
+  confirmed_at: string;
+  station_time_minutes: number;
+  evaluator_submission_exists: boolean;
+  student_response_exists: boolean;
+};
+
+export type StudentAccessContext = {
+  checkin_id: number;
+  student_id: number;
+  student_name: string;
+  student_ecoe_number: string;
+  station_id: number;
+  station_name: string;
+  station_number: number;
+  student_activity: string;
+  pre_entry_instruction: string;
+  student_station_instruction: string;
+  student_form_definition: Record<string, unknown>;
+  media_assets: MediaAsset[];
+  station_time_minutes: number;
+  confirmed_at: string;
+  student_response_exists: boolean;
+};
+
+export type TraceabilityReport = {
+  summary: {
+    active_students: number;
+    stations: number;
+    expected_evaluations: number;
+    expected_student_submissions: number;
+    confirmed_checkins: number;
+    evaluator_submissions: number;
+    student_submissions: number;
+    pilot_runs: number;
+  };
+  student_traceability: StudentTraceability[];
+  station_traceability: StationTraceability[];
+  activity_log: ActivityLogEntry[];
+};
+
+export type StudentTraceability = {
+  id: number;
+  student_id: number;
+  ecoe_number: string;
+  student_name: string;
+  checkins_confirmed: number;
+  evaluator_submissions: number;
+  student_submissions: number;
+  missing_evaluations: number;
+  missing_student_submissions: number;
+  completion_status: string;
+  last_activity_at: string | null;
+  total_score: number;
+  percentage: number;
+  equivalent_grade: number;
+};
+
+export type StationTraceability = {
+  id: number;
+  station_id: number;
+  station_number: number;
+  station_name: string;
+  circuit_name: string;
+  status: string;
+  assigned_evaluator: string;
+  checkins_count: number;
+  evaluations_count: number;
+  student_submissions_count: number;
+  last_activity_at: string | null;
+};
+
+export type ActivityLogEntry = {
+  timestamp: string;
+  type: string;
+  label: string;
+  detail: string;
+  actor: string;
+  mode: string;
+};
+
+export type ECOEResult = {
+  student_id: number;
+  student_name: string;
+  ecoe_number: string;
+  total_score: number;
+  max_score: number;
+  percentage: number;
+  equivalent_grade: number;
+};
+
+export type ResultsResponse = {
+  results: ECOEResult[];
+} & TraceabilityReport;

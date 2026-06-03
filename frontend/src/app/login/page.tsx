@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { useAuth } from "@/lib/auth";
+import { useECOE } from "@/lib/auth";
 
 export default function LoginPage() {
-  const { login, token, user, ready } = useAuth();
+  const { login, token, user, ready } = useECOE();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

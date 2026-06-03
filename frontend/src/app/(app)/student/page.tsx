@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useECOE } from "@/lib/auth";
+import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
+import { EmptyState } from "@/components/toast";
 
 type StudentFormQuestion = {
   label: string;
@@ -24,14 +26,15 @@ type ResolvedMediaAsset = MediaAsset & {
 };
 
 export default function StudentPage() {
-  const { token, eventId } = useAuth();
+  const { token, eventId } = useECOE();
   const [ecoeNumber, setEcoeNumber] = useState("");
   const [context, setContext] = useState<Record<string, unknown> | null>(null);
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [message, setMessage] = useState<string | null>(null);
-  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
-  const [submitted, setSubmitted] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [autoSubmitting, setAutoSubmitting] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [manualSubmitting, setManualSubmitting] = useState(false);
   const [resolvedMediaAssets, setResolvedMediaAssets] = useState<ResolvedMediaAsset[]>([]);
   const [expandedImage, setExpandedImage] = useState<ResolvedMediaAsset | null>(null);
   const autoSubmitAttemptedRef = useRef(false);
@@ -39,6 +42,7 @@ export default function StudentPage() {
   const confirmedAt = String(context?.confirmed_at ?? "");
   const timerDurationSeconds = Number(context?.station_time_minutes ?? 0) * 60;
   const draftStorageKey = context ? `student-station-draft-${String(context.checkin_id)}` : "";
+  const submitted = Boolean(context?.student_response_exists);
   const questions = useMemo(() => {
     const rawQuestions = (
       context?.student_form_definition as { questions?: StudentFormQuestion[] } | undefined
@@ -103,29 +107,6 @@ export default function StudentPage() {
   }, [expandedImage]);
 
   useEffect(() => {
-    setSubmitted(Boolean(context?.student_response_exists));
-    autoSubmitAttemptedRef.current = Boolean(context?.student_response_exists);
-  }, [context]);
-
-  useEffect(() => {
-    if (!draftStorageKey || typeof window === "undefined") {
-      setAnswers({});
-      return;
-    }
-    const rawDraft = window.localStorage.getItem(draftStorageKey);
-    if (!rawDraft) {
-      setAnswers({});
-      return;
-    }
-    try {
-      const parsedDraft = JSON.parse(rawDraft) as Record<string, string | string[]>;
-      setAnswers(parsedDraft);
-    } catch {
-      window.localStorage.removeItem(draftStorageKey);
-    }
-  }, [draftStorageKey]);
-
-  useEffect(() => {
     if (!draftStorageKey || typeof window === "undefined" || submitted) {
       return;
     }
@@ -134,45 +115,50 @@ export default function StudentPage() {
 
   useEffect(() => {
     if (!context || !confirmedAt || !timerDurationSeconds) {
-      setRemainingSeconds(timerDurationSeconds || null);
       return;
     }
 
-    const updateTimer = () => {
-      const elapsedSeconds = Math.max(
-        0,
-        Math.floor((Date.now() - new Date(confirmedAt).getTime()) / 1000),
-      );
-      setRemainingSeconds(Math.max(timerDurationSeconds - elapsedSeconds, 0));
-    };
-
-    updateTimer();
-    const intervalId = window.setInterval(updateTimer, 1000);
+    const intervalId = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
     return () => window.clearInterval(intervalId);
   }, [context, confirmedAt, timerDurationSeconds]);
 
+  const remainingSeconds = useMemo(() => {
+    if (!context) {
+      return null;
+    }
+    if (!confirmedAt || !timerDurationSeconds) {
+      return timerDurationSeconds || null;
+    }
+    const elapsedSeconds = Math.max(
+      0,
+      Math.floor((nowMs - new Date(confirmedAt).getTime()) / 1000),
+    );
+    return Math.max(timerDurationSeconds - elapsedSeconds, 0);
+  }, [confirmedAt, context, nowMs, timerDurationSeconds]);
+
   const timerLabel = useMemo(() => {
     if (remainingSeconds === null) {
-      return "Sin cronometro activo";
+      return "Sin cronómetro activo";
     }
     const minutes = Math.floor(remainingSeconds / 60);
     const seconds = remainingSeconds % 60;
     return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   }, [remainingSeconds]);
 
-  const resetToIdentification = (notice: string) => {
+  const resetToIdentification = useCallback((notice: string) => {
     setContext(null);
-    setSubmitted(false);
     setAutoSubmitting(false);
     setExpandedImage(null);
     autoSubmitAttemptedRef.current = false;
     setAnswers({});
     setEcoeNumber("");
-    setRemainingSeconds(null);
+    setNowMs(Date.now());
     setMessage(notice);
-  };
+  }, []);
 
-  const submitResponse = async (reason: "manual" | "automatico") => {
+  const submitResponse = useCallback(async (reason: "manual" | "automatico") => {
     if (!context || submitted) {
       return;
     }
@@ -193,24 +179,27 @@ export default function StudentPage() {
     }
     resetToIdentification(
       reason === "automatico"
-        ? "Se acabo el tiempo de la estacion. Tu respuesta fue enviada automaticamente."
-        : "Respuesta enviada correctamente para tu estacion confirmada.",
+        ? "Se acabó el tiempo de la estación. Tu respuesta fue enviada automáticamente."
+        : "Respuesta enviada correctamente para tu estación confirmada.",
     );
-  };
+  }, [answers, context, draftStorageKey, eventId, resetToIdentification, submitted, token]);
 
   useEffect(() => {
     if (!context || submitted || autoSubmitting || remainingSeconds !== 0 || autoSubmitAttemptedRef.current) {
       return;
     }
     autoSubmitAttemptedRef.current = true;
-    setAutoSubmitting(true);
-    submitResponse("automatico")
-      .catch((error) => {
-        setMessage(error instanceof Error ? error.message : "No se pudo enviar automaticamente.");
-        autoSubmitAttemptedRef.current = false;
-      })
-      .finally(() => setAutoSubmitting(false));
-  }, [autoSubmitting, context, remainingSeconds, submitted]);
+    const timeoutId = window.setTimeout(() => {
+      setAutoSubmitting(true);
+      submitResponse("automatico")
+        .catch((error) => {
+          setMessage(error instanceof Error ? error.message : "No se pudo enviar automáticamente.");
+          autoSubmitAttemptedRef.current = false;
+        })
+        .finally(() => setAutoSubmitting(false));
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [autoSubmitting, context, remainingSeconds, submitResponse, submitted]);
 
   const updateAnswer = (questionIndex: number, value: string | string[]) => {
     setAnswers((current) => ({
@@ -280,10 +269,22 @@ export default function StudentPage() {
     );
   };
 
+  if (!context) {
+    return (
+      <SectionCard title="Interfaz del estudiante" subtitle="Ingresa tu número ECOE para comenzar.">
+        <EmptyState
+          icon="🎓"
+          title="Bienvenido al ECOE"
+          description="Ingresa tu número ECOE asignado para ver las instrucciones de tu estación actual. El evaluador debe confirmar tu ingreso primero."
+        />
+      </SectionCard>
+    );
+  }
+
   return (
     <SectionCard
       title="Interfaz del estudiante"
-      subtitle="Primero verifica tu Numero ECOE y tu nombre; solo despues de la confirmacion del evaluador se habilita el envio."
+      subtitle="Primero verifica tu número ECOE y tu nombre; solo después de la confirmación del evaluador se habilita el envío."
     >
       {expandedImage ? (
         <div
@@ -315,19 +316,19 @@ export default function StudentPage() {
         <section className="space-y-4 rounded-3xl border border-slate-200 bg-white/80 p-5">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Verificacion de ingreso
+              Verificación de ingreso
             </p>
             <h3 className="mt-2 text-2xl text-slate-900">Confirma tu identidad</h3>
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Tiempo visible de la estacion
+              Tiempo visible de la estación
             </p>
             <p className="mt-2 text-3xl font-semibold text-slate-900">{timerLabel}</p>
             <p className="mt-2 text-sm text-slate-600">
-              Tus respuestas se guardan localmente mientras escribes y se enviaran automaticamente
-              al terminar el tiempo si aun no las has enviado.
+              Tus respuestas se guardan localmente mientras escribes y se enviarán automáticamente
+              al terminar el tiempo si aún no las has enviado.
             </p>
           </div>
 
@@ -336,29 +337,52 @@ export default function StudentPage() {
             onSubmit={async (event) => {
               event.preventDefault();
               setMessage(null);
+              setVerifying(true);
               try {
                 const response = (await api.studentAccess(
                   { ecoe_event_id: eventId, ecoe_number: ecoeNumber },
                   token!,
                 )) as Record<string, unknown>;
+                const nextDraftStorageKey = `student-station-draft-${String(response.checkin_id)}`;
+                let nextAnswers: Record<string, string | string[]> = {};
+
+                if (typeof window !== "undefined" && response.checkin_id) {
+                  const rawDraft = window.localStorage.getItem(nextDraftStorageKey);
+                  if (rawDraft) {
+                    try {
+                      nextAnswers = JSON.parse(rawDraft) as Record<string, string | string[]>;
+                    } catch {
+                      window.localStorage.removeItem(nextDraftStorageKey);
+                    }
+                  }
+                }
+
+                setAnswers(nextAnswers);
+                autoSubmitAttemptedRef.current = Boolean(response.student_response_exists);
+                setNowMs(Date.now());
                 setContext(response);
-                setSubmitted(Boolean(response.student_response_exists));
                 setMessage("Ingreso verificado correctamente.");
               } catch (error) {
                 setContext(null);
+                setAnswers({});
+                autoSubmitAttemptedRef.current = false;
                 setMessage(error instanceof Error ? error.message : "No se pudo verificar.");
+              } finally {
+                setVerifying(false);
               }
             }}
           >
             <label className="space-y-2">
-              <span className="text-sm font-semibold text-slate-700">Numero ECOE</span>
+              <span className="text-sm font-semibold text-slate-700">Número ECOE</span>
               <input
                 value={ecoeNumber}
                 onChange={(event) => setEcoeNumber(event.target.value)}
                 placeholder="Ejemplo: 008"
               />
             </label>
-            <button className="btn-primary w-full">Verificar mi ingreso</button>
+            <button className="btn-primary w-full" disabled={verifying}>
+              {verifying ? "Verificando..." : "Verificar mi ingreso"}
+            </button>
           </form>
 
           {context ? (
@@ -370,12 +394,12 @@ export default function StudentPage() {
                 {String(context.student_ecoe_number)} · {String(context.student_name)}
               </p>
               <p className="mt-2 text-sm text-slate-600">
-                Estacion {String(context.station_number)} - {String(context.station_name)}
+                Estación {String(context.station_number)} - {String(context.station_name)}
               </p>
             </div>
           ) : (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              Tu respuesta solo se habilita cuando el evaluador confirma tu ingreso en la estacion.
+              Tu respuesta solo se habilita cuando el evaluador confirma tu ingreso en la estación.
             </div>
           )}
         </section>
@@ -383,7 +407,7 @@ export default function StudentPage() {
         <section className="space-y-4 rounded-3xl border border-slate-200 bg-white/80 p-5">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Respuesta en estacion
+              Respuesta en estación
             </p>
             <h3 className="mt-2 text-2xl text-slate-900">Formulario del estudiante</h3>
           </div>
@@ -392,12 +416,23 @@ export default function StudentPage() {
             <>
               <div className="clinical-panel">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-primary)]">
-                  Instrucciones dentro de la estacion
+                  Instrucción previa de ingreso
+                </p>
+                <p className="mt-4 text-lg font-semibold leading-8 text-slate-900 md:text-xl md:leading-9">
+                  {String(
+                    context.pre_entry_instruction ??
+                      "Sin instrucción previa registrada para esta estación.",
+                  )}
+                </p>
+              </div>
+              <div className="clinical-panel">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-primary)]">
+                  Instrucciones dentro de la estación
                 </p>
                 <p className="mt-4 text-xl font-semibold leading-8 text-slate-900 md:text-2xl md:leading-9">
                   {String(
                     context.student_station_instruction ??
-                      "Sin instrucciones especificas registradas para esta estacion.",
+                      "Sin instrucciones específicas registradas para esta estación.",
                   )}
                 </p>
               </div>
@@ -426,16 +461,19 @@ export default function StudentPage() {
                 onSubmit={async (event) => {
                   event.preventDefault();
                   const confirmed = window.confirm(
-                    "Vas a enviar tu respuesta final. Luego no podras modificarla. ¿Quieres continuar?",
+                    "Vas a enviar tu respuesta final. Luego no podrás modificarla. ¿Quieres continuar?",
                   );
                   if (!confirmed) {
                     return;
                   }
                   setMessage(null);
+                  setManualSubmitting(true);
                   try {
                     await submitResponse("manual");
                   } catch (error) {
                     setMessage(error instanceof Error ? error.message : "No se pudo enviar.");
+                  } finally {
+                    setManualSubmitting(false);
                   }
                 }}
               >
@@ -455,7 +493,7 @@ export default function StudentPage() {
                             value={typeof value === "string" ? value : ""}
                             disabled={submitted}
                             onChange={(event) => updateAnswer(index, event.target.value)}
-                            placeholder="Escribe tu respuesta breve aqui."
+                            placeholder="Escribe tu respuesta breve aquí."
                           />
                         </label>
                       );
@@ -506,7 +544,7 @@ export default function StudentPage() {
                           disabled={submitted}
                           onChange={(event) => updateAnswer(index, event.target.value)}
                         >
-                          <option value="">Selecciona una opcion</option>
+                          <option value="">Selecciona una opción</option>
                           {(question.options ?? []).map((option) => (
                             <option key={option} value={option}>
                               {option}
@@ -518,33 +556,38 @@ export default function StudentPage() {
                   })
                 ) : (
                   <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                    Esta estacion no tiene preguntas configuradas para el estudiante. Si necesitas
+                    Esta estación no tiene preguntas configuradas para el estudiante. Si necesitas
                     responder en pantalla, vuelve al constructor y guarda el formulario del estudiante.
                   </div>
                 )}
-                <button className="btn-primary w-full text-base" disabled={submitted || autoSubmitting}>
+                <button
+                  className="btn-primary w-full text-base"
+                  disabled={submitted || autoSubmitting || manualSubmitting}
+                >
                   {submitted
                     ? "Respuesta ya enviada"
+                    : manualSubmitting
+                      ? "Enviando..."
                     : autoSubmitting
-                      ? "Enviando automaticamente..."
+                      ? "Enviando automáticamente..."
                       : "Enviar respuesta final"}
                 </button>
                 {submitted ? (
                   <p className="text-sm text-amber-700">
-                    Esta respuesta ya fue enviada y quedo cerrada para cambios.
+                    Esta respuesta ya fue enviada y quedó cerrada para cambios.
                   </p>
                 ) : null}
               </form>
             </>
           ) : (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              Ingresa primero tu Numero ECOE para activar la vista completa de la estacion. Cuando
-              termines de enviar, esta pantalla volvera automaticamente a este paso de identificacion.
+              Ingresa primero tu número ECOE para activar la vista completa de la estación. Cuando
+              termines de enviar, esta pantalla volverá automáticamente a este paso de identificación.
             </div>
           )}
         </section>
       </div>
-      {message ? <p className="mt-4 text-sm text-slate-600">{message}</p> : null}
+      <StatusNotice message={message} className="mt-4" />
     </SectionCard>
   );
 }

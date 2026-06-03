@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Bitter, Source_Sans_3 } from "next/font/google";
 
 import "./globals.css";
-import { AuthProvider } from "@/lib/auth";
+import { ECOEProvider } from "@/lib/auth";
 
 const display = Bitter({
   subsets: ["latin"],
@@ -27,7 +27,7 @@ export default function RootLayout({
   return (
     <html lang="es" className={`${display.variable} ${body.variable}`} data-system="ecoe">
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <ECOEProvider>{children}</ECOEProvider>
       </body>
     </html>
   );

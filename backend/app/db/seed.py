@@ -9,6 +9,7 @@ from app.core.security import get_password_hash
 from app.models.entities import (
     AssessmentItem,
     AssessmentTool,
+    ECOEPermission,
     ECOEEvent,
     EvaluatorRecord,
     Incident,
@@ -102,6 +103,13 @@ def seed_data(db: Session) -> None:
     )
     db.add(ecoe)
     db.flush()
+    db.add(
+        ECOEPermission(
+            ecoe_event_id=ecoe.id,
+            user_id=users[0].id,
+            role_code=RoleCode.creador_ecoe.value,
+        )
+    )
 
     templates = [
         StationTemplate(
@@ -237,11 +245,19 @@ def seed_data(db: Session) -> None:
     staff = [
         StaffAssignment(
             ecoe_event_id=ecoe.id,
+            name="Pablo",
+            last_name="Rojas",
+            email="coeditor@ecoe.cl",
+            role_code=RoleCode.coeditor_docente.value,
+            station_ids=[],
+        ),
+        StaffAssignment(
+            ecoe_event_id=ecoe.id,
             name="Camila",
             last_name="Soto",
             email="eval1@ecoe.cl",
             role_code=RoleCode.evaluador.value,
-            station_ids=[1, 2],
+            station_ids=[1],
         ),
         StaffAssignment(
             ecoe_event_id=ecoe.id,
@@ -257,7 +273,15 @@ def seed_data(db: Session) -> None:
             last_name="Moya",
             email="coord@ecoe.cl",
             role_code=RoleCode.coordinador_operativo.value,
-            station_ids=[5],
+            station_ids=[],
+        ),
+        StaffAssignment(
+            ecoe_event_id=ecoe.id,
+            name="Cronometro",
+            last_name="Central",
+            email="timer@ecoe.cl",
+            role_code=RoleCode.cronometrador.value,
+            station_ids=[],
         ),
     ]
     db.add_all(staff)

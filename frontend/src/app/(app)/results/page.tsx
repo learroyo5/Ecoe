@@ -1,7 +1,7 @@
 "use client";
 
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
 import { DataTable } from "@/components/data-table";
 import { SectionCard } from "@/components/section-card";
@@ -21,7 +21,7 @@ function formatTimestamp(value: unknown) {
 }
 
 export default function ResultsPage() {
-  const { token, eventId } = useAuth();
+  const { token, eventId } = useECOE();
   const { data, loading, error } = useApi(
     () =>
       api.results(eventId, token!) as Promise<{
@@ -42,7 +42,7 @@ export default function ResultsPage() {
     <div className="space-y-6">
       <SectionCard
         title="Resumen operativo"
-        subtitle="Trazabilidad minima para saber cuantas confirmaciones, evaluaciones y respuestas se han registrado realmente."
+        subtitle="Trazabilidad mínima para saber cuántas confirmaciones, evaluaciones y respuestas se han registrado realmente."
       >
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <div className="clinical-panel">
@@ -67,7 +67,7 @@ export default function ResultsPage() {
           </div>
         </div>
       </SectionCard>
-      <SectionCard title="Resultados y exportacion" subtitle="Consolidacion automatica de puntajes, porcentaje y nota equivalente">
+      <SectionCard title="Resultados y exportación" subtitle="Consolidación automática de puntajes, porcentaje y nota equivalente">
         <div className="flex flex-wrap gap-3">
           <a
             className="btn-primary"
@@ -87,7 +87,7 @@ export default function ResultsPage() {
           </a>
         </div>
       </SectionCard>
-      <SectionCard title="Consolidado por estudiante" subtitle="Vista tipo ficha de resultados, pensada para lectura academica clara y exportacion segura.">
+      <SectionCard title="Consolidado por estudiante" subtitle="Vista tipo ficha de resultados, pensada para una lectura académica clara y una exportación segura.">
         {loading ? (
           <p>Calculando resultados...</p>
         ) : error ? (
@@ -99,7 +99,7 @@ export default function ResultsPage() {
               { key: "ecoe_number", label: "N ECOE" },
               { key: "student_name", label: "Estudiante" },
               { key: "total_score", label: "Puntaje" },
-              { key: "max_score", label: "Maximo" },
+              { key: "max_score", label: "Máximo" },
               { key: "percentage", label: "Porcentaje" },
               { key: "equivalent_grade", label: "Nota equivalente" },
             ]}
@@ -108,7 +108,7 @@ export default function ResultsPage() {
       </SectionCard>
       <SectionCard
         title="Trazabilidad por estudiante"
-        subtitle="Verifica rapidamente quien ya fue confirmado, evaluado y quien ya dejo respuesta dentro del circuito."
+        subtitle="Verifica rápidamente quién ya fue confirmado, evaluado y quién ya dejó respuesta dentro del circuito."
       >
         {loading ? (
           <p>Construyendo trazabilidad por estudiante...</p>
@@ -139,7 +139,7 @@ export default function ResultsPage() {
               { key: "student_submissions", label: "Respuestas" },
               {
                 key: "last_activity_at",
-                label: "Ultima actividad",
+                label: "Última actividad",
                 render: (row) => formatTimestamp(row.last_activity_at),
               },
             ]}
@@ -147,18 +147,18 @@ export default function ResultsPage() {
         )}
       </SectionCard>
       <SectionCard
-        title="Trazabilidad por estacion"
-        subtitle="Ayuda a detectar estaciones sin registros, sin evaluador visible o con flujo parcial durante pilotaje o ejecucion."
+        title="Trazabilidad por estación"
+        subtitle="Ayuda a detectar estaciones sin registros, sin evaluador visible o con flujo parcial durante el pilotaje o la ejecución."
       >
         {loading ? (
-          <p>Construyendo trazabilidad por estacion...</p>
+          <p>Construyendo trazabilidad por estación...</p>
         ) : error ? (
           <p>{error}</p>
         ) : (
           <DataTable
             rows={stationTraceability}
             columns={[
-              { key: "station_number", label: "Estacion" },
+              { key: "station_number", label: "Estación" },
               { key: "station_name", label: "Nombre" },
               { key: "assigned_evaluator", label: "Evaluador principal" },
               { key: "checkins_count", label: "Check-ins" },
@@ -180,7 +180,7 @@ export default function ResultsPage() {
               },
               {
                 key: "last_activity_at",
-                label: "Ultima actividad",
+                label: "Última actividad",
                 render: (row) => formatTimestamp(row.last_activity_at),
               },
             ]}
@@ -189,7 +189,7 @@ export default function ResultsPage() {
       </SectionCard>
       <SectionCard
         title="Actividad reciente"
-        subtitle="Secuencia cronologica breve para reconstruir el flujo real del ECOE y revisar si los pasos se dieron en el orden esperado."
+        subtitle="Secuencia cronológica breve para reconstruir el flujo real del ECOE y revisar si los pasos se dieron en el orden esperado."
       >
         {loading ? (
           <p>Ordenando actividad reciente...</p>
@@ -206,13 +206,13 @@ export default function ResultsPage() {
                 </div>
                 <p className="mt-2 text-sm text-[var(--color-text-secondary)]">{String(item.detail ?? "")}</p>
                 <p className="mt-1 text-xs text-[var(--color-text-muted)]">
-                  {String(item.actor ?? "Sistema")} · modo {String(item.mode ?? "ejecucion")}
+                  {String(item.actor ?? "Sistema")} · modo {String(item.mode ?? "ejecución")}
                 </p>
               </div>
             ))}
           </div>
         ) : (
-          <p>Aun no hay actividad registrada para este ECOE.</p>
+          <p>Aún no hay actividad registrada para este ECOE.</p>
         )}
       </SectionCard>
     </div>

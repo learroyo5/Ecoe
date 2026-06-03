@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
 import { DataTable } from "@/components/data-table";
+import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 
 export default function PilotagePage() {
-  const { token, eventId } = useAuth();
+  const { token, eventId } = useECOE();
   const { data, loading, error, setData } = useApi(
     () => api.pilotage(eventId, token!) as Promise<Record<string, unknown>[]>,
     [eventId, token],
@@ -24,6 +25,9 @@ export default function PilotagePage() {
   );
   const [selectedStationId, setSelectedStationId] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [creatingStationPilot, setCreatingStationPilot] = useState(false);
+  const [creatingCircuitPilot, setCreatingCircuitPilot] = useState(false);
+  const [processingArchiveId, setProcessingArchiveId] = useState<string | null>(null);
 
   const refresh = async () =>
     setData((await api.pilotage(eventId, token!)) as Record<string, unknown>[]);
@@ -50,10 +54,11 @@ export default function PilotagePage() {
     [readyStationIssues, stations],
   );
 
-  useEffect(() => {
-    if (!selectedStationId && readyStationOptions.length) {
-      setSelectedStationId(readyStationOptions[0].id);
+  const effectiveSelectedStationId = useMemo(() => {
+    if (readyStationOptions.some((option) => option.id === selectedStationId)) {
+      return selectedStationId;
     }
+    return readyStationOptions[0]?.id ?? "";
   }, [readyStationOptions, selectedStationId]);
 
   const hasStationPilot = ((data ?? []) as Record<string, unknown>[]).some(
@@ -65,23 +70,23 @@ export default function PilotagePage() {
     <div className="space-y-6">
       <SectionCard
         title="Pilotaje"
-        subtitle="Simula una estacion o un circuito completo para revisar flujo, tiempos, formularios y observacion antes de la ejecucion real."
+        subtitle="Simula una estación o un circuito completo para revisar flujo, tiempos, formularios y observación antes de la ejecución real."
       >
         <div className="grid gap-4 md:grid-cols-2">
           <div className="clinical-panel">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
               Pilotaje focal
             </p>
-            <h4 className="mt-3 text-xl text-slate-900">Probar una sola estacion</h4>
+            <h4 className="mt-3 text-xl text-slate-900">Probar una sola estación</h4>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Sirve para revisar pauta, flujo del estudiante, material multimedia y claridad de las instrucciones.
+              Sirve para revisar la pauta, el flujo del estudiante, el material multimedia y la claridad de las instrucciones.
             </p>
             <label className="mt-4 block space-y-2">
               <span className="text-sm font-semibold text-slate-700">
-                Estacion lista para pilotaje
+                Estación lista para pilotaje
               </span>
               <select
-                value={selectedStationId}
+                value={effectiveSelectedStationId}
                 onChange={(event) => setSelectedStationId(event.target.value)}
                 disabled={!readyStationOptions.length}
               >
@@ -99,13 +104,16 @@ export default function PilotagePage() {
               className="btn-primary mt-4"
               onClick={async () => {
                 setMessage(null);
+                setCreatingStationPilot(true);
                 try {
                   await api.createPilotage(
                     {
                       ecoe_event_id: eventId,
-                      name: `Pilotaje de estacion ${selectedStationId}`,
+                      name: `Pilotaje de estación ${effectiveSelectedStationId}`,
                       scope: "estacion",
-                      station_ids: selectedStationId ? [Number(selectedStationId)] : [],
+                      station_ids: effectiveSelectedStationId
+                        ? [Number(effectiveSelectedStationId)]
+                        : [],
                     },
                     token!,
                   );
@@ -117,11 +125,13 @@ export default function PilotagePage() {
                       ? pilotageError.message
                       : "No se pudo crear el pilotaje individual.",
                   );
+                } finally {
+                  setCreatingStationPilot(false);
                 }
               }}
-              disabled={!selectedStationId}
+              disabled={!effectiveSelectedStationId || creatingStationPilot}
             >
-              Pilotear estacion
+              {creatingStationPilot ? "Creando pilotaje..." : "Pilotear estación"}
             </button>
           </div>
           <div className="clinical-panel">
@@ -130,12 +140,13 @@ export default function PilotagePage() {
             </p>
             <h4 className="mt-3 text-xl text-slate-900">Probar el circuito completo</h4>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Sirve para revisar continuidad entre estaciones, transiciones, tiempos y coordinacion operativa general.
+              Sirve para revisar la continuidad entre estaciones, las transiciones, los tiempos y la coordinación operativa general.
             </p>
             <button
               className="btn-secondary mt-4"
               onClick={async () => {
                 setMessage(null);
+                setCreatingCircuitPilot(true);
                 try {
                   await api.createPilotage(
                     {
@@ -153,27 +164,29 @@ export default function PilotagePage() {
                       ? pilotageError.message
                       : "No se pudo crear el pilotaje de circuito completo.",
                   );
+                } finally {
+                  setCreatingCircuitPilot(false);
                 }
               }}
-              disabled={!canPilotCircuit}
+              disabled={!canPilotCircuit || creatingCircuitPilot}
             >
-              Pilotear circuito completo
+              {creatingCircuitPilot ? "Creando pilotaje..." : "Pilotear circuito completo"}
             </button>
             <p className="mt-3 text-sm leading-6 text-slate-600">
-              Solo se habilita despues de realizar al menos un pilotaje individual de estacion.
+              Solo se habilita después de realizar al menos un pilotaje individual de estación.
             </p>
             {!hasStationPilot ? (
               <p className="mt-2 text-sm text-amber-700">
-                Aun no existe un pilotaje individual previo en este ECOE.
+                Aún no existe un pilotaje individual previo en este ECOE.
               </p>
             ) : null}
           </div>
         </div>
-        {message ? <p className="text-sm text-slate-600">{message}</p> : null}
+        <StatusNotice message={message} />
       </SectionCard>
       <SectionCard
         title="Historial de pilotajes"
-        subtitle="Cada pilotaje queda registrado para distinguir pruebas operativas de la ejecucion real."
+        subtitle="Cada pilotaje queda registrado para distinguir las pruebas operativas de la ejecución real."
       >
         {loading ? (
           <p>Cargando pilotajes...</p>
@@ -197,7 +210,7 @@ export default function PilotagePage() {
                           : "status-badge-success"
                       }`}
                     >
-                      {scope === "circuito_completo" ? "Circuito completo" : "Estacion"}
+                      {scope === "circuito_completo" ? "Circuito completo" : "Estación"}
                     </span>
                   );
                 },
@@ -219,16 +232,34 @@ export default function PilotagePage() {
               },
               {
                 key: "actions",
-                label: "Accion",
+                label: "Acción",
                 render: (row) => (
                   <button
                     className="btn-secondary"
                     onClick={async () => {
-                      await api.archivePilotage(Number(row.id), token!);
-                      await refresh();
+                      setProcessingArchiveId(String(row.id ?? ""));
+                      setMessage(null);
+                      try {
+                        await api.archivePilotage(Number(row.id), token!);
+                        await refresh();
+                        setMessage("Pilotaje archivado correctamente.");
+                      } catch (archiveError) {
+                        setMessage(
+                          archiveError instanceof Error
+                            ? archiveError.message
+                            : "No se pudo archivar el pilotaje.",
+                        );
+                      } finally {
+                        setProcessingArchiveId(null);
+                      }
                     }}
+                    disabled={processingArchiveId === String(row.id ?? "")}
                   >
-                    {(row as { archived?: boolean }).archived ? "Archivado" : "Archivar"}
+                    {processingArchiveId === String(row.id ?? "")
+                      ? "Archivando..."
+                      : (row as { archived?: boolean }).archived
+                        ? "Archivado"
+                        : "Archivar"}
                   </button>
                 ),
               },

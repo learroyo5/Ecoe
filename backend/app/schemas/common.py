@@ -70,7 +70,7 @@ class StudentBase(BaseModel):
     last_name: str
     rut: str
     email: EmailStr
-    ecoe_number: str
+    ecoe_number: str = ""
     group_name: str
     circuit_name: str
 

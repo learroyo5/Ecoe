@@ -4,22 +4,24 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
 import { DataTable } from "@/components/data-table";
-import { FileImport } from "@/components/forms";
+import { FileImport, StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 
 export default function EvaluatorsPage() {
-  const { token, eventId } = useAuth();
-  const { data, loading, error, setData } = useApi(
-    () => api.staff(eventId, token!) as Promise<Record<string, unknown>[]>,
+  const { token, eventId } = useECOE();
+  const { data: rawStaff, loading, error, setData: setRawStaff } = useApi(
+    () => api.staff(eventId, token!) as unknown as Promise<Record<string, unknown>>,
     [eventId, token],
   );
-  const { data: stations } = useApi(
+  const data = (rawStaff?.items as Record<string, unknown>[]) ?? (Array.isArray(rawStaff) ? rawStaff as Record<string, unknown>[] : []);
+  const { data: rawStations } = useApi(
     () => api.stations(eventId, token!) as Promise<Record<string, unknown>[]>,
     [eventId, token],
   );
+  const stations = rawStations ?? [];
   const [form, setForm] = useState({
     name: "",
     last_name: "",
@@ -29,9 +31,13 @@ export default function EvaluatorsPage() {
   });
   const [assignmentDrafts, setAssignmentDrafts] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
+  const [savingForm, setSavingForm] = useState(false);
+  const [processingAction, setProcessingAction] = useState<string | null>(null);
 
-  const refresh = async () =>
-    setData((await api.staff(eventId, token!)) as Record<string, unknown>[]);
+  const refresh = async () => {
+    const result = await api.staff(eventId, token!) as unknown as Record<string, unknown>;
+    setRawStaff(result);
+  };
 
   const stationOptions = (stations ?? []).map((station) => ({
     id: String(station.id),
@@ -41,8 +47,8 @@ export default function EvaluatorsPage() {
   return (
     <div className="space-y-6">
       <SectionCard
-        title="Evaluadores y colaboradores"
-        subtitle="Cada evaluador debe tener una estacion principal clara para que su login abra el flujo correcto."
+        title="Equipo operativo del ECOE"
+        subtitle="Cada integrante debe tener cuenta activa con el rol correcto; los evaluadores además necesitan una estación principal."
       >
         <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
           <FileImport
@@ -54,6 +60,9 @@ export default function EvaluatorsPage() {
                   nombre | apellidos | correo | rol
                 </p>
                 <p>El orden puede cambiar, pero los nombres de columna deben coincidir.</p>
+                <p>
+                  El correo debe corresponder a una cuenta existente del sistema con el mismo rol.
+                </p>
                 <Link
                   href="/plantilla_evaluadores.csv"
                   className="inline-block font-semibold text-[var(--color-primary)] underline-offset-4 hover:underline"
@@ -77,6 +86,7 @@ export default function EvaluatorsPage() {
             onSubmit={async (event) => {
               event.preventDefault();
               setMessage(null);
+              setSavingForm(true);
               try {
                 await api.createStaff(
                   {
@@ -100,6 +110,8 @@ export default function EvaluatorsPage() {
                 setMessage("Evaluador o colaborador guardado correctamente.");
               } catch (error) {
                 setMessage(error instanceof Error ? error.message : "No se pudo guardar.");
+              } finally {
+                setSavingForm(false);
               }
             }}
           >
@@ -136,20 +148,20 @@ export default function EvaluatorsPage() {
                 }
               >
                 <option value="evaluador">Evaluador</option>
+                <option value="coeditor_docente">Coeditor docente</option>
                 <option value="coordinador_operativo">Coordinador operativo</option>
-                <option value="paciente_simulado">Paciente simulado</option>
                 <option value="cronometrador">Cronometrador</option>
               </select>
             </label>
             <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4 md:col-span-2">
-              <span className="text-sm font-semibold text-slate-700">Estacion principal asignada</span>
+              <span className="text-sm font-semibold text-slate-700">Estación principal asignada</span>
               <select
                 value={form.station_id}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, station_id: event.target.value }))
                 }
               >
-                <option value="">Sin estacion asignada por ahora</option>
+                <option value="">Sin estación asignada por ahora</option>
                 {stationOptions.map((station) => (
                   <option key={station.id} value={station.id}>
                     {station.label}
@@ -157,46 +169,65 @@ export default function EvaluatorsPage() {
                 ))}
               </select>
               <p className="text-xs leading-5 text-slate-500">
-                Para el flujo del evaluador se usa una estacion principal. Eso hace que al iniciar
-                sesion vea directamente su estacion y pueda confirmar al estudiante correcto.
+                Si el rol es evaluador, esta estación es obligatoria. Coeditores, coordinadores y
+                cronometradores pueden quedar sin estación principal.
               </p>
             </label>
-            <div className="md:col-span-2">
-              <button className="btn-primary">Guardar asignacion</button>
-              {message ? <p className="mt-3 text-sm text-slate-600">{message}</p> : null}
+            <div className="space-y-3 md:col-span-2">
+              <button className="btn-primary" disabled={savingForm}>
+                {savingForm ? "Guardando..." : "Guardar asignación"}
+              </button>
+              <StatusNotice message={message} />
             </div>
           </form>
         </div>
       </SectionCard>
 
-      <SectionCard title="Equipo operativo" subtitle="Asignacion principal de estaciones para que cada evaluador ingrese directo a su flujo operativo.">
+      <SectionCard title="Equipo operativo" subtitle="Las asignaciones quedan amarradas al ECOE activo y deben coincidir con la cuenta real de cada persona.">
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <button
             type="button"
             className="btn-secondary"
             onClick={async () => {
               const confirmed = window.confirm(
-                "Se revisara el equipo operativo de este ECOE y se borraran los duplicados por correo, conservando el primer registro cargado. ¿Quieres continuar?",
+                "Se revisará el equipo operativo de este ECOE y se borrarán los duplicados por correo, conservando el primer registro cargado. ¿Quieres continuar?",
               );
               if (!confirmed) {
+                setMessage("La limpieza de duplicados fue cancelada.");
                 return;
               }
-              const response = (await api.deduplicateStaffByEmail(eventId, token!)) as {
-                removed?: number;
-              };
-              await refresh();
-              window.alert(
-                `Limpieza completada: ${response.removed ?? 0} registros duplicados fueron eliminados.`,
-              );
+              setProcessingAction("deduplicate-staff");
+              setMessage(null);
+              try {
+                const response = (await api.deduplicateStaffByEmail(eventId, token!)) as {
+                  removed?: number;
+                };
+                await refresh();
+                setMessage(
+                  `Limpieza completada: ${response.removed ?? 0} registros duplicados fueron eliminados.`,
+                );
+              } catch (actionError) {
+                setMessage(
+                  actionError instanceof Error
+                    ? actionError.message
+                    : "No se pudo completar la limpieza de duplicados.",
+                );
+              } finally {
+                setProcessingAction(null);
+              }
             }}
+            disabled={processingAction === "deduplicate-staff"}
           >
-            Limpiar duplicados por correo
+            {processingAction === "deduplicate-staff"
+              ? "Limpiando duplicados..."
+              : "Limpiar duplicados por correo"}
           </button>
           <p className="text-sm text-slate-600">
-            Cada evaluador deberia tener una sola estacion principal asignada, aunque puedes
-            corregirla despues si hay contingencia.
+            Cada evaluador debería tener una sola estación principal asignada, aunque puedes
+            corregirla después si hay contingencia.
           </p>
         </div>
+        <StatusNotice message={message} />
         {loading ? (
           <p>Cargando equipo...</p>
         ) : error ? (
@@ -211,7 +242,7 @@ export default function EvaluatorsPage() {
               { key: "role_code", label: "Rol" },
               {
                 key: "station_ids",
-                label: "Estacion principal",
+                label: "Estación principal",
                 render: (row) => {
                   const stationId = String(((row as { station_ids?: number[] }).station_ids ?? [])[0] ?? "");
                   const station = stationOptions.find((item) => item.id === stationId);
@@ -242,7 +273,7 @@ export default function EvaluatorsPage() {
                           }))
                         }
                       >
-                        <option value="">Sin estacion asignada</option>
+                        <option value="">Sin estación asignada</option>
                         {stationOptions.map((station) => (
                           <option key={station.id} value={station.id}>
                             {station.label}
@@ -253,18 +284,32 @@ export default function EvaluatorsPage() {
                         type="button"
                         className="btn-secondary"
                         onClick={async () => {
-                          await api.updateStaff(
-                            Number(staff.id),
-                            {
-                              role_code: String(staff.role_code ?? "evaluador"),
-                              station_ids: selectedStationId ? [Number(selectedStationId)] : [],
-                            },
-                            token!,
-                          );
-                          await refresh();
+                          setProcessingAction(`assign-${staffId}`);
+                          setMessage(null);
+                          try {
+                            await api.updateStaff(
+                              Number(staff.id),
+                              {
+                                role_code: String(staff.role_code ?? "evaluador"),
+                                station_ids: selectedStationId ? [Number(selectedStationId)] : [],
+                              },
+                              token!,
+                            );
+                            await refresh();
+                            setMessage("Asignación principal actualizada correctamente.");
+                          } catch (actionError) {
+                            setMessage(
+                              actionError instanceof Error
+                                ? actionError.message
+                                : "No se pudo actualizar la asignación principal.",
+                            );
+                          } finally {
+                            setProcessingAction(null);
+                          }
                         }}
+                        disabled={processingAction === `assign-${staffId}`}
                       >
-                        Guardar
+                        {processingAction === `assign-${staffId}` ? "Guardando..." : "Guardar"}
                       </button>
                     </div>
                   );
@@ -281,16 +326,33 @@ export default function EvaluatorsPage() {
                       className="btn-secondary"
                       onClick={async () => {
                         const confirmed = window.confirm(
-                          "Vas a borrar este evaluador o colaborador de forma permanente. Esta accion no se puede deshacer. ¿Quieres continuar?",
+                          "Vas a borrar este evaluador o colaborador de forma permanente. Esta acción no se puede deshacer. ¿Quieres continuar?",
                         );
                         if (!confirmed) {
+                          setMessage("El borrado del evaluador o colaborador fue cancelado.");
                           return;
                         }
-                        await api.deleteStaff(Number(staff.id), token!);
-                        await refresh();
+                        setProcessingAction(`delete-${String(staff.id ?? "")}`);
+                        setMessage(null);
+                        try {
+                          await api.deleteStaff(Number(staff.id), token!);
+                          await refresh();
+                          setMessage("Evaluador o colaborador borrado correctamente.");
+                        } catch (actionError) {
+                          setMessage(
+                            actionError instanceof Error
+                              ? actionError.message
+                              : "No se pudo borrar el evaluador o colaborador.",
+                          );
+                        } finally {
+                          setProcessingAction(null);
+                        }
                       }}
+                      disabled={processingAction === `delete-${String(staff.id ?? "")}`}
                     >
-                      Borrar
+                      {processingAction === `delete-${String(staff.id ?? "")}`
+                        ? "Borrando..."
+                        : "Borrar"}
                     </button>
                   );
                 },
