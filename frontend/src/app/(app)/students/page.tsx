@@ -39,8 +39,8 @@ export default function StudentsPage() {
                     <li>Abre el archivo y completa una fila por cada estudiante.</li>
                     <li>Los unicos campos obligatorios son: <strong>nombre, apellidos, rut, correo</strong>.</li>
                     <li>El <strong>Numero ECOE</strong> se asigna automaticamente; puedes dejarlo vacio.</li>
-                    <li>El <strong>correo</strong> debe corresponder a un usuario con rol estudiante ya registrado en el sistema.</li>
-                    <li>Guarda el archivo y arrastralo o seleccionalo en el campo de abajo.</li>
+                    <li>El <strong>correo</strong> es el email del estudiante (no necesita ser un usuario del sistema).</li>
+                    <li>Los estudiantes con <strong>RUT duplicado</strong> dentro del mismo ECOE seran omitidos.</li>
                   </ol>
                 </div>
 
@@ -59,7 +59,7 @@ export default function StudentsPage() {
                         <tr><td className="py-1 pr-3 font-mono text-slate-700">nombre</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">Nombre del estudiante</td></tr>
                         <tr><td className="py-1 pr-3 font-mono text-slate-700">apellidos</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">Apellidos completos</td></tr>
                         <tr><td className="py-1 pr-3 font-mono text-slate-700">rut</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">RUT con guion y digito verificador (ej: 11111111-1)</td></tr>
-                        <tr><td className="py-1 pr-3 font-mono text-slate-700">correo</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">Correo del usuario con rol estudiante</td></tr>
+                        <tr><td className="py-1 pr-3 font-mono text-slate-700">correo</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">Correo electronico del estudiante</td></tr>
                         <tr><td className="py-1 pr-3 font-mono text-slate-700">numero_ecoe</td><td className="py-1 pr-3 text-slate-400">No</td><td className="py-1 text-slate-500">Se asigna automaticamente de forma correlativa</td></tr>
                         <tr><td className="py-1 pr-3 font-mono text-slate-700">grupo</td><td className="py-1 pr-3 text-slate-400">No</td><td className="py-1 text-slate-500">Nombre del grupo (default: Grupo 1)</td></tr>
                         <tr><td className="py-1 pr-3 font-mono text-slate-700">circuito</td><td className="py-1 pr-3 text-slate-400">No</td><td className="py-1 text-slate-500">Nombre del circuito (default: Circuito A)</td></tr>
@@ -92,12 +92,18 @@ export default function StudentsPage() {
               const response = (await api.importStudents(eventId, file, token!)) as {
                 imported?: number;
                 skipped?: number;
+                skipped_rut_duplicate?: number;
+                skipped_missing_data?: number;
               };
               await refresh();
-              setMessage(
-                `Carga completada: ${response.imported ?? 0} estudiantes importados y ${response.skipped ?? 0} omitidos por RUT duplicado.`,
-              );
-              return `Carga completada: ${response.imported ?? 0} estudiantes importados y ${response.skipped ?? 0} omitidos por RUT duplicado.`;
+              const imported = response.imported ?? 0;
+              const dupes = response.skipped_rut_duplicate ?? 0;
+              const missing = response.skipped_missing_data ?? 0;
+              const parts: string[] = [`${imported} estudiantes importados.`];
+              if (dupes > 0) parts.push(`${dupes} omitidos por RUT duplicado.`);
+              if (missing > 0) parts.push(`${missing} omitidos por falta de datos (rut o correo vacio).`);
+              setMessage(parts.join(" "));
+              return parts.join(" ");
             }}
           />
           <QuickForm
@@ -105,7 +111,7 @@ export default function StudentsPage() {
               { name: "name", label: "Nombre" },
               { name: "last_name", label: "Apellidos" },
               { name: "rut", label: "RUT" },
-              { name: "email", label: "Correo", type: "email" },
+              { name: "email", label: "Correo", type: "email", description: "Email del estudiante (no requiere cuenta en el sistema)." },
               {
                 name: "group_name",
                 label: "Grupo",

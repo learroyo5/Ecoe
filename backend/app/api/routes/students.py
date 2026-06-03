@@ -12,11 +12,10 @@ from app.services.dependencies import get_current_user, require_roles
 from app.utils.files import parse_tabular_file
 from app.utils.helpers import (
     ensure_event_access,
-    ensure_matching_operational_user,
-    next_student_ecoe_number,
-    normalize_rut,
-    normalize_email,
     normalize_ecoe_lookup,
+    normalize_email,
+    normalize_rut,
+    next_student_ecoe_number,
 )
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginate_query
 
@@ -55,7 +54,6 @@ def create_student(
                         RoleCode.coordinador_operativo.value)
     rut = normalize_rut(payload.rut)
     email = normalize_email(payload.email)
-    ensure_matching_operational_user(db, email=email, expected_role=RoleCode.estudiante.value)
     existing = db.scalar(
         select(Student).where(Student.ecoe_event_id == payload.ecoe_event_id, Student.rut == rut)
     )
@@ -168,7 +166,8 @@ async def import_students(
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     rows = await parse_tabular_file(file)
     imported: list = []
-    skipped = 0
+    skipped_rut_duplicate = 0
+    skipped_missing_data = 0
     next_number = next_student_ecoe_number(db, ecoe_event_id)
     next_numeric_value = int(next_number)
     next_width = len(next_number)
@@ -179,16 +178,12 @@ async def import_students(
     for row in rows:
         rut = normalize_rut(row.get("rut"))
         if not rut or rut in existing_ruts:
-            skipped += 1
+            skipped_missing_data += 1 if not rut else 0
+            skipped_rut_duplicate += 1 if rut else 0
             continue
         email = normalize_email(row.get("correo", row.get("email", "")))
         if not email:
-            skipped += 1
-            continue
-        try:
-            ensure_matching_operational_user(db, email=email, expected_role=RoleCode.estudiante.value)
-        except HTTPException:
-            skipped += 1
+            skipped_missing_data += 1
             continue
         student = Student(
             ecoe_event_id=ecoe_event_id,
@@ -205,4 +200,10 @@ async def import_students(
         existing_ruts.add(rut)
         next_numeric_value += 1
     db.commit()
-    return {"imported": len(imported), "skipped": skipped}
+    total_skipped = skipped_rut_duplicate + skipped_missing_data
+    return {
+        "imported": len(imported),
+        "skipped": total_skipped,
+        "skipped_rut_duplicate": skipped_rut_duplicate,
+        "skipped_missing_data": skipped_missing_data,
+    }
