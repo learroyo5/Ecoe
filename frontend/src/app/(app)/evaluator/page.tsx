@@ -107,6 +107,8 @@ export default function EvaluatorPage() {
     return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   }, [remainingSeconds]);
 
+  const timeExpired = remainingSeconds !== null && remainingSeconds <= 0 && Boolean(activeCheckin);
+
   const computedScore = useMemo(
     () => Object.values(itemScores).reduce((sum, value) => sum + Number(value || 0), 0),
     [itemScores],
@@ -153,9 +155,13 @@ export default function EvaluatorPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
               Tiempo visible de la estación
             </p>
-            <p className="mt-2 text-3xl font-semibold text-slate-900">{timerLabel}</p>
+            <p className={`mt-2 text-3xl font-semibold tabular-nums ${timeExpired ? "text-red-600 animate-pulse" : "text-slate-900"}`}>
+              {timerLabel}
+            </p>
             <p className="mt-2 text-sm text-slate-600">
-              El evaluador visualiza el tiempo, pero el cierre de su evaluación sigue siendo manual.
+              {timeExpired
+                ? "El tiempo de la estación ha terminado. Ya no puedes enviar la evaluación."
+                : "El evaluador visualiza el tiempo, pero el cierre de su evaluación sigue siendo manual."}
             </p>
           </div>
 
@@ -277,6 +283,10 @@ export default function EvaluatorPage() {
               Primero confirma al estudiante con su Número ECOE. Cuando envíes la evaluación, esta
               vista se limpiará para identificar al siguiente estudiante.
             </div>
+          ) : timeExpired ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 font-semibold">
+              ⏰ El tiempo de la estación ha terminado. La evaluación ya no puede enviarse.
+            </div>
           ) : (
             <form
               className="grid gap-4"
@@ -356,7 +366,7 @@ export default function EvaluatorPage() {
                             {isChecklist ? (
                               <button
                                 type="button"
-                                disabled={submitted}
+                                disabled={submitted || timeExpired}
                                 className={`flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold transition md:w-auto ${
                                   Number(itemScores[itemKey] ?? 0) > 0
                                     ? "border-[var(--color-primary)] bg-[var(--color-bg-soft)] text-[var(--color-primary-dark)]"
@@ -388,7 +398,7 @@ export default function EvaluatorPage() {
                                 step="0.5"
                                 className="w-full md:w-28"
                                 value={String(itemScores[itemKey] ?? 0)}
-                                disabled={submitted}
+                                disabled={submitted || timeExpired}
                                 onChange={(event) =>
                                   updateItemScore(
                                     itemKey,
@@ -435,20 +445,22 @@ export default function EvaluatorPage() {
                 <textarea
                   rows={5}
                   value={observation}
-                  disabled={submitted}
+                  disabled={submitted || timeExpired}
                   onChange={(event) => setObservation(event.target.value)}
                   placeholder="Comentario breve para retroalimentación o trazabilidad."
                 />
               </label>
               <button
                 className="btn-primary w-full text-base"
-                disabled={submitted || submittingEvaluation}
+                disabled={submitted || submittingEvaluation || timeExpired}
               >
                 {submitted
                   ? "Evaluación ya enviada"
-                  : submittingEvaluation
-                    ? "Guardando evaluación..."
-                    : "Guardar evaluación"}
+                  : timeExpired
+                    ? "Tiempo agotado"
+                    : submittingEvaluation
+                      ? "Guardando evaluación..."
+                      : "Guardar evaluación"}
               </button>
               {submitted ? (
                 <p className="text-sm text-amber-700">

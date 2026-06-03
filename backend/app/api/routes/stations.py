@@ -185,7 +185,7 @@ def create_station(
         ) or 0
     ) + 1
     station = Station(
-        **payload.model_dump(),
+        **payload.model_dump(exclude={"station_number"}),
         station_number=next_station_number,
         station_time_minutes=ecoe_event.station_time_minutes,
         transition_time_minutes=ecoe_event.transition_time_minutes,

@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, Response as FastAPIResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.entities import (
     ECOEEvent,
@@ -149,7 +150,8 @@ async def upload_media(
             detail=f"target_viewer debe ser uno de: {', '.join(sorted(ALLOWED_VIEWERS))}",
         )
     secure_name = safe_media_filename(file.filename)
-    media_dir = Path("/app/storage/media")
+    settings = get_settings()
+    media_dir = Path(settings.storage_path) / "media"
     media_dir.mkdir(parents=True, exist_ok=True)
     content = await file.read()
     if len(content) > MAX_MEDIA_SIZE_BYTES:

@@ -4,7 +4,7 @@ import os
 
 os.environ["SECRET_KEY"] = "test-secret-key-for-testing-only"
 os.environ["DATABASE_URL"] = "sqlite:///./test.db"
-os.environ["CREATOR_PASSWORD"] = "test-creator"
+os.environ["ADMIN_PASSWORD"] = "test-admin"
 os.environ["COEDITOR_PASSWORD"] = "test-coeditor"
 os.environ["EVALUATOR_PASSWORD"] = "test-evaluator"
 os.environ["STUDENT_PASSWORD"] = "test-student"
@@ -20,6 +20,10 @@ from sqlalchemy.orm import sessionmaker
 from app.db.session import Base, get_db
 from app.main import app
 from app.db.seed import seed_data
+
+# Disable rate limiting for tests
+import app.services.dependencies as deps
+deps._LOGIN_MAX_ATTEMPTS = 9999
 
 engine = create_engine("sqlite:///./test.db", connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
@@ -49,12 +53,20 @@ def client():
 
 @pytest.fixture
 def auth_client(client):
-    """Client with authenticated session."""
-    client.post("/api/auth/login", json={
-        "email": "creator@ecoe.cl",
-        "password": "test-creator",
+    """Client with authenticated admin session via cookie."""
+    login_resp = client.post("/api/auth/login", json={
+        "email": "admin@ecoe.cl",
+        "password": "test-admin",
     })
+    assert login_resp.status_code == 200
     return client
+
+
+@pytest.fixture(scope="module")
+def unauth_client():
+    """Separate unauthenticated client for tests that need no session."""
+    with TestClient(app) as c:
+        yield c
 
 
 class TestHealth:
@@ -71,17 +83,17 @@ class TestHealth:
 class TestAuth:
     def test_login_success(self, client):
         response = client.post("/api/auth/login", json={
-            "email": "creator@ecoe.cl",
-            "password": "test-creator",
+            "email": "admin@ecoe.cl",
+            "password": "test-admin",
         })
         assert response.status_code == 200
         data = response.json()
         assert data["token_type"] == "bearer"
-        assert data["user"]["email"] == "creator@ecoe.cl"
+        assert data["user"]["email"] == "admin@ecoe.cl"
 
     def test_login_invalid_credentials(self, client):
         response = client.post("/api/auth/login", json={
-            "email": "creator@ecoe.cl",
+            "email": "admin@ecoe.cl",
             "password": "wrong-password",
         })
         assert response.status_code == 401
@@ -89,7 +101,7 @@ class TestAuth:
     def test_me_authenticated(self, auth_client):
         response = auth_client.get("/api/auth/me")
         assert response.status_code == 200
-        assert response.json()["email"] == "creator@ecoe.cl"
+        assert response.json()["email"] == "admin@ecoe.cl"
 
     def test_me_unauthenticated(self, client):
         response = client.get("/api/auth/me")
@@ -133,11 +145,116 @@ class TestECOE:
         assert response.status_code == 200
         assert response.json()["name"] == "ECOE Test"
 
+    def test_duplicate_ecoe(self, auth_client):
+        response = auth_client.post("/api/ecoe/1/duplicate", json={
+            "name": "ECOE Duplicado",
+            "new_date": "2026-07-01",
+            "copy_evaluators": False,
+        })
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "ECOE Duplicado"
+        assert data["status"] == "borrador"
+
     def test_dashboard(self, auth_client):
         response = auth_client.get("/api/dashboard/1")
         assert response.status_code == 200
         data = response.json()
         assert "active_ecoe" in data
+
+
+class TestStations:
+    def test_list_stations(self, auth_client):
+        response = auth_client.get("/api/stations/1")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) >= 1
+
+    def test_create_station(self, auth_client):
+        response = auth_client.post("/api/stations", json={
+            "ecoe_event_id": 1,
+            "station_number": 1,
+            "name": "Estación Test",
+            "station_type": "procedimental",
+            "circuit_name": "Circuito A",
+            "expected_outcomes": "Resultado esperado",
+            "student_activity": "",
+            "student_station_instruction": "",
+            "pre_entry_instruction": "",
+            "evaluator_instruction": "",
+            "max_score": 20,
+            "materials": "",
+            "multimedia_notes": "",
+            "station_time_minutes": 8,
+            "transition_time_minutes": 2,
+            "requires_evaluator": True,
+            "requires_student_form": False,
+            "uses_multimedia": False,
+            "uses_simulated_patient": False,
+            "uses_physical_resources": False,
+            "contingency_ready": False,
+            "student_form_definition": {"questions": []},
+            "status": "en_diseno",
+        })
+        assert response.status_code == 200
+        assert response.json()["name"] == "Estación Test"
+
+
+class TestIncidents:
+    def test_list_incidents(self, auth_client):
+        response = auth_client.get("/api/incidents/1")
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+
+    def test_create_incident(self, auth_client):
+        response = auth_client.post("/api/incidents", json={
+            "ecoe_event_id": 1,
+            "title": "Incidencia de prueba",
+            "detail": "Detalle de la incidencia",
+            "severity": "alta",
+        })
+        assert response.status_code == 200
+        data = response.json()
+        assert data["title"] == "Incidencia de prueba"
+        assert data["severity"] == "alta"
+        assert data["resolved"] == False
+
+    def test_resolve_incident(self, auth_client):
+        # Create first
+        create_resp = auth_client.post("/api/incidents", json={
+            "ecoe_event_id": 1,
+            "title": "Para resolver",
+            "severity": "media",
+        })
+        assert create_resp.status_code == 200
+        incident_id = create_resp.json()["id"]
+
+        # Resolve
+        resolve_resp = auth_client.patch(f"/api/incidents/{incident_id}/resolve", json={
+            "resolved": True,
+        })
+        assert resolve_resp.status_code == 200
+        assert resolve_resp.json()["resolved"] == True
+        assert resolve_resp.json()["resolved_at"] is not None
+
+    def test_reopen_incident(self, auth_client):
+        # Create and resolve
+        create_resp = auth_client.post("/api/incidents", json={
+            "ecoe_event_id": 1,
+            "title": "Para reabrir",
+            "severity": "baja",
+        })
+        incident_id = create_resp.json()["id"]
+        auth_client.patch(f"/api/incidents/{incident_id}/resolve", json={"resolved": True})
+
+        # Reopen
+        reopen_resp = auth_client.patch(f"/api/incidents/{incident_id}/resolve", json={
+            "resolved": False,
+        })
+        assert reopen_resp.status_code == 200
+        assert reopen_resp.json()["resolved"] == False
 
 
 class TestPagination:
