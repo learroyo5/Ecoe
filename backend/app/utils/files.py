@@ -9,6 +9,8 @@ from fastapi import UploadFile
 def normalize_header(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", str(value)).encode("ascii", "ignore").decode("ascii")
     normalized = normalized.strip().lower()
+    # Remove trailing asterisks and other marker characters (*, †, etc.)
+    normalized = re.sub(r"[*†‡]+$", "", normalized)
     normalized = re.sub(r"[^a-z0-9]+", "_", normalized)
     return normalized.strip("_")
 
