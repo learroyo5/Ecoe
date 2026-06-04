@@ -1031,14 +1031,17 @@ export default function StationBuilderPage() {
           setMessage(null);
           setIsSaving(true);
           try {
+            let newInstrumentId: number | null = null;
             // If creating a new instrument, save it first automatically
             if (assessmentMode === "create") {
               setMessage("Guardando la pauta de evaluación primero...");
-              await saveInstrumentDraft();
+              const created = await saveInstrumentDraft();
+              newInstrumentId = Number(created.id);
             }
 
             if (builderScope === "bank") {
               const bankPayload = buildStationBankPayload();
+              if (newInstrumentId) bankPayload.assessment_tool_id = newInstrumentId;
 
               if (
                 templateUsesStudentForm &&
@@ -1077,6 +1080,7 @@ export default function StationBuilderPage() {
             }
 
             const payload = buildStationPayload();
+            if (newInstrumentId) payload.assessment_tool_id = newInstrumentId;
 
             if (
               templateUsesStudentForm &&
