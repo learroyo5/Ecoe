@@ -1708,13 +1708,8 @@ export default function StationBuilderPage() {
                 <button
                   type="button"
                   className="btn-primary"
+                  disabled={!isEditing}
                   onClick={async () => {
-                    if (!isEditing) {
-                      setMessage(
-                        "Para guardar solo el formulario del estudiante, primero guarda la estación y luego vuelve a editarla.",
-                      );
-                      return;
-                    }
                     try {
                       const payload = buildStationPayload();
                       const updatedStation = (await api.updateStation(
@@ -1741,8 +1736,9 @@ export default function StationBuilderPage() {
                   Guardar formulario
                 </button>
                 <p className="text-sm text-slate-600">
-                  Este formulario queda guardado dentro de la estación y se usará después en la
-                  interfaz del estudiante.
+                  {isEditing
+                    ? "Este formulario queda guardado dentro de la estacion y se usara despues en la interfaz del estudiante."
+                    : "Guarda primero la estacion con el boton principal de abajo. Luego podras editar el formulario aqui."}
                 </p>
               </div>
             </div>
