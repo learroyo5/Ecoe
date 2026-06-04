@@ -227,6 +227,22 @@ def update_station(
     return station
 
 
+@router.delete("/stations/{station_id}")
+def delete_station(
+    station_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
+):
+    station = db.get(Station, station_id)
+    if not station:
+        raise HTTPException(status_code=404, detail="Estacion no encontrada")
+    ensure_event_access(db, user, station.ecoe_event_id,
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    db.delete(station)
+    db.commit()
+    return {"deleted": True}
+
+
 # ── Pilotage ────────────────────────────────────────────────────────────
 
 @router.post("/pilotage")

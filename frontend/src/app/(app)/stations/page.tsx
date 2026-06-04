@@ -29,10 +29,20 @@ function StatusBadge({ status }: { status: string }) {
 export default function StationsPage() {
   const { token, eventId, user } = useECOE();
   const router = useRouter();
-  const { data, loading, error } = useApi(
+  const { data, loading, error, setData } = useApi(
     () => api.stations(eventId, token!) as Promise<Record<string, unknown>[]>,
     [eventId, token],
   );
+
+  const handleDelete = async (stationId: number) => {
+    if (!window.confirm("Vas a eliminar esta estacion permanentemente. Esta accion no se puede deshacer. Continuar?")) return;
+    try {
+      await api.deleteStation(stationId, token!);
+      setData((prev) => (prev ?? []).filter((s) => Number(s.id) !== stationId));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "No se pudo eliminar la estacion");
+    }
+  };
 
   useEffect(() => {
     if (user?.role === "evaluador") {
@@ -117,6 +127,13 @@ export default function StationsPage() {
                   >
                     Editar
                   </Link>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-xl border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50"
+                    onClick={() => handleDelete(id)}
+                  >
+                    Eliminar
+                  </button>
                 </div>
               </div>
             );

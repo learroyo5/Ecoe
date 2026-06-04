@@ -146,6 +146,8 @@ export const api = {
     request<Station>("/stations", { method: "POST", body: JSON.stringify(payload) }, token),
   updateStation: (stationId: number, payload: Record<string, unknown>, token: string) =>
     request<Station>(`/stations/${stationId}`, { method: "PUT", body: JSON.stringify(payload) }, token),
+  deleteStation: (stationId: number, token: string) =>
+    request<{ deleted: boolean }>(`/stations/${stationId}`, { method: "DELETE" }, token),
 
   // Media
   media: (stationId: number, token: string) => request<MediaAsset[]>(`/media/${stationId}`, {}, token),

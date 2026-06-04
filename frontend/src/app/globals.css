@@ -152,6 +152,17 @@ textarea {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
+/* Checkboxes and radios should keep their native size, not stretch full width */
+input[type="checkbox"],
+input[type="radio"] {
+  width: auto;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 input::placeholder,
 textarea::placeholder {
   color: var(--color-text-muted);
