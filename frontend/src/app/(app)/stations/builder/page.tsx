@@ -1465,7 +1465,7 @@ export default function StationBuilderPage() {
                       }
                     </div>
 
-                    <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                    <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 cursor-pointer hover:border-slate-300 transition">
                       <input
                         type="checkbox"
                         checked={instrumentDraft.free_observation}
@@ -1475,8 +1475,9 @@ export default function StationBuilderPage() {
                             free_observation: event.target.checked,
                           }))
                         }
+                        className="size-4 accent-[var(--color-primary)] shrink-0"
                       />
-                      Permitir observación libre adicional para el evaluador
+                      <span>Permitir observacion libre adicional para el evaluador</span>
                     </label>
 
                     <div className="space-y-3">
