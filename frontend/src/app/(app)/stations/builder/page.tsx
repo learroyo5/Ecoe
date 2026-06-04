@@ -11,6 +11,38 @@ import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 import { MediaPreview } from "@/components/media-preview";
 
+// ── Navigation guard ───────────────────────────────────────────────────
+
+function useNavigationGuard(hasUnsavedChanges: boolean) {
+  // Block browser tab close/refresh
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [hasUnsavedChanges]);
+
+  // Intercept clicks on sidebar/header links
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const link = target.closest("a[href]") as HTMLAnchorElement | null;
+      if (!link) return;
+      const href = link.getAttribute("href") ?? "";
+      // Only intercept internal navigation, not external links or file downloads
+      if (href.startsWith("http") || href.startsWith("#") || href.startsWith("mailto:") || href.includes(".")) return;
+      if (!window.confirm("Tienes cambios sin guardar en la estacion. Salir sin guardar?")) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+    };
+    document.addEventListener("click", handler, true);
+    return () => document.removeEventListener("click", handler, true);
+  }, [hasUnsavedChanges]);
+}
+
 const defaultForm = {
   station_number: "1",
   name: "",
@@ -486,23 +518,23 @@ export default function StationBuilderPage() {
   const builderFlowSteps = [
     {
       index: 1 as const,
-      title: "Origen y base",
-      description: "Selecciona el origen y define la identidad pedagógica central de la estación.",
+      title: "1. Identidad de la estación",
+      description: "Nombre, tipo, circuito, y resultados esperados.",
     },
     {
       index: 2 as const,
-      title: "Configuración académica",
-      description: "Activa la plantilla, la pauta y los apoyos que habilitan el flujo real.",
+      title: "2. Instrumento de evaluación",
+      description: "Plantilla, pauta, y paciente simulado.",
     },
     {
       index: 3 as const,
-      title: "Instrucciones operativas",
-      description: "Redacta con claridad lo que verá el estudiante y cómo registrará el evaluador.",
+      title: "3. Instrucciones",
+      description: "Qué ve el estudiante y cómo evalúa el docente.",
     },
     {
       index: 4 as const,
-      title: "Recursos y cierre",
-      description: "Completa materiales, multimedia y deja la estación lista para guardarse.",
+      title: "4. Recursos y multimedia",
+      description: "Materiales, archivos, y formulario del estudiante.",
     },
   ];
 
@@ -778,18 +810,7 @@ export default function StationBuilderPage() {
     }
   }, [router, user?.role]);
 
-  useEffect(() => {
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!hasUnsavedChanges) {
-        return;
-      }
-      event.preventDefault();
-      event.returnValue = "";
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [hasUnsavedChanges]);
+  useNavigationGuard(hasUnsavedChanges);
 
   useEffect(() => {
     setForm((current) =>
@@ -881,6 +902,24 @@ export default function StationBuilderPage() {
 
   return (
     <SectionCard>
+      {hasUnsavedChanges ? (
+        <div className="mb-4 flex items-center justify-between rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3">
+          <p className="text-sm font-semibold text-amber-800">
+            ⚠️ Tienes cambios sin guardar. Recuerda guardar antes de salir.
+          </p>
+          <button
+            type="button"
+            className="btn-primary text-xs"
+            disabled={isSaving}
+            onClick={() => {
+              const formEl = document.querySelector("form") as HTMLFormElement | null;
+              formEl?.requestSubmit();
+            }}
+          >
+            {isSaving ? "Guardando..." : "Guardar ahora"}
+          </button>
+        </div>
+      ) : null}
       <section className="space-y-4 rounded-3xl border border-indigo-200 bg-indigo-50/70 p-5">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-700">
