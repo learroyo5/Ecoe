@@ -236,9 +236,9 @@ export default function StudentsPage() {
           <p>{error}</p>
         ) : (
           <DataTable
-            rows={(data?.items as Record<string, unknown>[]) ?? (Array.isArray(data) ? data as Record<string, unknown>[] : [])}
+            rows={(data as Record<string, unknown>) ?? []}
             searchKeys={["name", "last_name", "rut", "email", "ecoe_number"]}
-            paginated={!!data?.items}
+            paginated={!!data && typeof data === "object" && "items" in data}
             onPageChange={setPage}
             columns={[
               { key: "ecoe_number", label: "N ECOE" },
