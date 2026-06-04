@@ -1279,7 +1279,7 @@ export default function StationBuilderPage() {
             <div className="lg:col-span-2 flex justify-end">
               <button
                 type="button"
-                className="btn-secondary"
+                className="btn-primary animate-pulse-soft"
                 onClick={() => openSection(2)}
               >
                 Continuar a configuración
@@ -1612,7 +1612,7 @@ export default function StationBuilderPage() {
             <div className="lg:col-span-2 flex justify-end">
               <button
                 type="button"
-                className="btn-secondary"
+                className="btn-primary animate-pulse-soft"
                 onClick={() => openSection(3)}
               >
                 Continuar a instrucciones
@@ -1772,7 +1772,7 @@ export default function StationBuilderPage() {
             <div className="lg:col-span-2 flex justify-end">
               <button
                 type="button"
-                className="btn-secondary"
+                className="btn-primary animate-pulse-soft"
                 onClick={() => openSection(4)}
               >
                 Continuar a recursos
