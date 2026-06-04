@@ -283,8 +283,8 @@ function BuilderSection({
                 completed
                   ? "bg-emerald-100 text-emerald-700"
                   : expanded
-                    ? "bg-teal-100 text-teal-700"
-                    : "bg-slate-100 text-slate-500"
+                    ? "bg-teal-100 text-teal-700 animate-pulse-soft"
+                    : "bg-orange-50 text-orange-600"
               }`}
             >
               {completed ? "Completo" : expanded ? "Activo" : "Pendiente"}
@@ -970,8 +970,8 @@ export default function StationBuilderPage() {
                         stepCompletion[step.index]
                           ? "bg-emerald-100 text-emerald-700"
                           : expandedSection === step.index
-                            ? "bg-teal-100 text-teal-700"
-                            : "bg-slate-100 text-slate-500"
+                            ? "bg-teal-100 text-teal-700 animate-pulse-soft"
+                            : "bg-orange-50 text-orange-600"
                       }`}
                     >
                       {stepCompletion[step.index] ? "Completo" : expandedSection === step.index ? "En curso" : "Pendiente"}
