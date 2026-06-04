@@ -63,9 +63,8 @@ export default function EvaluatorsPage() {
     <div className="space-y-6">
       {/* Team composition summary */}
       <SectionCard title="Composicion del equipo" subtitle="Roles requeridos y estado actual de asignacion.">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[
-            { role: "admin_ecoe", label: "Admin", min: 1, max: 1 },
             { role: "coeditor_docente", label: "Coeditor", min: 1, max: Infinity },
             { role: "coordinador_operativo", label: "Coord. operativo", min: 1, max: 1 },
             { role: "cronometrador", label: "Cronometrador", min: 1, max: 1 },
@@ -100,8 +99,8 @@ export default function EvaluatorsPage() {
           })}
         </div>
         <p className="mt-3 text-xs text-slate-500">
-          Evaluadores: {roleCounts["evaluador"] ?? 0} asignados. Sin límite máximo — se requieren según
-          las estaciones que necesitan evaluador.
+          El rol Admin se asigna automaticamente al crear el ECOE y no aparece en esta lista.
+          Evaluadores: {roleCounts["evaluador"] ?? 0} asignados. Sin limite maximo.
         </p>
       </SectionCard>
 

@@ -43,7 +43,12 @@ async function request<T>(
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || "No se pudo completar la solicitud");
+    let detail = text || "No se pudo completar la solicitud";
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed.detail) detail = parsed.detail;
+    } catch { /* not JSON, use raw text */ }
+    throw new Error(detail);
   }
 
   const contentType = response.headers.get("content-type") ?? "";
