@@ -287,6 +287,11 @@ button {
   @apply px-4 py-3 font-semibold;
 }
 
+/* Ensure header text is readable on hover (when bg changes to light gray) */
+.evaluation-table th:hover {
+  color: #1e293b;
+}
+
 .evaluation-table tbody tr {
   border-bottom: 1px solid rgba(203, 213, 225, 0.55);
 }
