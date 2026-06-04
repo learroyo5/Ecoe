@@ -111,9 +111,20 @@ export default function EvaluatorsPage() {
               const response = (await api.importStaff(eventId, file, token!)) as {
                 imported?: number;
                 skipped?: number;
+                skipped_duplicate?: number;
+                skipped_no_account?: number;
+                skipped_missing_data?: number;
               };
               await refresh();
-              return `Carga completada: ${response.imported ?? 0} evaluadores o colaboradores importados y ${response.skipped ?? 0} omitidos por correo duplicado.`;
+              const imported = response.imported ?? 0;
+              const dupes = response.skipped_duplicate ?? 0;
+              const noAcct = response.skipped_no_account ?? 0;
+              const missing = response.skipped_missing_data ?? 0;
+              const parts: string[] = [`${imported} evaluadores importados.`];
+              if (dupes > 0) parts.push(`${dupes} omitidos por correo duplicado en este ECOE.`);
+              if (noAcct > 0) parts.push(`${noAcct} omitidos: no existe cuenta de usuario con ese rol. Crea el usuario primero en Usuarios.`);
+              if (missing > 0) parts.push(`${missing} omitidos por falta de datos.`);
+              return parts.join(" ");
             }}
           />
 

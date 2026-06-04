@@ -187,7 +187,9 @@ async def import_staff(
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     rows = await parse_tabular_file(file)
     imported = 0
-    skipped = 0
+    skipped_duplicate = 0
+    skipped_no_account = 0
+    skipped_missing_data = 0
     existing_emails = {
         normalize_email(email)
         for email in db.scalars(
@@ -196,14 +198,17 @@ async def import_staff(
     }
     for row in rows:
         email = normalize_email(row.get("correo", row.get("email", "")))
-        if not email or email in existing_emails:
-            skipped += 1
+        if not email:
+            skipped_missing_data += 1
+            continue
+        if email in existing_emails:
+            skipped_duplicate += 1
             continue
         role_code = validate_staff_role_code(row.get("rol", row.get("role_code", "evaluador")))
         try:
             ensure_matching_operational_user(db, email=email, expected_role=role_code)
         except HTTPException:
-            skipped += 1
+            skipped_no_account += 1
             continue
         db.add(
             StaffAssignment(
@@ -218,4 +223,10 @@ async def import_staff(
         imported += 1
         existing_emails.add(email)
     db.commit()
-    return {"imported": imported, "skipped": skipped}
+    return {
+        "imported": imported,
+        "skipped": skipped_duplicate + skipped_no_account + skipped_missing_data,
+        "skipped_duplicate": skipped_duplicate,
+        "skipped_no_account": skipped_no_account,
+        "skipped_missing_data": skipped_missing_data,
+    }
