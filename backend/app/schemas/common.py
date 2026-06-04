@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 
 class ORMBase(BaseModel):
@@ -324,21 +324,15 @@ class UserRead(ORMBase):
     role_code: str = ""
     is_active: bool
 
+    @model_validator(mode="before")
     @classmethod
-    def model_validate(cls, obj: Any) -> "UserRead":
-        # Extract role_code from the User.role relationship
-        if hasattr(obj, "role") and obj.role:
-            return cls(
-                id=obj.id,
-                email=obj.email,
-                full_name=obj.full_name,
-                role_code=obj.role.code,
-                is_active=obj.is_active,
-            )
-        return cls(
-            id=obj.id,
-            email=obj.email,
-            full_name=obj.full_name,
-            role_code="",
-            is_active=obj.is_active,
-        )
+    def extract_role_code(cls, data: Any) -> Any:
+        if hasattr(data, "role") and data.role:
+            return {
+                "id": data.id,
+                "email": data.email,
+                "full_name": data.full_name,
+                "role_code": data.role.code,
+                "is_active": data.is_active,
+            }
+        return data
