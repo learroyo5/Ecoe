@@ -114,7 +114,8 @@ def ensure_primary_station_assignment(staff: StaffAssignment | None) -> tuple[li
 def validate_staff_role_code(role_code: str) -> str:
     normalized_role = str(role_code or "").strip().lower()
     if normalized_role not in ALLOWED_STAFF_ASSIGNMENT_ROLE_CODES:
-        raise HTTPException(status_code=400, detail="Rol operativo no permitido para este registro")
+        allowed = ", ".join(sorted(ALLOWED_STAFF_ASSIGNMENT_ROLE_CODES))
+        raise HTTPException(status_code=400, detail=f"Rol '{role_code}' no es valido para asignar al equipo. Roles permitidos: {allowed}")
     return normalized_role
 
 
@@ -230,15 +231,20 @@ def ensure_matching_operational_user(
     user = db.scalar(
         select(User).where(func.lower(User.email) == normalized_email)
     )
-    if not user or str(user.role.code) != expected_role:
+    if not user:
         raise HTTPException(
             status_code=400,
-            detail=f"No existe una cuenta activa con rol {expected_role} para ese correo",
+            detail=f"No se encontro un usuario con el correo '{email}'. Debes crearlo primero en la seccion Usuarios.",
+        )
+    if str(user.role.code) != expected_role:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El usuario {user.full_name} tiene rol '{user.role.code}', pero se requiere '{expected_role}'. Cambia el rol del usuario o asigna el rol correcto.",
         )
     if not user.is_active:
         raise HTTPException(
             status_code=400,
-            detail="La cuenta asociada a este correo se encuentra inactiva",
+            detail=f"La cuenta de {user.full_name} ({email}) esta inactiva. Reactivala en la seccion Usuarios.",
         )
     return user
 
