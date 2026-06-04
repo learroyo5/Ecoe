@@ -773,6 +773,7 @@ export default function StationBuilderPage() {
     setSelectedTemplateId(nextSelectedTemplateId);
     setSelectedPatientId(nextSelectedPatientId);
     setSelectedAssessmentToolId(nextSelectedAssessmentToolId);
+    setInstrumentDraft(defaultInstrumentDraft);
     setBankStatus(nextBankStatus);
     setStudentQuestions(nextStudentQuestions);
     setSavedSnapshot(
