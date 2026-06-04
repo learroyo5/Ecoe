@@ -84,6 +84,9 @@ export const api = {
     request<ECOEEvent>(`/ecoe/${eventId}/timing`, { method: "PATCH", body: JSON.stringify(payload) }, token),
   validation: (eventId: number, token: string) => request<Record<string, unknown>>(`/validation/${eventId}`, {}, token),
 
+  // Users
+  listUsers: (token: string) => request<Array<{ id: number; email: string; full_name: string; role_code: string; is_active: boolean }>>("/users", {}, token),
+
   // Students
   students: (eventId: number, token: string, page: number = 1, pageSize: number = 50) => request<Student[]>(`/students/${eventId}?page=${page}&page_size=${pageSize}`, {}, token),
   createStudent: (payload: Record<string, unknown>, token: string) =>

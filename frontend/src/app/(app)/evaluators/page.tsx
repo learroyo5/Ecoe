@@ -20,6 +20,10 @@ export default function EvaluatorsPage() {
     () => api.stations(eventId, token!) as Promise<Record<string, unknown>[]>,
     [eventId, token],
   );
+  const { data: users } = useApi(
+    () => api.listUsers(token!),
+    [token],
+  );
   const stations = rawStations ?? [];
   const [form, setForm] = useState({
     name: "",
@@ -162,6 +166,44 @@ export default function EvaluatorsPage() {
               }
             }}
           >
+            {/* Quick-add from existing users */}
+            <div className="md:col-span-2">
+              <label className="space-y-2 rounded-[22px] border border-emerald-200 bg-emerald-50/60 p-4 block">
+                <span className="text-sm font-semibold text-emerald-800">Agregar desde usuarios registrados</span>
+                <p className="text-xs text-emerald-700 mb-2">Selecciona un usuario del sistema para pre-llenar los campos.</p>
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const userId = Number(e.target.value);
+                    if (!userId) return;
+                    const u = (users ?? []).find((user) => user.id === userId);
+                    if (!u) return;
+                    // Split full_name into name and last_name
+                    const parts = (u.full_name ?? "").split(" ");
+                    const name = parts[0] ?? "";
+                    const last_name = parts.slice(1).join(" ") ?? "";
+                    setForm({
+                      name,
+                      last_name,
+                      email: u.email,
+                      role_code: u.role_code ?? "evaluador",
+                      station_id: form.station_id,
+                    });
+                    e.currentTarget.value = "";
+                  }}
+                >
+                  <option value="">— Seleccionar usuario —</option>
+                  {(users ?? [])
+                    .filter((u) => u.role_code !== "estudiante" && u.is_active)
+                    .map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.full_name} · {u.email} · {u.role_code}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            </div>
+
             <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
               <span className="text-sm font-semibold text-slate-700">Nombre</span>
               <input
