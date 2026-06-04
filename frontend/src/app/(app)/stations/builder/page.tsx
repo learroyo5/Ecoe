@@ -1031,10 +1031,10 @@ export default function StationBuilderPage() {
           setMessage(null);
           setIsSaving(true);
           try {
+            // If creating a new instrument, save it first automatically
             if (assessmentMode === "create") {
-              throw new Error(
-                "Debes guardar primero la pauta de evaluación antes de guardar los cambios de la estación.",
-              );
+              setMessage("Guardando la pauta de evaluación primero...");
+              await saveInstrumentDraft();
             }
 
             if (builderScope === "bank") {
@@ -1973,9 +1973,8 @@ export default function StationBuilderPage() {
                 setMessage(null);
                 try {
                   if (assessmentMode === "create") {
-                    throw new Error(
-                      "Debes guardar primero la pauta de evaluación antes de guardar esta estación en el banco.",
-                    );
+                    setMessage("Guardando la pauta primero...");
+                    await saveInstrumentDraft();
                   }
                   const createdBankStation = (await api.createStationBank(
                     buildStationBankPayload(),
