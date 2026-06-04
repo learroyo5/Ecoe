@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
 from app.models.entities import Role, User
@@ -20,8 +20,8 @@ def list_users(
     user: User = Depends(require_roles("admin_ecoe")),
 ):
     return db.scalars(
-        select(User).order_by(User.full_name.asc(), User.id.asc())
-    ).all()
+        select(User).options(joinedload(User.role)).order_by(User.full_name.asc(), User.id.asc())
+    ).unique().all()
 
 
 @router.post("/users", response_model=UserRead)
