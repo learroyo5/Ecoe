@@ -13,7 +13,7 @@ export default function StudentsPage() {
   const { token, eventId } = useECOE();
   const [page, setPage] = useState(1);
   const { data, loading, error, setData } = useApi(
-    () => api.students(eventId, token!) as unknown as Promise<Record<string, unknown>>,
+    () => api.students(eventId, token!, page) as unknown as Promise<Record<string, unknown>>,
     [eventId, token, page],
   );
   const [message, setMessage] = useState<string | null>(null);
