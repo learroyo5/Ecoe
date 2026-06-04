@@ -16,6 +16,18 @@ export default function EvaluatorsPage() {
     [eventId, token],
   );
   const data = (rawStaff?.items as Record<string, unknown>[]) ?? (Array.isArray(rawStaff) ? rawStaff as Record<string, unknown>[] : []);
+
+  // Count current staff by role for validation warnings
+  const roleCounts: Record<string, number> = {};
+  for (const s of data) {
+    const rc = String((s as { role_code?: string }).role_code ?? "");
+    roleCounts[rc] = (roleCounts[rc] ?? 0) + 1;
+  }
+
+  const SINGLE_ROLE_WARNINGS: Record<string, string> = {
+    coordinador_operativo: "Ya existe un coordinador operativo en este ECOE. Normalmente basta con uno. ¿Agregar otro de todas formas?",
+    cronometrador: "Ya existe un cronometrador en este ECOE. Normalmente basta con uno. ¿Agregar otro de todas formas?",
+  };
   const { data: rawStations } = useApi(
     () => api.stations(eventId, token!) as Promise<Record<string, unknown>[]>,
     [eventId, token],
@@ -49,6 +61,50 @@ export default function EvaluatorsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Team composition summary */}
+      <SectionCard title="Composicion del equipo" subtitle="Roles requeridos y estado actual de asignacion.">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            { role: "admin_ecoe", label: "Admin", min: 1, max: 1 },
+            { role: "coeditor_docente", label: "Coeditor", min: 1, max: Infinity },
+            { role: "coordinador_operativo", label: "Coord. operativo", min: 1, max: 1 },
+            { role: "cronometrador", label: "Cronometrador", min: 1, max: 1 },
+          ].map(({ role, label, min, max }) => {
+            const count = roleCounts[role] ?? 0;
+            const ok = count >= min;
+            const over = max < Infinity && count > max;
+            return (
+              <div
+                key={role}
+                className={`rounded-2xl border p-3 ${
+                  ok && !over
+                    ? "border-emerald-200 bg-emerald-50/60"
+                    : "border-amber-200 bg-amber-50/60"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-slate-800">{label}</span>
+                  <span className={`text-lg font-bold ${ok && !over ? "text-emerald-600" : "text-amber-600"}`}>
+                    {count}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  {ok && !over
+                    ? "✓ Asignado"
+                    : count === 0
+                      ? `Falta asignar (mín. ${min})`
+                      : `Revisar: hay ${count}, recomendado ${max}`}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-3 text-xs text-slate-500">
+          Evaluadores: {roleCounts["evaluador"] ?? 0} asignados. Sin límite máximo — se requieren según
+          las estaciones que necesitan evaluador.
+        </p>
+      </SectionCard>
+
       <SectionCard
         title="Equipo operativo del ECOE"
         subtitle="Cada integrante debe tener cuenta activa con el rol correcto; los evaluadores además necesitan una estación principal."
@@ -137,6 +193,13 @@ export default function EvaluatorsPage() {
             onSubmit={async (event) => {
               event.preventDefault();
               setMessage(null);
+
+              // Warn if adding a duplicate single-role staff member
+              const warning = SINGLE_ROLE_WARNINGS[form.role_code];
+              if (warning && (roleCounts[form.role_code] ?? 0) > 0) {
+                if (!window.confirm(warning)) return;
+              }
+
               setSavingForm(true);
               try {
                 await api.createStaff(
