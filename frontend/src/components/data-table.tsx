@@ -116,7 +116,7 @@ export function DataTable<T>({
                   return (
                     <th
                       key={col.key}
-                      className={canSort ? "cursor-pointer select-none hover:bg-slate-100" : ""}
+                      className={canSort ? "cursor-pointer select-none hover:bg-slate-100 hover:text-slate-800" : ""}
                       onClick={() => canSort && handleSort(col.key)}
                     >
                       <span className="inline-flex items-center gap-1">
