@@ -6,9 +6,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "Proyecto Tecnologico ECOE"
     api_prefix: str = "/api"
+    environment: str = "development"
+    auto_seed_demo: bool = True
+    allow_create_all_fallback: bool = True
     # SECURITY: secret_key MUST be set via .env in production.
     # The default below is only for local development with Docker Compose.
     secret_key: str = ""
+    jwt_issuer: str = "ecoe-backend"
+    jwt_audience: str = "ecoe-web"
     access_token_expire_minutes: int = 60 * 24
     auth_cookie_name: str = "ecoe_session"
     auth_cookie_samesite: str = "lax"
@@ -25,6 +30,10 @@ class Settings(BaseSettings):
     timer_password: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.lower() in {"prod", "production"}
 
 
 @lru_cache

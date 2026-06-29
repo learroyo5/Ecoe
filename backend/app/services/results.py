@@ -254,8 +254,8 @@ def build_traceability_report(
     }
 
 
-def export_results_excel(db: Session, ecoe_event_id: int) -> bytes:
-    data = persist_results(db, ecoe_event_id)
+def export_results_excel(db: Session, ecoe_event_id: int, *, persist: bool = False) -> bytes:
+    data = persist_results(db, ecoe_event_id) if persist else compute_results(db, ecoe_event_id)
     df = pd.DataFrame(data)
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:

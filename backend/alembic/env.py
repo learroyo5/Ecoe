@@ -9,6 +9,7 @@ from alembic import context
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.db.session import Base
+from app.core.config import get_settings
 from app.models import entities  # noqa: F401 — ensure all models are loaded
 
 # Alembic Config object
@@ -20,6 +21,7 @@ if config.config_file_name is not None:
 
 # Target metadata for autogenerate
 target_metadata = Base.metadata
+config.set_main_option("sqlalchemy.url", get_settings().database_url)
 
 
 def run_migrations_offline() -> None:

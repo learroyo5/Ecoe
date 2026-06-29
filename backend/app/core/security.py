@@ -21,14 +21,25 @@ def create_access_token(subject: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(
         minutes=settings.access_token_expire_minutes
     )
-    payload = {"sub": subject, "exp": expire}
+    payload = {
+        "sub": subject,
+        "exp": expire,
+        "iss": settings.jwt_issuer,
+        "aud": settings.jwt_audience,
+    }
     return jwt.encode(payload, settings.secret_key, algorithm="HS256")
 
 
 def decode_token(token: str) -> str | None:
     settings = get_settings()
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=["HS256"])
+        payload = jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=["HS256"],
+            issuer=settings.jwt_issuer,
+            audience=settings.jwt_audience,
+        )
     except JWTError:
         return None
     return payload.get("sub")

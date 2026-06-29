@@ -1,15 +1,16 @@
 """Live panel, timer control, media, validation, results, and incidents routes."""
 
+from http.cookies import SimpleCookie
 from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response as FastAPIResponse
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.session import get_db
+from app.db.session import SessionLocal, get_db
 from app.models.entities import (
     ECOEEvent,
     Incident,
@@ -19,11 +20,11 @@ from app.models.entities import (
 )
 from app.models.enums import RoleCode
 from app.schemas.common import IncidentCreate, IncidentResolve, TimerAction
-from app.services.dependencies import get_current_user, require_roles
+from app.services.dependencies import authenticate_session_token, get_current_user, require_roles
 from app.services.ecoe import (
     build_dashboard,
     build_traceability_report,
-    compute_ecoe_validation,
+    compute_results,
     export_contingency_pdf,
     export_results_excel,
     persist_results,
@@ -33,6 +34,8 @@ from app.utils.helpers import (
     ALLOWED_VIEWERS,
     MAX_MEDIA_SIZE_BYTES,
     ensure_event_access,
+    filter_media_for_user,
+    get_media_asset_for_user,
     safe_media_filename,
     validate_media_type,
 )
@@ -45,6 +48,35 @@ router = APIRouter()
 
 @router.websocket("/ws/live/{ecoe_event_id}")
 async def websocket_live_timer(websocket: WebSocket, ecoe_event_id: int):
+    settings = get_settings()
+    token = None
+    authorization = websocket.headers.get("authorization", "")
+    if authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        token = websocket.cookies.get(settings.auth_cookie_name)
+    if not token:
+        cookie_header = websocket.headers.get("cookie", "")
+        parsed_cookie = SimpleCookie()
+        parsed_cookie.load(cookie_header)
+        morsel = parsed_cookie.get(settings.auth_cookie_name)
+        token = morsel.value if morsel else None
+
+    with SessionLocal() as db:
+        try:
+            user = authenticate_session_token(db, token)
+            ensure_event_access(
+                db,
+                user,
+                ecoe_event_id,
+                RoleCode.admin_ecoe.value,
+                RoleCode.coordinador_operativo.value,
+                RoleCode.cronometrador.value,
+            )
+        except HTTPException:
+            await websocket.close(code=1008)
+            return
+
     await live_timer.connect(ecoe_event_id, websocket)
     try:
         while True:
@@ -149,6 +181,16 @@ async def upload_media(
             status_code=400,
             detail=f"target_viewer debe ser uno de: {', '.join(sorted(ALLOWED_VIEWERS))}",
         )
+    ensure_event_access(
+        db, user, ecoe_event_id,
+        RoleCode.admin_ecoe.value,
+        RoleCode.coeditor_docente.value,
+    )
+    if not station_id:
+        raise HTTPException(status_code=400, detail="El archivo debe asociarse a una estacion")
+    station = db.get(Station, station_id)
+    if not station or station.ecoe_event_id != ecoe_event_id:
+        raise HTTPException(status_code=400, detail="La estacion no pertenece al ECOE indicado")
     secure_name = safe_media_filename(file.filename)
     settings = get_settings()
     media_dir = Path(settings.storage_path) / "media"
@@ -179,7 +221,20 @@ async def upload_media(
 
 @router.get("/media/{station_id}")
 def list_media(station_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    return db.scalars(select(MediaAsset).where(MediaAsset.station_id == station_id)).all()
+    station = db.get(Station, station_id)
+    if not station:
+        raise HTTPException(status_code=404, detail="Estacion no encontrada")
+    ensure_event_access(
+        db, user, station.ecoe_event_id,
+        RoleCode.admin_ecoe.value,
+        RoleCode.coeditor_docente.value,
+        RoleCode.coordinador_operativo.value,
+        RoleCode.cronometrador.value,
+        RoleCode.evaluador.value,
+        RoleCode.estudiante.value,
+    )
+    assets = db.scalars(select(MediaAsset).where(MediaAsset.station_id == station_id)).all()
+    return filter_media_for_user(db, user, station, assets)
 
 
 @router.delete("/media/{asset_id}")
@@ -191,6 +246,12 @@ def delete_media(
     asset = db.get(MediaAsset, asset_id)
     if not asset:
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    get_media_asset_for_user(
+        db,
+        user,
+        asset_id,
+        writable=True,
+    )
     file_path = Path(asset.file_path)
     if file_path.exists():
         file_path.unlink()
@@ -201,9 +262,7 @@ def delete_media(
 
 @router.get("/media/file/{asset_id}")
 def get_media_file(asset_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    asset = db.get(MediaAsset, asset_id)
-    if not asset:
-        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    asset = get_media_asset_for_user(db, user, asset_id)
     return FileResponse(path=asset.file_path, media_type=asset.content_type, filename=asset.original_name)
 
 
@@ -221,8 +280,19 @@ def validation(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(g
 @router.get("/results/{ecoe_event_id}")
 def get_results(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
+    results = compute_results(db, ecoe_event_id)
+    return {
+        "results": results,
+        **build_traceability_report(db, ecoe_event_id, consolidated_results=results),
+    }
+
+
+@router.post("/results/{ecoe_event_id}/consolidate")
+def consolidate_results(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
     results = persist_results(db, ecoe_event_id)
     return {
+        "consolidated": True,
         "results": results,
         **build_traceability_report(db, ecoe_event_id, consolidated_results=results),
     }
@@ -231,7 +301,7 @@ def get_results(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(
 @router.get("/results/{ecoe_event_id}/export/excel")
 def export_excel(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
-    content = export_results_excel(db, ecoe_event_id)
+    content = export_results_excel(db, ecoe_event_id, persist=False)
     return FastAPIResponse(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

@@ -34,12 +34,7 @@ def rate_limit_login(request: Request) -> None:
     _login_attempts[client_ip].append(now)
 
 
-def get_current_user(
-    token: str | None = Depends(oauth2_scheme),
-    db: Session = Depends(get_db),
-    auth_cookie: str | None = Cookie(default=None, alias=get_settings().auth_cookie_name),
-) -> User:
-    session_token = token or auth_cookie
+def authenticate_session_token(db: Session, session_token: str | None) -> User:
     if not session_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -54,6 +49,14 @@ def get_current_user(
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario inactivo")
     return user
+
+
+def get_current_user(
+    token: str | None = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+    auth_cookie: str | None = Cookie(default=None, alias=get_settings().auth_cookie_name),
+) -> User:
+    return authenticate_session_token(db, token or auth_cookie)
 
 
 def require_roles(*roles: str):

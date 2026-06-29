@@ -16,10 +16,12 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from starlette.websockets import WebSocketDisconnect
 
 from app.db.session import Base, get_db
 from app.main import app
 from app.db.seed import seed_data
+from app.models.entities import ECOEResult, MediaAsset, StationCheckIn
 
 # Disable rate limiting for tests
 import app.services.dependencies as deps
@@ -43,6 +45,24 @@ def override_get_db():
 
 
 app.dependency_overrides[get_db] = override_get_db
+
+
+def ecoe_payload(name: str = "ECOE Aislado") -> dict:
+    return {
+        "name": name,
+        "date": "2026-08-01",
+        "course_name": "Curso Test",
+        "school_name": "Escuela Test",
+        "responsible_teacher": "Admin Test",
+        "contact_email": "test@ecoe.cl",
+        "circuit_mode": "paralelo_espejo",
+        "total_stations": 4,
+        "station_time_minutes": 8,
+        "transition_time_minutes": 2,
+        "total_students": 10,
+        "total_groups": 2,
+        "passing_reference_percent": 60,
+    }
 
 
 @pytest.fixture
@@ -293,6 +313,127 @@ class TestMediaSecurity:
             files={"file": ("big.pdf", big_content, "application/pdf")},
         )
         assert response.status_code == 400
+
+    def test_student_cannot_access_evaluator_media(self, client):
+        with TestingSessionLocal() as db:
+            checkin = StationCheckIn(
+                ecoe_event_id=1,
+                station_id=1,
+                student_id=1,
+                evaluator_email="eval1@ecoe.cl",
+                evaluator_name="Enf. Camila Soto",
+                status="confirmado",
+            )
+            db.add(checkin)
+            asset = MediaAsset(
+                filename="evaluador.pdf",
+                original_name="evaluador.pdf",
+                content_type="application/pdf",
+                file_path="/tmp/ecoe-test-storage/evaluador.pdf",
+                target_viewer="evaluador",
+                station_id=1,
+            )
+            db.add(asset)
+            db.commit()
+            db.refresh(asset)
+            asset_id = asset.id
+
+        login_resp = client.post("/api/auth/login", json={
+            "email": "student1@ecoe.cl",
+            "password": "test-student",
+        })
+        assert login_resp.status_code == 200
+
+        response = client.get(f"/api/media/file/{asset_id}")
+        assert response.status_code == 403
+
+
+class TestP0Permissions:
+    def test_user_without_event_access_cannot_read_ecoe(self, client):
+        admin_login = client.post("/api/auth/login", json={
+            "email": "admin@ecoe.cl",
+            "password": "test-admin",
+        })
+        assert admin_login.status_code == 200
+        create_resp = client.post("/api/ecoe", json=ecoe_payload("ECOE Sin Evaluador"))
+        assert create_resp.status_code == 200
+        isolated_event_id = create_resp.json()["id"]
+
+        evaluator_login = client.post("/api/auth/login", json={
+            "email": "eval1@ecoe.cl",
+            "password": "test-evaluator",
+        })
+        assert evaluator_login.status_code == 200
+
+        response = client.get(f"/api/ecoe/{isolated_event_id}")
+        assert response.status_code == 403
+
+    def test_evaluator_cannot_access_other_ecoe_dashboard(self, client):
+        admin_login = client.post("/api/auth/login", json={
+            "email": "admin@ecoe.cl",
+            "password": "test-admin",
+        })
+        assert admin_login.status_code == 200
+        create_resp = client.post("/api/ecoe", json=ecoe_payload("ECOE Dashboard Aislado"))
+        assert create_resp.status_code == 200
+        isolated_event_id = create_resp.json()["id"]
+
+        evaluator_login = client.post("/api/auth/login", json={
+            "email": "eval1@ecoe.cl",
+            "password": "test-evaluator",
+        })
+        assert evaluator_login.status_code == 200
+
+        response = client.get(f"/api/dashboard/{isolated_event_id}")
+        assert response.status_code == 403
+
+    def test_websocket_rejects_missing_token(self, unauth_client):
+        with pytest.raises(WebSocketDisconnect):
+            with unauth_client.websocket_connect("/api/ws/live/1"):
+                pass
+
+    def test_websocket_rejects_token_without_event_permission(self, client):
+        admin_login = client.post("/api/auth/login", json={
+            "email": "admin@ecoe.cl",
+            "password": "test-admin",
+        })
+        assert admin_login.status_code == 200
+        create_resp = client.post("/api/ecoe", json=ecoe_payload("ECOE WS Aislado"))
+        assert create_resp.status_code == 200
+        isolated_event_id = create_resp.json()["id"]
+
+        evaluator_login = client.post("/api/auth/login", json={
+            "email": "eval1@ecoe.cl",
+            "password": "test-evaluator",
+        })
+        assert evaluator_login.status_code == 200
+
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect(f"/api/ws/live/{isolated_event_id}"):
+                pass
+
+    def test_get_results_does_not_persist_or_delete_results(self, auth_client):
+        with TestingSessionLocal() as db:
+            before = db.query(ECOEResult).filter(ECOEResult.ecoe_event_id == 1).count()
+
+        response = auth_client.get("/api/results/1")
+        assert response.status_code == 200
+        assert "results" in response.json()
+
+        with TestingSessionLocal() as db:
+            after = db.query(ECOEResult).filter(ECOEResult.ecoe_event_id == 1).count()
+
+        assert after == before
+
+    def test_consolidate_results_is_explicit_mutation(self, auth_client):
+        response = auth_client.post("/api/results/1/consolidate")
+        assert response.status_code == 200
+        assert response.json()["consolidated"] is True
+
+        with TestingSessionLocal() as db:
+            count = db.query(ECOEResult).filter(ECOEResult.ecoe_event_id == 1).count()
+
+        assert count > 0
 
 
 def teardown_module():
