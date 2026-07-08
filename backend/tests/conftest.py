@@ -39,6 +39,9 @@ from app.db.seed import seed_data
 import app.services.dependencies as deps
 
 deps._LOGIN_MAX_ATTEMPTS = 9999
+deps._LOGIN_ACCOUNT_MAX_ATTEMPTS = 9999
+deps._LOGIN_GLOBAL_MAX_ATTEMPTS = 9999
+deps._login_attempts.clear()
 
 IS_SQLITE = TEST_DATABASE_URL.startswith("sqlite")
 

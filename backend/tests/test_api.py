@@ -4,6 +4,7 @@ import pytest
 from starlette.websockets import WebSocketDisconnect
 
 from conftest import ADMIN, EVALUATOR, STUDENT, login
+import app.services.dependencies as deps
 from app.models.entities import ECOEResult, MediaAsset, StationCheckIn
 
 
@@ -53,6 +54,75 @@ class TestAuth:
             "password": "wrong-password",
         })
         assert response.status_code == 401
+
+    def test_login_rate_limit_by_ip(self, client, monkeypatch):
+        deps._login_attempts.clear()
+        monkeypatch.setattr(deps, "_LOGIN_MAX_ATTEMPTS", 2)
+        monkeypatch.setattr(deps, "_LOGIN_ACCOUNT_MAX_ATTEMPTS", 9999)
+        monkeypatch.setattr(deps, "_LOGIN_GLOBAL_MAX_ATTEMPTS", 9999)
+
+        for idx in range(2):
+            response = client.post("/api/auth/login", json={
+                "email": f"missing{idx}@ecoe.cl",
+                "password": "wrong-password",
+            })
+            assert response.status_code == 401
+
+        blocked = client.post("/api/auth/login", json={
+            "email": "another-missing@ecoe.cl",
+            "password": "wrong-password",
+        })
+        assert blocked.status_code == 429
+
+    def test_login_rate_limit_by_account(self, client, monkeypatch):
+        deps._login_attempts.clear()
+        monkeypatch.setattr(deps, "_LOGIN_MAX_ATTEMPTS", 9999)
+        monkeypatch.setattr(deps, "_LOGIN_ACCOUNT_MAX_ATTEMPTS", 2)
+        monkeypatch.setattr(deps, "_LOGIN_GLOBAL_MAX_ATTEMPTS", 9999)
+
+        for _idx in range(2):
+            response = client.post("/api/auth/login", json={
+                "email": ADMIN[0].upper(),
+                "password": "wrong-password",
+            })
+            assert response.status_code == 401
+
+        blocked = client.post("/api/auth/login", json={
+            "email": ADMIN[0],
+            "password": "wrong-password",
+        })
+        assert blocked.status_code == 429
+
+    def test_successful_login_clears_account_rate_limit(self, client, monkeypatch):
+        deps._login_attempts.clear()
+        monkeypatch.setattr(deps, "_LOGIN_MAX_ATTEMPTS", 9999)
+        monkeypatch.setattr(deps, "_LOGIN_ACCOUNT_MAX_ATTEMPTS", 2)
+        monkeypatch.setattr(deps, "_LOGIN_GLOBAL_MAX_ATTEMPTS", 9999)
+
+        failed = client.post("/api/auth/login", json={
+            "email": ADMIN[0],
+            "password": "wrong-password",
+        })
+        assert failed.status_code == 401
+
+        successful = client.post("/api/auth/login", json={
+            "email": ADMIN[0],
+            "password": ADMIN[1],
+        })
+        assert successful.status_code == 200
+
+        for _idx in range(2):
+            failed_after_success = client.post("/api/auth/login", json={
+                "email": ADMIN[0],
+                "password": "wrong-password",
+            })
+            assert failed_after_success.status_code == 401
+
+        blocked = client.post("/api/auth/login", json={
+            "email": ADMIN[0],
+            "password": "wrong-password",
+        })
+        assert blocked.status_code == 429
 
     def test_me_authenticated(self, auth_client):
         response = auth_client.get("/api/auth/me")
