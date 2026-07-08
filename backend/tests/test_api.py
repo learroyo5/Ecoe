@@ -1,11 +1,12 @@
 """Tests for security and core API functionality."""
 
 import pytest
+from sqlalchemy import delete, select
 from starlette.websockets import WebSocketDisconnect
 
 from conftest import ADMIN, EVALUATOR, STUDENT, login
-import app.services.dependencies as deps
-from app.models.entities import ECOEResult, MediaAsset, StationCheckIn
+import app.services.rate_limit as rate_limit
+from app.models.entities import AuthRateLimit, ECOEResult, MediaAsset, StationCheckIn
 
 
 def ecoe_payload(name: str = "ECOE Aislado") -> dict:
@@ -38,6 +39,11 @@ class TestHealth:
 
 
 class TestAuth:
+    def clear_auth_rate_limits(self, db_factory):
+        with db_factory() as db:
+            db.execute(delete(AuthRateLimit))
+            db.commit()
+
     def test_login_success(self, client):
         response = client.post("/api/auth/login", json={
             "email": ADMIN[0],
@@ -55,11 +61,11 @@ class TestAuth:
         })
         assert response.status_code == 401
 
-    def test_login_rate_limit_by_ip(self, client, monkeypatch):
-        deps._login_attempts.clear()
-        monkeypatch.setattr(deps, "_LOGIN_MAX_ATTEMPTS", 2)
-        monkeypatch.setattr(deps, "_LOGIN_ACCOUNT_MAX_ATTEMPTS", 9999)
-        monkeypatch.setattr(deps, "_LOGIN_GLOBAL_MAX_ATTEMPTS", 9999)
+    def test_login_rate_limit_by_ip(self, client, db_factory, monkeypatch):
+        self.clear_auth_rate_limits(db_factory)
+        monkeypatch.setattr(rate_limit, "LOGIN_IP_MAX_ATTEMPTS", 2)
+        monkeypatch.setattr(rate_limit, "LOGIN_ACCOUNT_MAX_ATTEMPTS", 9999)
+        monkeypatch.setattr(rate_limit, "LOGIN_GLOBAL_MAX_ATTEMPTS", 9999)
 
         for idx in range(2):
             response = client.post("/api/auth/login", json={
@@ -74,11 +80,11 @@ class TestAuth:
         })
         assert blocked.status_code == 429
 
-    def test_login_rate_limit_by_account(self, client, monkeypatch):
-        deps._login_attempts.clear()
-        monkeypatch.setattr(deps, "_LOGIN_MAX_ATTEMPTS", 9999)
-        monkeypatch.setattr(deps, "_LOGIN_ACCOUNT_MAX_ATTEMPTS", 2)
-        monkeypatch.setattr(deps, "_LOGIN_GLOBAL_MAX_ATTEMPTS", 9999)
+    def test_login_rate_limit_by_account(self, client, db_factory, monkeypatch):
+        self.clear_auth_rate_limits(db_factory)
+        monkeypatch.setattr(rate_limit, "LOGIN_IP_MAX_ATTEMPTS", 9999)
+        monkeypatch.setattr(rate_limit, "LOGIN_ACCOUNT_MAX_ATTEMPTS", 2)
+        monkeypatch.setattr(rate_limit, "LOGIN_GLOBAL_MAX_ATTEMPTS", 9999)
 
         for _idx in range(2):
             response = client.post("/api/auth/login", json={
@@ -93,11 +99,11 @@ class TestAuth:
         })
         assert blocked.status_code == 429
 
-    def test_successful_login_clears_account_rate_limit(self, client, monkeypatch):
-        deps._login_attempts.clear()
-        monkeypatch.setattr(deps, "_LOGIN_MAX_ATTEMPTS", 9999)
-        monkeypatch.setattr(deps, "_LOGIN_ACCOUNT_MAX_ATTEMPTS", 2)
-        monkeypatch.setattr(deps, "_LOGIN_GLOBAL_MAX_ATTEMPTS", 9999)
+    def test_successful_login_clears_account_rate_limit(self, client, db_factory, monkeypatch):
+        self.clear_auth_rate_limits(db_factory)
+        monkeypatch.setattr(rate_limit, "LOGIN_IP_MAX_ATTEMPTS", 9999)
+        monkeypatch.setattr(rate_limit, "LOGIN_ACCOUNT_MAX_ATTEMPTS", 2)
+        monkeypatch.setattr(rate_limit, "LOGIN_GLOBAL_MAX_ATTEMPTS", 9999)
 
         failed = client.post("/api/auth/login", json={
             "email": ADMIN[0],
@@ -110,6 +116,13 @@ class TestAuth:
             "password": ADMIN[1],
         })
         assert successful.status_code == 200
+        with db_factory() as db:
+            account_bucket = db.scalar(
+                select(AuthRateLimit).where(
+                    AuthRateLimit.bucket_key == f"account:{ADMIN[0]}"
+                )
+            )
+            assert account_bucket is None
 
         for _idx in range(2):
             failed_after_success = client.post("/api/auth/login", json={

@@ -51,6 +51,22 @@ class User(Base, TimestampMixin):
     role: Mapped["Role"] = relationship()
 
 
+class AuthRateLimit(Base):
+    __tablename__ = "auth_rate_limits"
+    __table_args__ = (
+        Index("ix_auth_rate_limits_window", "window_start"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bucket_key: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    window_start: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utcnow_naive, onupdate=utcnow_naive
+    )
+
+
 class ECOEPermission(Base):
     __tablename__ = "ecoe_permissions"
     __table_args__ = (

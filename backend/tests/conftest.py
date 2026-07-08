@@ -35,13 +35,12 @@ from app.db.session import Base, get_db
 from app.main import app
 from app.db.seed import seed_data
 
-# Disable rate limiting for tests
-import app.services.dependencies as deps
+# Keep auth rate limiting out of the way unless a test lowers the thresholds.
+import app.services.rate_limit as rate_limit
 
-deps._LOGIN_MAX_ATTEMPTS = 9999
-deps._LOGIN_ACCOUNT_MAX_ATTEMPTS = 9999
-deps._LOGIN_GLOBAL_MAX_ATTEMPTS = 9999
-deps._login_attempts.clear()
+rate_limit.LOGIN_IP_MAX_ATTEMPTS = 9999
+rate_limit.LOGIN_ACCOUNT_MAX_ATTEMPTS = 9999
+rate_limit.LOGIN_GLOBAL_MAX_ATTEMPTS = 9999
 
 IS_SQLITE = TEST_DATABASE_URL.startswith("sqlite")
 
