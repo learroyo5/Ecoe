@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { Sidebar } from "@/components/sidebar";
+import { StatusNotice } from "@/components/forms";
 import { useECOE } from "@/lib/auth";
 
 export function AppShell({
@@ -15,14 +16,14 @@ export function AppShell({
   description: string;
   children: React.ReactNode;
 }) {
-  const { user, token, ready, logout, eventId, setEventId, ecoeList, ecoeEvent } = useECOE();
+  const { user, authenticated, ready, logout, eventId, setEventId, ecoeList, ecoeEvent, loadError } = useECOE();
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
-  if (!ready || !token) return null;
+  if (!ready || !authenticated) return null;
 
   const isStationOperator = user?.role === "evaluador" || user?.role === "estudiante";
 
@@ -86,6 +87,7 @@ export function AppShell({
               </div>
             </div>
           </header>
+          <StatusNotice message={loadError} />
           {children}
         </main>
       </div>
@@ -188,6 +190,7 @@ export function AppShell({
           </div>
         </div>
 
+        <StatusNotice message={loadError} />
         {children}
       </main>
     </div>

@@ -74,16 +74,16 @@ function FeatureToggle({
 }
 
 export default function TemplatesPage() {
-  const { token } = useECOE();
+  const { authenticated } = useECOE();
   const { data, loading, error, setData } = useApi(
-    () => api.templates(token!) as Promise<Record<string, unknown>[]>,
-    [token],
+    () => api.templates() as Promise<Record<string, unknown>[]>,
+    [authenticated],
   );
   const [values, setValues] = useState(defaultValues);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  const refresh = async () => setData((await api.templates(token!)) as Record<string, unknown>[]);
+  const refresh = async () => setData((await api.templates()) as Record<string, unknown>[]);
   const selectedCategoryLabel =
     categoryOptions.find((option) => option.value === values.category)?.label ?? values.category;
   const activeFeatures = useMemo(() => {
@@ -129,7 +129,6 @@ export default function TemplatesPage() {
                     source: "manual",
                   },
                 },
-                token!,
               );
               await refresh();
               setValues(defaultValues);

@@ -1,5 +1,6 @@
 from datetime import date
 from pathlib import Path
+import warnings
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -26,6 +27,21 @@ from app.models.entities import (
 )
 from app.models.enums import ECOEStatus, InstrumentType, RoleCode, SessionMode, StationStatus
 
+MIN_SEED_PASSWORD_LENGTH = 12
+
+
+def _validated_seed_password(password: str, email: str) -> str | None:
+    """Never create an account whose password is empty or trivially weak."""
+    if len(password or "") < MIN_SEED_PASSWORD_LENGTH:
+        warnings.warn(
+            f"Seed omitido para {email}: la contraseña configurada esta vacia o "
+            f"tiene menos de {MIN_SEED_PASSWORD_LENGTH} caracteres. "
+            "Define la variable correspondiente en .env.",
+            stacklevel=3,
+        )
+        return None
+    return password
+
 
 def seed_data(db: Session) -> None:
     if db.scalar(select(User).limit(1)):
@@ -44,46 +60,46 @@ def seed_data(db: Session) -> None:
     db.flush()
     role_map = {role.code: role.id for role in roles}
 
-    users = [
-        User(
-            email="admin@ecoe.cl",
-            full_name="Admin ECOE",
-            hashed_password=get_password_hash(settings.admin_password),
-            role_id=role_map[RoleCode.admin_ecoe.value],
-        ),
-        User(
-            email="coeditor@ecoe.cl",
-            full_name="Dr. Pablo Rojas",
-            hashed_password=get_password_hash(settings.coeditor_password),
-            role_id=role_map[RoleCode.coeditor_docente.value],
-        ),
-        User(
-            email="eval1@ecoe.cl",
-            full_name="Enf. Camila Soto",
-            hashed_password=get_password_hash(settings.evaluator_password),
-            role_id=role_map[RoleCode.evaluador.value],
-        ),
-        User(
-            email="student1@ecoe.cl",
-            full_name="Estudiante 1 Demo",
-            hashed_password=get_password_hash(settings.student_password),
-            role_id=role_map[RoleCode.estudiante.value],
-        ),
-        User(
-            email="coord@ecoe.cl",
-            full_name="Coordinacion ECOE",
-            hashed_password=get_password_hash(settings.coordinator_password),
-            role_id=role_map[RoleCode.coordinador_operativo.value],
-        ),
-        User(
-            email="timer@ecoe.cl",
-            full_name="Cronometro Central",
-            hashed_password=get_password_hash(settings.timer_password),
-            role_id=role_map[RoleCode.cronometrador.value],
-        ),
+    user_defs = [
+        ("admin@ecoe.cl", "Admin ECOE", settings.admin_password, RoleCode.admin_ecoe.value),
+        ("coeditor@ecoe.cl", "Dr. Pablo Rojas", settings.coeditor_password, RoleCode.coeditor_docente.value),
+        ("eval1@ecoe.cl", "Enf. Camila Soto", settings.evaluator_password, RoleCode.evaluador.value),
+        ("student1@ecoe.cl", "Estudiante 1 Demo", settings.student_password, RoleCode.estudiante.value),
+        ("coord@ecoe.cl", "Coordinacion ECOE", settings.coordinator_password, RoleCode.coordinador_operativo.value),
+        ("timer@ecoe.cl", "Cronometro Central", settings.timer_password, RoleCode.cronometrador.value),
     ]
+    users = []
+    for email, full_name, raw_password, role_code in user_defs:
+        password = _validated_seed_password(raw_password, email)
+        if password is None:
+            continue
+        users.append(
+            User(
+                email=email,
+                full_name=full_name,
+                hashed_password=get_password_hash(password),
+                role_id=role_map[role_code],
+            )
+        )
+    if not users:
+        warnings.warn(
+            "Seed cancelado: ninguna cuenta demo tiene contraseña valida configurada.",
+            stacklevel=2,
+        )
+        db.commit()
+        return
     db.add_all(users)
     db.flush()
+    users_by_email = {user.email: user for user in users}
+
+    admin_user = users_by_email.get("admin@ecoe.cl")
+    if admin_user is None:
+        warnings.warn(
+            "Seed parcial: sin cuenta admin valida no se crea el ECOE demo.",
+            stacklevel=2,
+        )
+        db.commit()
+        return
 
     ecoe = ECOEEvent(
         name="ECOE Medicina Interna 2026",
@@ -106,7 +122,7 @@ def seed_data(db: Session) -> None:
     db.add(
         ECOEPermission(
             ecoe_event_id=ecoe.id,
-            user_id=users[0].id,
+            user_id=admin_user.id,
             role_code=RoleCode.admin_ecoe.value,
         )
     )

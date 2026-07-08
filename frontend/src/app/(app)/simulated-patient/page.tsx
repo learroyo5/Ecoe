@@ -8,14 +8,14 @@ import { QuickForm } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 
 export default function SimulatedPatientPage() {
-  const { token } = useECOE();
+  const { authenticated } = useECOE();
   const { data, loading, error, setData } = useApi(
-    () => api.simulatedPatients(token!) as Promise<Record<string, unknown>[]>,
-    [token],
+    () => api.simulatedPatients() as Promise<Record<string, unknown>[]>,
+    [authenticated],
   );
 
   const refresh = async () =>
-    setData((await api.simulatedPatients(token!)) as Record<string, unknown>[]);
+    setData((await api.simulatedPatients()) as Record<string, unknown>[]);
 
   return (
     <div className="space-y-6">
@@ -30,7 +30,7 @@ export default function SimulatedPatientPage() {
             { name: "special_instructions", label: "Instrucciones especiales" },
           ]}
           onSubmit={async (values) => {
-            await api.createSimulatedPatient(values, token!);
+            await api.createSimulatedPatient(values);
             await refresh();
           }}
         />

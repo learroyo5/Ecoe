@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
+import { clockOffsetMs, parseServerUtc } from "@/lib/time";
 import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 import { EmptyState } from "@/components/toast";
@@ -26,7 +27,7 @@ type ResolvedMediaAsset = MediaAsset & {
 };
 
 export default function StudentPage() {
-  const { token, eventId } = useECOE();
+  const { authenticated, eventId } = useECOE();
   const [ecoeNumber, setEcoeNumber] = useState("");
   const [context, setContext] = useState<Record<string, unknown> | null>(null);
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
@@ -40,6 +41,12 @@ export default function StudentPage() {
   const autoSubmitAttemptedRef = useRef(false);
 
   const confirmedAt = String(context?.confirmed_at ?? "");
+  const serverNow = String(context?.server_now ?? "");
+  // Offset reloj servidor - local: el backend re-valida el tiempo al enviar.
+  const serverClockOffsetMs = useMemo(
+    () => (serverNow ? clockOffsetMs(serverNow) : 0),
+    [serverNow],
+  );
   const timerDurationSeconds = Number(context?.station_time_minutes ?? 0) * 60;
   const draftStorageKey = context ? `student-station-draft-${String(context.checkin_id)}` : "";
   const submitted = Boolean(context?.student_response_exists);
@@ -59,7 +66,7 @@ export default function StudentPage() {
     const objectUrls: string[] = [];
 
     const loadMediaAssets = async () => {
-      if (!mediaAssets.length || !token) {
+      if (!mediaAssets.length || !authenticated) {
         setResolvedMediaAssets([]);
         return;
       }
@@ -67,7 +74,7 @@ export default function StudentPage() {
       try {
         const nextAssets = await Promise.all(
           mediaAssets.map(async (asset) => {
-            const blob = await api.mediaFile(asset.id, token);
+            const blob = await api.mediaFile(asset.id);
             const objectUrl = URL.createObjectURL(blob);
             objectUrls.push(objectUrl);
             return { ...asset, objectUrl };
@@ -89,7 +96,7 @@ export default function StudentPage() {
       cancelled = true;
       objectUrls.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [mediaAssets, token]);
+  }, [mediaAssets, authenticated]);
 
   useEffect(() => {
     if (!expandedImage) {
@@ -133,10 +140,10 @@ export default function StudentPage() {
     }
     const elapsedSeconds = Math.max(
       0,
-      Math.floor((nowMs - new Date(confirmedAt).getTime()) / 1000),
+      Math.floor((nowMs + serverClockOffsetMs - parseServerUtc(confirmedAt)) / 1000),
     );
     return Math.max(timerDurationSeconds - elapsedSeconds, 0);
-  }, [confirmedAt, context, nowMs, timerDurationSeconds]);
+  }, [confirmedAt, context, nowMs, serverClockOffsetMs, timerDurationSeconds]);
 
   const timerLabel = useMemo(() => {
     if (remainingSeconds === null) {
@@ -172,7 +179,6 @@ export default function StudentPage() {
         answers,
         locked: true,
       },
-      token!,
     );
     if (currentDraftStorageKey && typeof window !== "undefined") {
       window.localStorage.removeItem(currentDraftStorageKey);
@@ -182,7 +188,7 @@ export default function StudentPage() {
         ? "Se acabó el tiempo de la estación. Tu respuesta fue enviada automáticamente."
         : "Respuesta enviada correctamente para tu estación confirmada.",
     );
-  }, [answers, context, draftStorageKey, eventId, resetToIdentification, submitted, token]);
+  }, [answers, context, draftStorageKey, eventId, resetToIdentification, submitted]);
 
   useEffect(() => {
     if (!context || submitted || autoSubmitting || remainingSeconds !== 0 || autoSubmitAttemptedRef.current) {
@@ -341,7 +347,6 @@ export default function StudentPage() {
               try {
                 const response = (await api.studentAccess(
                   { ecoe_event_id: eventId, ecoe_number: ecoeNumber },
-                  token!,
                 )) as Record<string, unknown>;
                 const nextDraftStorageKey = `student-station-draft-${String(response.checkin_id)}`;
                 let nextAnswers: Record<string, string | string[]> = {};

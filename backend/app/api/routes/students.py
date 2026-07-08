@@ -7,11 +7,11 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.entities import Student
 from app.models.enums import RoleCode
-from app.schemas.common import StudentCreate, StudentStatusUpdate
+from app.schemas.common import Page, StudentCreate, StudentRead, StudentStatusUpdate
 from app.services.dependencies import get_current_user, require_roles
 from app.utils.files import parse_tabular_file
+from app.services.authorization import ensure_event_access
 from app.utils.helpers import (
-    ensure_event_access,
     normalize_ecoe_lookup,
     normalize_email,
     normalize_rut,
@@ -22,7 +22,7 @@ from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginate_quer
 router = APIRouter()
 
 
-@router.get("/students/{ecoe_event_id}")
+@router.get("/students/{ecoe_event_id}", response_model=Page[StudentRead])
 def list_students(
     ecoe_event_id: int,
     page: int = Query(default=1, ge=1),
@@ -42,7 +42,7 @@ def list_students(
     return paginate_query(db, stmt, page=page, page_size=page_size)
 
 
-@router.post("/students")
+@router.post("/students", response_model=StudentRead)
 def create_student(
     payload: StudentCreate,
     db: Session = Depends(get_db),
@@ -59,7 +59,8 @@ def create_student(
     )
     if existing:
         raise HTTPException(status_code=400, detail="Ya existe un estudiante con ese RUT en este ECOE")
-    student = Student(**payload.model_dump(), rut=rut, email=email,
+    student = Student(**payload.model_dump(exclude={"rut", "email", "ecoe_number"}),
+                      rut=rut, email=email,
                       ecoe_number=next_student_ecoe_number(db, payload.ecoe_event_id))
     db.add(student)
     db.commit()
@@ -67,7 +68,7 @@ def create_student(
     return student
 
 
-@router.patch("/students/{student_id}/status")
+@router.patch("/students/{student_id}/status", response_model=StudentRead)
 def update_student_status(
     student_id: int,
     payload: StudentStatusUpdate,

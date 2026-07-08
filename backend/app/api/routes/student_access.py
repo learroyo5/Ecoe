@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.entities import (
     AuditLog,
+    ECOEEvent,
     MediaAsset,
     Station,
     StationCheckIn,
@@ -16,13 +17,16 @@ from app.models.entities import (
 from app.models.enums import RoleCode
 from app.schemas.common import StudentAccessRequest, StudentResponseCreate
 from app.services.dependencies import get_current_user, require_roles
+from app.services.authorization import ensure_event_access
 from app.utils.helpers import (
-    ensure_event_access,
+    ensure_checkin_within_time,
     get_active_checkin,
     normalize_ecoe_lookup,
     normalize_email,
-    serialize_media_asset,
+    resolve_session_mode,
+    utcnow_naive,
 )
+from app.utils.serializers import serialize_media_asset
 
 router = APIRouter()
 
@@ -91,6 +95,7 @@ def student_access_context(
         "media_assets": [serialize_media_asset(asset) for asset in student_media_assets],
         "station_time_minutes": station.station_time_minutes,
         "confirmed_at": checkin.confirmed_at.isoformat(),
+        "server_now": utcnow_naive().isoformat(),
         "student_response_exists": student_response_exists,
     }
 
@@ -123,6 +128,10 @@ def submit_student_response(
             status_code=400,
             detail="La respuesta solo puede enviarse despues de que el evaluador confirme tu ingreso a la estacion",
         )
+    station = db.get(Station, payload.station_id)
+    if not station or station.ecoe_event_id != payload.ecoe_event_id:
+        raise HTTPException(status_code=400, detail="La estacion no pertenece al ECOE indicado")
+    ensure_checkin_within_time(checkin, station)
     existing_response = db.scalar(
         select(StudentResponse).where(
             StudentResponse.ecoe_event_id == payload.ecoe_event_id,
@@ -133,7 +142,11 @@ def submit_student_response(
     if existing_response:
         raise HTTPException(status_code=400,
                             detail="La respuesta de esta estacion ya fue enviada y no puede reemplazarse")
-    response = StudentResponse(**payload.model_dump(exclude={"checkin_id"}))
+    ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
+    response = StudentResponse(
+        **payload.model_dump(exclude={"checkin_id", "mode"}),
+        mode=resolve_session_mode(ecoe_event),
+    )
     db.add(response)
     db.flush()
     db.add(

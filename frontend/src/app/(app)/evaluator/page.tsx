@@ -5,14 +5,15 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
+import { clockOffsetMs, parseServerUtc } from "@/lib/time";
 import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 
 export default function EvaluatorPage() {
-  const { token, eventId, user } = useECOE();
+  const { authenticated, eventId, user } = useECOE();
   const { data: context, setData: setContext } = useApi(
-    () => api.evaluatorContext(eventId, token!) as Promise<Record<string, unknown>>,
-    [eventId, token],
+    () => api.evaluatorContext(eventId) as Promise<Record<string, unknown>>,
+    [eventId, authenticated],
   );
   const [ecoeNumber, setEcoeNumber] = useState("");
   const [scoreObtained, setScoreObtained] = useState("0");
@@ -41,6 +42,13 @@ export default function EvaluatorPage() {
     Number(activeCheckin?.station_time_minutes ?? assignedStation?.station_time_minutes ?? 0) *
     60;
   const confirmedAt = String(activeCheckin?.confirmed_at ?? "");
+  const serverNow = String(context?.server_now ?? "");
+  // Offset reloj servidor - reloj local: el bloqueo por tiempo no depende
+  // del reloj del dispositivo (el backend igualmente re-valida al enviar).
+  const serverClockOffsetMs = useMemo(
+    () => (serverNow ? clockOffsetMs(serverNow) : 0),
+    [serverNow],
+  );
   const activeCheckinId = String(activeCheckin?.id ?? "");
   const assessmentTool = (activeCheckin?.assessment_tool ??
     assignedStation?.assessment_tool) as
@@ -93,10 +101,10 @@ export default function EvaluatorPage() {
     }
     const elapsedSeconds = Math.max(
       0,
-      Math.floor((nowMs - new Date(confirmedAt).getTime()) / 1000),
+      Math.floor((nowMs + serverClockOffsetMs - parseServerUtc(confirmedAt)) / 1000),
     );
     return Math.max(timerDurationSeconds - elapsedSeconds, 0);
-  }, [activeCheckin, confirmedAt, nowMs, timerDurationSeconds]);
+  }, [activeCheckin, confirmedAt, nowMs, serverClockOffsetMs, timerDurationSeconds]);
 
   const timerLabel = useMemo(() => {
     if (remainingSeconds === null) {
@@ -179,10 +187,10 @@ export default function EvaluatorPage() {
                       station_id: stationId,
                       ecoe_number: ecoeNumber,
                     },
-                    token!,
                   )) as Record<string, unknown>;
                   setContext((current) => ({
                     ...(current ?? {}),
+                    server_now: checkin.server_now,
                     active_checkin: {
                       id: checkin.checkin_id,
                       station_id: checkin.station_id,
@@ -318,7 +326,6 @@ export default function EvaluatorPage() {
                         item_scores: itemScores,
                       },
                     },
-                    token!,
                   );
                   resetForNextStudent(
                     "Evaluación enviada correctamente. Ingresa el Número ECOE del siguiente estudiante.",

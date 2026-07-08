@@ -22,7 +22,7 @@ const TABS: { key: Tab; label: string }[] = [
 export default function ECOEDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const { token, setEventId } = useECOE();
+  const { authenticated, setEventId } = useECOE();
   const eventId = Number(params.id);
 
   const [tab, setTab] = useState<Tab>("general");
@@ -37,7 +37,7 @@ export default function ECOEDetailPage() {
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!token || Number.isNaN(eventId)) return;
+    if (!authenticated || Number.isNaN(eventId)) return;
     let cancelled = false;
 
     async function load() {
@@ -45,17 +45,17 @@ export default function ECOEDetailPage() {
       setError(null);
       try {
         const [e, st, stu, sf, p] = await Promise.all([
-          api.ecoe(eventId, token!) as Promise<ECOEEvent>,
-          api.stations(eventId, token!) as Promise<Station[]>,
-          api.students(eventId, token!) as Promise<Student[]>,
-          api.staff(eventId, token!) as Promise<StaffAssignment[]>,
-          api.pilotage(eventId, token!) as Promise<PilotRun[]>,
+          api.ecoe(eventId) as Promise<ECOEEvent>,
+          api.stations(eventId) as Promise<Station[]>,
+          api.students(eventId),
+          api.staff(eventId),
+          api.pilotage(eventId) as Promise<PilotRun[]>,
         ]);
         if (cancelled) return;
         setEcoe(e);
         setStations(st);
-        setStudents(stu);
-        setStaff(sf);
+        setStudents(stu.items);
+        setStaff(sf.items);
         setPilotage(p);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Error al cargar los datos");
@@ -66,7 +66,7 @@ export default function ECOEDetailPage() {
 
     load();
     return () => { cancelled = true; };
-  }, [eventId, token]);
+  }, [eventId, authenticated]);
 
   const handleStatusTransition = async (targetStatus: string) => {
     if (!ecoe) return;
@@ -84,7 +84,6 @@ export default function ECOEDetailPage() {
           passing_reference_percent: ecoe.passing_reference_percent,
           status: targetStatus,
         },
-        token!,
       ) as ECOEEvent;
       setEcoe(updated);
       setMessage(`Estado actualizado a: ${targetStatus.replace(/_/g, " ")}`);
@@ -275,7 +274,17 @@ export default function ECOEDetailPage() {
                         <td className="py-2 pr-4 font-medium text-slate-900">{s.name} {s.last_name}</td>
                         <td className="py-2 pr-4 text-slate-600">{s.rut}</td>
                         <td className="py-2 pr-4 text-slate-600">{s.group_name}</td>
-                        <td className="py-2">{s.is_active ? "✅" : "❌"}</td>
+                        <td className="py-2">
+                          <span
+                            className={`pill ${
+                              s.is_active
+                                ? "pill-ok"
+                                : "border border-amber-300 bg-[var(--color-warning-soft)] text-amber-900"
+                            }`}
+                          >
+                            {s.is_active ? "Activo" : "Inactivo"}
+                          </span>
+                        </td>
                       </tr>
                     ))}
                     {students.length > 50 ? (

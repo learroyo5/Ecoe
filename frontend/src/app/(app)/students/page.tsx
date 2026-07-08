@@ -10,20 +10,20 @@ import { FileImport, QuickForm, StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 
 export default function StudentsPage() {
-  const { token, eventId } = useECOE();
+  const { authenticated, eventId } = useECOE();
   const [page, setPage] = useState(1);
   const { data, loading, error, setData } = useApi(
-    () => api.students(eventId, token!, page) as unknown as Promise<Record<string, unknown>>,
-    [eventId, token, page],
+    () => api.students(eventId, page),
+    [eventId, authenticated, page],
   );
   const [message, setMessage] = useState<string | null>(null);
   const [processingAction, setProcessingAction] = useState<string | null>(null);
 
   const refresh = async () => {
-    const result = await api.students(eventId, token!) as unknown as Record<string, unknown>;
+    const result = await api.students(eventId, page);
     setData(result);
   };
-  const totalStudents = (data as { total?: number })?.total ?? (Array.isArray(data) ? (data as unknown[]).length : 0);
+  const totalStudents = data?.total ?? 0;
 
   return (
     <div className="space-y-6">
@@ -90,7 +90,7 @@ export default function StudentsPage() {
               </div>
             }
             onImport={async (file) => {
-              const response = (await api.importStudents(eventId, file, token!)) as {
+              const response = (await api.importStudents(eventId, file)) as {
                 imported?: number;
                 skipped?: number;
                 skipped_rut_duplicate?: number;
@@ -140,7 +140,6 @@ export default function StudentsPage() {
                   circuit_name: values.circuit_name ?? "Circuito A",
                   ...values,
                 },
-                token!,
               );
               await refresh();
               setMessage("Estudiante guardado correctamente.");
@@ -165,7 +164,7 @@ export default function StudentsPage() {
               setProcessingAction("renumber-students");
               setMessage(null);
               try {
-                const response = (await api.renumberStudents(eventId, token!)) as {
+                const response = (await api.renumberStudents(eventId)) as {
                   updated?: number;
                 };
                 await refresh();
@@ -202,7 +201,7 @@ export default function StudentsPage() {
               setProcessingAction("deduplicate-students");
               setMessage(null);
               try {
-                const response = (await api.deduplicateStudentsByRut(eventId, token!)) as {
+                const response = (await api.deduplicateStudentsByRut(eventId)) as {
                   removed?: number;
                 };
                 await refresh();
@@ -236,9 +235,9 @@ export default function StudentsPage() {
           <p>{error}</p>
         ) : (
           <DataTable
-            rows={(data as Record<string, unknown>) ?? []}
+            rows={data ?? []}
             searchKeys={["name", "last_name", "rut", "email", "ecoe_number"]}
-            paginated={!!data && typeof data === "object" && "items" in data}
+            paginated={!!data}
             onPageChange={setPage}
             columns={[
               { key: "ecoe_number", label: "N ECOE" },
@@ -292,7 +291,6 @@ export default function StudentsPage() {
                             await api.updateStudentStatus(
                               Number(student.id),
                               { is_active: !isActive },
-                              token!,
                             );
                             await refresh();
                             setMessage(
@@ -332,7 +330,7 @@ export default function StudentsPage() {
                           setProcessingAction(`delete-${String(student.id ?? "")}`);
                           setMessage(null);
                           try {
-                            await api.deleteStudent(Number(student.id), token!);
+                            await api.deleteStudent(Number(student.id));
                             await refresh();
                             setMessage("Estudiante borrado correctamente.");
                           } catch (actionError) {

@@ -19,14 +19,14 @@ const DEFAULT_CREATE_VALUES: Record<string, string> = {
 };
 
 export default function ECOEPage() {
-  const { token, eventId, setEventId, user } = useECOE();
+  const { authenticated, eventId, setEventId, user } = useECOE();
   const { data: ecoeList, loading: listLoading, error: listError, setData: setECOEList } = useApi(
-    () => api.listECOE(token!) as Promise<ECOEEvent[]>,
-    [token],
+    () => api.listECOE() as Promise<ECOEEvent[]>,
+    [authenticated],
   );
   const { data: ecoeEvent, setData } = useApi(
-    () => api.ecoe(eventId, token!) as Promise<ECOEEvent>,
-    [eventId, token],
+    () => api.ecoe(eventId) as Promise<ECOEEvent>,
+    [eventId, authenticated],
   );
   const [formValues, setFormValues] = useState<Record<string, string> | null>(null);
   const [createValues, setCreateValues] = useState<Record<string, string>>({ ...DEFAULT_CREATE_VALUES });
@@ -47,7 +47,7 @@ export default function ECOEPage() {
   const activeValues = formValues ?? editableValues;
 
   const refreshList = async (targetId?: number) => {
-    const refreshed = (await api.listECOE(token!)) as ECOEEvent[];
+    const refreshed = (await api.listECOE()) as ECOEEvent[];
     setECOEList(refreshed);
     if (targetId && !refreshed.some((e) => e.id === targetId)) setEventId(refreshed[0]?.id ?? eventId);
   };
@@ -62,7 +62,6 @@ export default function ECOEPage() {
       const updated = await api.updateECOE(
         ecoeEvent.id,
         { ...buildECOEPayload(activeValues ?? toEditableValues(ecoeEvent as unknown as Record<string, unknown>)!), status: targetStatus },
-        token!,
       ) as ECOEEvent;
       setData(updated);
       setFormValues(toEditableValues(updated as unknown as Record<string, unknown>));
@@ -119,7 +118,7 @@ export default function ECOEPage() {
             if (Object.keys(validationErrors).length > 0) return;
             setSaving(true); setMessage(null);
             try {
-              const updated = await api.updateECOE(ecoeEvent.id, { ...buildECOEPayload(activeValues), status: activeValues.status }, token!) as ECOEEvent;
+              const updated = await api.updateECOE(ecoeEvent.id, { ...buildECOEPayload(activeValues), status: activeValues.status }) as ECOEEvent;
               setData(updated);
               setFormValues(toEditableValues(updated as unknown as Record<string, unknown>));
               await refreshList(updated.id);
@@ -161,7 +160,7 @@ export default function ECOEPage() {
           if (Object.keys(validationErrors).length > 0) return;
           setCreating(true); setCreateMessage(null);
           try {
-            const created = await api.createECOE(buildECOEPayload(createValues), token!) as ECOEEvent;
+            const created = await api.createECOE(buildECOEPayload(createValues)) as ECOEEvent;
             await refreshList(created.id); setEventId(created.id); setData(created);
             setFormValues(toEditableValues(created as unknown as Record<string, unknown>));
             setCreateValues({ ...DEFAULT_CREATE_VALUES });
@@ -212,7 +211,7 @@ export default function ECOEPage() {
                       name: dupName.trim(),
                       new_date: dupDate || undefined,
                       copy_evaluators: dupCopyEvaluators,
-                    }, token!) as ECOEEvent;
+                    }) as ECOEEvent;
                     await refreshList(dup.id); setEventId(dup.id); setData(dup);
                     setFormValues(toEditableValues(dup as unknown as Record<string, unknown>));
                     setMessage("ECOE duplicado. Estructura copiada, estudiantes en blanco.");

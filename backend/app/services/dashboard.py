@@ -12,6 +12,7 @@ from app.models.entities import (
     StudentResponse,
 )
 from app.services.validation import compute_ecoe_validation
+from app.utils.helpers import compute_remaining_seconds
 
 
 def build_dashboard(db: Session, ecoe_event: ECOEEvent) -> dict:
@@ -53,6 +54,6 @@ def build_dashboard(db: Session, ecoe_event: ECOEEvent) -> dict:
         "live_panel": {
             "status": live_session.status if live_session else "sin_sesion",
             "current_station_index": live_session.current_station_index if live_session else 0,
-            "remaining_seconds": live_session.remaining_seconds if live_session else 0,
+            "remaining_seconds": compute_remaining_seconds(live_session) if live_session else 0,
         },
     }

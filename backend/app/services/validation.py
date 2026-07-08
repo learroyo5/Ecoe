@@ -241,7 +241,9 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
     }
 
 
-def update_ecoe_status(db: Session, ecoe_event: ECOEEvent, target_status: str) -> ECOEEvent:
+def update_ecoe_status(
+    db: Session, ecoe_event: ECOEEvent, target_status: str, *, commit: bool = True
+) -> ECOEEvent:
     validation = compute_ecoe_validation(db, ecoe_event)
     allowed = {
         ECOEStatus.borrador.value,
@@ -285,6 +287,7 @@ def update_ecoe_status(db: Session, ecoe_event: ECOEEvent, target_status: str) -
 
     ecoe_event.status = target_status
     db.add(ecoe_event)
-    db.commit()
-    db.refresh(ecoe_event)
+    if commit:
+        db.commit()
+        db.refresh(ecoe_event)
     return ecoe_event

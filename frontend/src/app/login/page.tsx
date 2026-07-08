@@ -6,14 +6,14 @@ import { useRouter } from "next/navigation";
 import { useECOE } from "@/lib/auth";
 
 export default function LoginPage() {
-  const { login, token, user, ready } = useECOE();
+  const { login, authenticated, user, ready } = useECOE();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!ready || !token || !user) {
+    if (!ready || !authenticated || !user) {
       return;
     }
     if (user.role === "evaluador") {
@@ -25,7 +25,7 @@ export default function LoginPage() {
       return;
     }
     router.replace("/dashboard");
-  }, [ready, router, token, user]);
+  }, [ready, router, authenticated, user]);
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-8">
@@ -78,18 +78,30 @@ export default function LoginPage() {
           >
             <label className="space-y-2">
               <span className="text-sm font-semibold">Correo</span>
-              <input value={email} onChange={(event) => setEmail(event.target.value)} />
+              <input
+                type="email"
+                name="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
             </label>
             <label className="space-y-2">
               <span className="text-sm font-semibold">Contrasena</span>
               <input
                 type="password"
+                name="password"
+                autoComplete="current-password"
+                required
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
               />
             </label>
             <button className="btn-primary w-full text-base">Iniciar sesion</button>
-            {error ? <p className="text-sm text-[var(--color-error)]">{error}</p> : null}
+            {error ? (
+              <p role="alert" className="text-sm text-[var(--color-error)]">{error}</p>
+            ) : null}
           </form>
         </section>
       </div>

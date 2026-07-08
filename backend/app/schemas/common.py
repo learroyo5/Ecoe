@@ -1,11 +1,24 @@
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 
 class ORMBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+
+
+ItemT = TypeVar("ItemT")
+
+
+class Page(BaseModel, Generic[ItemT]):
+    """Shape returned by utils.pagination.paginate_query."""
+
+    items: list[ItemT]
+    total: int
+    page: int
+    page_size: int
+    pages: int
 
 
 class Token(BaseModel):
@@ -88,6 +101,8 @@ class StudentCreate(StudentBase):
 class StudentRead(StudentBase, ORMBase):
     id: int
     is_active: bool
+    created_at: datetime
+    updated_at: datetime
 
 
 class StudentStatusUpdate(BaseModel):
@@ -109,6 +124,8 @@ class StaffCreate(StaffBase):
 
 class StaffRead(StaffBase, ORMBase):
     id: int
+    created_at: datetime
+    updated_at: datetime
 
 
 class StaffUpdate(BaseModel):
@@ -117,6 +134,13 @@ class StaffUpdate(BaseModel):
 
 
 class AssessmentItemInput(BaseModel):
+    label: str
+    score_per_item: float
+    order_index: int
+
+
+class AssessmentItemRead(ORMBase):
+    id: int
     label: str
     score_per_item: float
     order_index: int
@@ -136,7 +160,7 @@ class AssessmentToolRead(ORMBase):
     tool_type: str
     max_score: float
     free_observation: bool
-    items: list[AssessmentItemInput]
+    items: list[AssessmentItemRead]
 
 
 class StationTemplateCreate(BaseModel):
@@ -195,6 +219,10 @@ class StationCreate(BaseModel):
 
 class StationRead(StationCreate, ORMBase):
     id: int
+    # Server-computed from the parent ECOEEvent's timing, not client input
+    # (see create_station/update_station) — absent from StationCreate.
+    station_time_minutes: float
+    transition_time_minutes: float
 
 
 class StationBankBase(BaseModel):
@@ -336,3 +364,42 @@ class UserRead(ORMBase):
                 "is_active": data.is_active,
             }
         return data
+
+
+# ── Pilotage ──────────────────────────────────────────────────────────
+
+class PilotRunRead(ORMBase):
+    id: int
+    ecoe_event_id: int
+    name: str
+    scope: str
+    archived: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+# ── Incidents (read) ─────────────────────────────────────────────────
+
+class IncidentRead(ORMBase):
+    id: int
+    ecoe_event_id: int
+    station_id: int | None
+    title: str
+    detail: str
+    severity: str
+    resolved: bool
+    resolved_at: datetime | None
+    created_at: datetime
+
+
+# ── Media ─────────────────────────────────────────────────────────────
+
+class MediaAssetRead(ORMBase):
+    id: int
+    filename: str
+    original_name: str
+    content_type: str
+    target_viewer: str
+    station_id: int | None
+    created_at: datetime
+    # file_path (server disk path) intentionally excluded from responses.

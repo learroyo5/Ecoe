@@ -25,7 +25,7 @@ from app.schemas.common import (
 )
 from app.services.dependencies import get_current_user, require_roles
 from app.services.ecoe import build_dashboard, update_ecoe_status
-from app.utils.helpers import (
+from app.services.authorization import (
     ADMIN_EVENT_ROLE_CODES,
     ensure_event_access,
     list_accessible_ecoe_events,
@@ -92,15 +92,16 @@ def update_ecoe(
     ensure_event_access(db, user, ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     ecoe_event = db.get(ECOEEvent, ecoe_event_id)
+    previous_status = ecoe_event.status
     for field, value in payload.model_dump(exclude={"status"}).items():
         setattr(ecoe_event, field, value)
     db.add(ecoe_event)
-    db.commit()
-    db.refresh(ecoe_event)
-    previous_status = ecoe_event.status
+    # Validate the status transition BEFORE committing anything: if it is
+    # rejected, the field updates above are rolled back with it.
     try:
-        updated_event = update_ecoe_status(db, ecoe_event, payload.status)
+        updated_event = update_ecoe_status(db, ecoe_event, payload.status, commit=False)
     except ValueError as exc:
+        db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if previous_status != payload.status:
         db.add(
@@ -116,8 +117,8 @@ def update_ecoe(
                 },
             )
         )
-        db.commit()
-        db.refresh(updated_event)
+    db.commit()
+    db.refresh(updated_event)
     return updated_event
 
 

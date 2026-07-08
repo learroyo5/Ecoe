@@ -11,10 +11,10 @@ import { ErrorState } from "@/components/toast";
 import type { DashboardSummary } from "@/lib/types";
 
 export default function DashboardPage() {
-  const { token, eventId } = useECOE();
+  const { authenticated, eventId } = useECOE();
   const { data, loading, error, setData } = useApi(
-    () => api.dashboard(eventId, token!) as Promise<DashboardSummary>,
-    [eventId, token],
+    () => api.dashboard(eventId) as Promise<DashboardSummary>,
+    [eventId, authenticated],
   );
 
   if (loading) return <DashboardSkeleton />;

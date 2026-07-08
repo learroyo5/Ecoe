@@ -15,14 +15,16 @@ export function Toast({
   onDismiss: () => void;
   durationMs?: number;
 }) {
-  const [visible, setVisible] = useState(false);
+  // Visible mientras haya mensaje; el fade-out se maneja con los timers.
+  const [visible, setVisible] = useState(Boolean(message));
+  if (Boolean(message) !== visible) {
+    // Sync durante el render (patrón recomendado por React) en vez de
+    // setState dentro de un efecto, que provoca renders en cascada.
+    setVisible(Boolean(message));
+  }
 
   useEffect(() => {
-    if (!message) {
-      setVisible(false);
-      return;
-    }
-    setVisible(true);
+    if (!message) return;
     const timer = setTimeout(() => {
       setVisible(false);
       setTimeout(onDismiss, 300); // wait for fade-out

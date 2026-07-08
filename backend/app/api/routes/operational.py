@@ -1,7 +1,7 @@
 """Live panel, timer control, media, validation, results, and incidents routes."""
 
+import logging
 from http.cookies import SimpleCookie
-from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
@@ -19,7 +19,14 @@ from app.models.entities import (
     Station,
 )
 from app.models.enums import RoleCode
-from app.schemas.common import IncidentCreate, IncidentResolve, TimerAction
+from app.schemas.common import (
+    IncidentCreate,
+    IncidentRead,
+    IncidentResolve,
+    MediaAssetRead,
+    Page,
+    TimerAction,
+)
 from app.services.dependencies import authenticate_session_token, get_current_user, require_roles
 from app.services.ecoe import (
     build_dashboard,
@@ -29,18 +36,20 @@ from app.services.ecoe import (
     export_results_excel,
     persist_results,
 )
-from app.utils.helpers import (
-    ADMIN_EVENT_ROLE_CODES,
+from app.services.authorization import ADMIN_EVENT_ROLE_CODES, ensure_event_access
+from app.services.media import (
     ALLOWED_VIEWERS,
     MAX_MEDIA_SIZE_BYTES,
-    ensure_event_access,
     filter_media_for_user,
     get_media_asset_for_user,
     safe_media_filename,
     validate_media_type,
 )
+from app.utils.helpers import compute_remaining_seconds, utcnow_naive
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginate_query
 from app.services.websocket import live_timer
+
+logger = logging.getLogger("ecoe.operational")
 
 router = APIRouter()
 
@@ -90,6 +99,21 @@ async def websocket_live_timer(websocket: WebSocket, ecoe_event_id: int):
 
 # ── Live Panel & Timer ─────────────────────────────────────────────────
 
+def live_session_state(session: LiveSession) -> dict:
+    return {
+        "id": session.id,
+        "ecoe_event_id": session.ecoe_event_id,
+        "mode": session.mode,
+        "status": session.status,
+        "station_time_seconds": session.station_time_seconds,
+        "transition_time_seconds": session.transition_time_seconds,
+        "current_station_index": session.current_station_index,
+        "remaining_seconds": compute_remaining_seconds(session),
+        "phase_started_at": session.phase_started_at.isoformat() if session.phase_started_at else None,
+        "server_now": utcnow_naive().isoformat(),
+    }
+
+
 @router.get("/live/{ecoe_event_id}")
 def get_live_panel(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     ensure_event_access(db, user, ecoe_event_id,
@@ -99,7 +123,7 @@ def get_live_panel(ecoe_event_id: int, db: Session = Depends(get_db), user=Depen
     session = db.scalar(select(LiveSession).where(LiveSession.ecoe_event_id == ecoe_event_id).limit(1))
     if not session:
         raise HTTPException(status_code=404, detail="Sesion en vivo no encontrada")
-    return session
+    return live_session_state(session)
 
 
 @router.post("/live/control")
@@ -126,48 +150,49 @@ def control_timer(
         )
         db.add(session)
         db.flush()
+    now = utcnow_naive()
     if payload.action == "start":
         session.status = "running"
         session.remaining_seconds = session.station_time_seconds
+        session.phase_started_at = now
     elif payload.action == "pause":
+        # Freeze the authoritative remaining time at the moment of pausing.
+        session.remaining_seconds = compute_remaining_seconds(session)
         session.status = "paused"
+        session.phase_started_at = None
     elif payload.action == "resume":
         session.status = "running"
+        session.phase_started_at = now
     elif payload.action == "reset":
         session.status = "ready"
         session.current_station_index = 1
         session.remaining_seconds = session.station_time_seconds
+        session.phase_started_at = None
     elif payload.action == "next_transition":
         session.status = "transition"
         session.remaining_seconds = session.transition_time_seconds
         session.current_station_index += 1
+        session.phase_started_at = now
     else:
         raise HTTPException(status_code=400, detail="Accion no soportada")
     db.add(session)
     db.commit()
     db.refresh(session)
 
+    state = live_session_state(session)
     # Broadcast timer state to all WebSocket clients
     background_tasks.add_task(
         live_timer.broadcast,
         payload.ecoe_event_id,
-        {
-            "type": "timer_update",
-            "ecoe_event_id": payload.ecoe_event_id,
-            "status": session.status,
-            "remaining_seconds": session.remaining_seconds,
-            "current_station_index": session.current_station_index,
-            "station_time_seconds": session.station_time_seconds,
-            "transition_time_seconds": session.transition_time_seconds,
-        },
+        {"type": "timer_update", **state},
     )
 
-    return session
+    return state
 
 
 # ── Media ──────────────────────────────────────────────────────────────
 
-@router.post("/media/upload")
+@router.post("/media/upload", response_model=MediaAssetRead)
 async def upload_media(
     ecoe_event_id: int,
     station_id: int | None = None,
@@ -205,6 +230,10 @@ async def upload_media(
     validate_media_type(content, suffix, file.content_type or "")
     file_path = media_dir / secure_name
     file_path.write_bytes(content)
+    logger.info(
+        "media_upload email=%s ecoe_event_id=%s station_id=%s filename=%s bytes=%s",
+        user.email, ecoe_event_id, station_id, secure_name, len(content),
+    )
     asset = MediaAsset(
         filename=secure_name,
         original_name=Path(file.filename or "archivo").name,
@@ -219,7 +248,7 @@ async def upload_media(
     return asset
 
 
-@router.get("/media/{station_id}")
+@router.get("/media/{station_id}", response_model=list[MediaAssetRead])
 def list_media(station_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     station = db.get(Station, station_id)
     if not station:
@@ -253,10 +282,18 @@ def delete_media(
         writable=True,
     )
     file_path = Path(asset.file_path)
-    if file_path.exists():
-        file_path.unlink()
+    # Commit the DB deletion first: if it fails, the file on disk is still
+    # referenced by a valid row. Deleting the file afterwards is best-effort
+    # and never leaves an orphaned row pointing at a missing file.
     db.delete(asset)
     db.commit()
+    if file_path.exists():
+        try:
+            file_path.unlink()
+        except OSError:
+            logger.warning(
+                "media_delete_file_failed asset_id=%s path=%s", asset_id, file_path,
+            )
     return {"deleted": True, "asset_id": asset_id}
 
 
@@ -327,7 +364,7 @@ def export_pdf(
 
 # ── Incidents ──────────────────────────────────────────────────────────
 
-@router.post("/incidents")
+@router.post("/incidents", response_model=IncidentRead)
 def create_incident(
     payload: IncidentCreate,
     background_tasks: BackgroundTasks,
@@ -371,7 +408,7 @@ def create_incident(
     return incident
 
 
-@router.patch("/incidents/{incident_id}/resolve")
+@router.patch("/incidents/{incident_id}/resolve", response_model=IncidentRead)
 def resolve_incident(
     incident_id: int,
     payload: IncidentResolve,
@@ -388,7 +425,7 @@ def resolve_incident(
                         RoleCode.cronometrador.value)
 
     incident.resolved = payload.resolved
-    incident.resolved_at = datetime.utcnow() if payload.resolved else None
+    incident.resolved_at = utcnow_naive() if payload.resolved else None
     db.add(incident)
     db.commit()
     db.refresh(incident)
@@ -408,7 +445,7 @@ def resolve_incident(
     return incident
 
 
-@router.get("/incidents/{ecoe_event_id}")
+@router.get("/incidents/{ecoe_event_id}", response_model=Page[IncidentRead])
 def list_incidents(
     ecoe_event_id: int,
     page: int = Query(default=1, ge=1),

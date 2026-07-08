@@ -62,17 +62,26 @@ def update_user(
     if not target:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
+    revoke_sessions = False
     if payload.full_name is not None:
         target.full_name = payload.full_name
     if payload.role_code is not None:
         role = db.scalar(select(Role).where(Role.code == payload.role_code))
         if not role:
             raise HTTPException(status_code=400, detail=f"Rol no válido: {payload.role_code}")
+        if role.id != target.role_id:
+            revoke_sessions = True
         target.role_id = role.id
     if payload.password:
         target.hashed_password = get_password_hash(payload.password)
+        revoke_sessions = True
     if payload.is_active is not None:
+        if target.is_active and not payload.is_active:
+            revoke_sessions = True
         target.is_active = payload.is_active
+    if revoke_sessions:
+        # Invalidate every JWT issued before this change.
+        target.token_version = (target.token_version or 0) + 1
 
     db.add(target)
     db.commit()

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.entities import (
     AuditLog,
+    ECOEEvent,
     EvaluatorRecord,
     StaffAssignment,
     Station,
@@ -17,14 +18,18 @@ from app.models.entities import (
 from app.models.enums import RoleCode
 from app.schemas.common import EvaluatorSubmission, StationCheckInCreate
 from app.services.dependencies import get_current_user, require_roles
+from app.services.authorization import ensure_event_access
 from app.utils.helpers import (
-    ensure_event_access,
+    ensure_checkin_within_time,
     ensure_primary_station_assignment,
     find_student_by_ecoe_number,
     get_active_checkin,
     normalize_email,
-    serialize_assessment_tool,
+    resolve_session_mode,
+    resolve_station_max_score,
+    utcnow_naive,
 )
+from app.utils.serializers import serialize_assessment_tool
 
 router = APIRouter()
 
@@ -108,6 +113,7 @@ def evaluator_context(ecoe_event_id: int, db: Session = Depends(get_db), user=De
             "evaluator_submission_exists": evaluator_submission_exists,
             "student_response_exists": student_response_exists,
         } if active_checkin and student and station else None,
+        "server_now": utcnow_naive().isoformat(),
     }
 
 
@@ -193,6 +199,7 @@ def confirm_station_checkin(
         "assessment_tool": serialize_assessment_tool(db, station.assessment_tool_id),
         "station_time_minutes": station.station_time_minutes,
         "confirmed_at": checkin.confirmed_at.isoformat(),
+        "server_now": utcnow_naive().isoformat(),
         "evaluator_submission_exists": False,
         "student_response_exists": False,
     }
@@ -215,6 +222,14 @@ def submit_evaluator_record(
             status_code=400,
             detail="La evaluacion solo puede guardarse para un estudiante previamente confirmado en esta estacion",
         )
+    station = db.get(Station, payload.station_id)
+    if not station or station.ecoe_event_id != payload.ecoe_event_id:
+        raise HTTPException(status_code=400, detail="La estacion no pertenece al ECOE indicado")
+    # The evaluator records after the student leaves, so the window also
+    # includes the transition time.
+    ensure_checkin_within_time(
+        checkin, station, extra_minutes=float(station.transition_time_minutes or 0)
+    )
     if user.role.code == RoleCode.evaluador.value:
         evaluator_assignment = db.scalar(
             select(StaffAssignment).where(
@@ -241,7 +256,25 @@ def submit_evaluator_record(
             status_code=400,
             detail="La evaluacion de esta estacion ya fue enviada y no puede modificarse durante el ECOE",
         )
-    record = EvaluatorRecord(**payload.model_dump(exclude={"checkin_id"}))
+    # Never trust client-supplied scoring metadata: the max score comes from
+    # the station's assessment tool and the mode from the ECOE state.
+    authoritative_max = resolve_station_max_score(db, station)
+    if authoritative_max <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="La estacion no tiene un puntaje maximo valido configurado",
+        )
+    if payload.score_obtained < 0 or payload.score_obtained > authoritative_max:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El puntaje obtenido debe estar entre 0 y {authoritative_max}",
+        )
+    ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
+    record = EvaluatorRecord(
+        **payload.model_dump(exclude={"checkin_id", "max_score", "mode"}),
+        max_score=authoritative_max,
+        mode=resolve_session_mode(ecoe_event),
+    )
     db.add(record)
     db.flush()
     db.add(

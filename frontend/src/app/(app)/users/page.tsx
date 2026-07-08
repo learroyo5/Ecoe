@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
 import { SectionCard } from "@/components/section-card";
+import { StatusNotice } from "@/components/forms";
 import { DataTable } from "@/components/data-table";
 import { LoadingButton } from "@/components/loading-button";
 
@@ -25,22 +27,11 @@ const ROLE_OPTIONS = [
   { value: "cronometrador", label: "Cronometrador" },
 ];
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
-
-async function usersRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, { ...options, credentials: "include", cache: "no-store" });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Error");
-  }
-  return res.json();
-}
-
 export default function UsersPage() {
-  const { token } = useECOE();
+  const { authenticated } = useECOE();
   const { data: users, setData } = useApi(
-    () => usersRequest<UserRow[]>("/users"),
-    [token],
+    () => api.listUsers(),
+    [authenticated],
   );
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -48,6 +39,15 @@ export default function UsersPage() {
   const [form, setForm] = useState({ full_name: "", email: "", password: "", role_code: "evaluador" });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!modalOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setModalOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [modalOpen]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -62,19 +62,27 @@ export default function UsersPage() {
   };
 
   const refresh = async () => {
-    const data = await usersRequest<UserRow[]>("/users");
+    const data = await api.listUsers();
     setData(data);
   };
 
   const handleSave = async () => {
     setSaving(true); setMessage(null);
     try {
-      const payload = editingId
-        ? { full_name: form.full_name, role_code: form.role_code, password: form.password || undefined }
-        : { full_name: form.full_name, email: form.email, password: form.password, role_code: form.role_code };
-      const method = editingId ? "PATCH" : "POST";
-      const url = editingId ? `/users/${editingId}` : "/users";
-      await usersRequest(url, { method, body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } });
+      if (editingId) {
+        await api.updateUser(editingId, {
+          full_name: form.full_name,
+          role_code: form.role_code,
+          password: form.password || undefined,
+        });
+      } else {
+        await api.createUser({
+          full_name: form.full_name,
+          email: form.email,
+          password: form.password,
+          role_code: form.role_code,
+        });
+      }
       await refresh();
       setModalOpen(false);
       setMessage(editingId ? "Usuario actualizado." : "Usuario creado correctamente.");
@@ -84,12 +92,13 @@ export default function UsersPage() {
   };
 
   const toggleActive = async (u: UserRow) => {
-    await usersRequest(`/users/${u.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ is_active: !u.is_active }),
-      headers: { "Content-Type": "application/json" },
-    });
-    await refresh();
+    setMessage(null);
+    try {
+      await api.updateUser(u.id, { is_active: !u.is_active });
+      await refresh();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "No se pudo cambiar el estado del usuario.");
+    }
   };
 
   return (
@@ -144,14 +153,25 @@ export default function UsersPage() {
           ]}
         />
 
-        {message ? <p className="mt-4 text-sm text-green-700">{message}</p> : null}
+        <StatusNotice message={message} className="mt-4" />
       </SectionCard>
 
       {/* Modal */}
       {modalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setModalOpen(false)}>
-          <div className="mx-4 w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl animate-fade-in" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-slate-900">{editingId ? "Editar usuario" : "Crear usuario"}</h3>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={() => setModalOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="user-modal-title"
+            className="mx-4 w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl animate-fade-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="user-modal-title" className="text-xl font-semibold text-slate-900">
+              {editingId ? "Editar usuario" : "Crear usuario"}
+            </h3>
 
             <div className="mt-4 space-y-4">
               <label className="block space-y-1">

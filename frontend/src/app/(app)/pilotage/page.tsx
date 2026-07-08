@@ -10,18 +10,18 @@ import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 
 export default function PilotagePage() {
-  const { token, eventId } = useECOE();
+  const { authenticated, eventId } = useECOE();
   const { data, loading, error, setData } = useApi(
-    () => api.pilotage(eventId, token!) as Promise<Record<string, unknown>[]>,
-    [eventId, token],
+    () => api.pilotage(eventId) as Promise<Record<string, unknown>[]>,
+    [eventId, authenticated],
   );
   const { data: stations } = useApi(
-    () => api.stations(eventId, token!) as Promise<Record<string, unknown>[]>,
-    [eventId, token],
+    () => api.stations(eventId) as Promise<Record<string, unknown>[]>,
+    [eventId, authenticated],
   );
   const { data: validation } = useApi(
-    () => api.validation(eventId, token!) as Promise<Record<string, unknown>>,
-    [eventId, token],
+    () => api.validation(eventId) as Promise<Record<string, unknown>>,
+    [eventId, authenticated],
   );
   const [selectedStationId, setSelectedStationId] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -30,7 +30,7 @@ export default function PilotagePage() {
   const [processingArchiveId, setProcessingArchiveId] = useState<string | null>(null);
 
   const refresh = async () =>
-    setData((await api.pilotage(eventId, token!)) as Record<string, unknown>[]);
+    setData((await api.pilotage(eventId)) as Record<string, unknown>[]);
 
   const readyStationIssues =
     ((validation?.station_issues as Record<string, unknown>[] | undefined) ?? []).filter((issue) =>
@@ -115,7 +115,6 @@ export default function PilotagePage() {
                         ? [Number(effectiveSelectedStationId)]
                         : [],
                     },
-                    token!,
                   );
                   await refresh();
                   setMessage("Pilotaje individual creado correctamente.");
@@ -154,7 +153,6 @@ export default function PilotagePage() {
                       name: "Pilotaje de circuito",
                       scope: "circuito_completo",
                     },
-                    token!,
                   );
                   await refresh();
                   setMessage("Pilotaje de circuito completo creado correctamente.");
@@ -240,7 +238,7 @@ export default function PilotagePage() {
                       setProcessingArchiveId(String(row.id ?? ""));
                       setMessage(null);
                       try {
-                        await api.archivePilotage(Number(row.id), token!);
+                        await api.archivePilotage(Number(row.id));
                         await refresh();
                         setMessage("Pilotaje archivado correctamente.");
                       } catch (archiveError) {

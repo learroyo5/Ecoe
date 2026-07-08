@@ -1,5 +1,14 @@
 /** Core domain types for the ECOE platform. */
 
+/** Shape returned by the backend's paginate_query (students, staff, incidents). */
+export type Paginated<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+};
+
 export type UserSession = {
   id: number;
   email: string;
@@ -160,6 +169,10 @@ export type LiveSession = {
   transition_time_seconds: number;
   current_station_index: number;
   remaining_seconds: number;
+  /** Inicio de la fase actual (null si el timer no corre). */
+  phase_started_at?: string | null;
+  /** Reloj del servidor al momento de la respuesta: usar para offset local. */
+  server_now?: string;
 };
 
 export type Incident = {

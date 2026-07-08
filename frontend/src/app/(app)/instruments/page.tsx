@@ -10,10 +10,10 @@ import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 
 export default function InstrumentsPage() {
-  const { token } = useECOE();
+  const { authenticated } = useECOE();
   const { data, loading, error, setData } = useApi(
-    () => api.instruments(token!) as Promise<Record<string, unknown>[]>,
-    [token],
+    () => api.instruments() as Promise<Record<string, unknown>[]>,
+    [authenticated],
   );
   const [message, setMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -60,9 +60,8 @@ export default function InstrumentsPage() {
                         { label: "Cierre", score_per_item: 4, order_index: 3 },
                       ],
                     },
-                    token!,
                   );
-                  setData((await api.instruments(token!)) as Record<string, unknown>[]);
+                  setData((await api.instruments()) as Record<string, unknown>[]);
                   setLastCreateSucceeded(true);
                   setMessage("Instrumento de prueba creado correctamente.");
                 } catch (saveError) {

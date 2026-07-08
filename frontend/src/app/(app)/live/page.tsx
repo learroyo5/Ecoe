@@ -5,7 +5,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
+import { resolveLiveWsUrl } from "@/lib/ws";
 import { SectionCard } from "@/components/section-card";
+import { StatusNotice } from "@/components/forms";
 import type { Incident } from "@/lib/types";
 
 type TimerState = {
@@ -31,7 +33,7 @@ const SEVERITY_COLORS: Record<string, string> = {
 };
 
 export default function LivePage() {
-  const { token, eventId } = useECOE();
+  const { authenticated, eventId } = useECOE();
   const wsRef = useRef<WebSocket | null>(null);
   const [timerState, setTimerState] = useState<TimerState>({
     status: "sin_sesion",
@@ -40,6 +42,8 @@ export default function LivePage() {
     station_time_seconds: 480,
     transition_time_seconds: 120,
   });
+
+  const [controlMessage, setControlMessage] = useState<string | null>(null);
 
   // Incident form state
   const [showIncidentForm, setShowIncidentForm] = useState(false);
@@ -50,23 +54,28 @@ export default function LivePage() {
   const [incidentSubmitting, setIncidentSubmitting] = useState(false);
   const [incidentMessage, setIncidentMessage] = useState<string | null>(null);
 
+  // Momento local en que recibimos el último estado del servidor: el
+  // countdown se deriva de (remaining_seconds del servidor - transcurrido
+  // local), nunca de un contador local ciego.
+  const [receivedAt, setReceivedAt] = useState<number>(0);
+  const [displaySeconds, setDisplaySeconds] = useState(0);
+
   const liveQuery = useApi(
-    () => api.live(eventId, token!),
-    [eventId, token],
+    () => api.live(eventId),
+    [eventId, authenticated],
   );
 
   const incidentsQuery = useApi(
-    () => api.incidents(eventId, token!) as unknown as Promise<Record<string, unknown>>,
-    [eventId, token],
+    () => api.incidents(eventId),
+    [eventId, authenticated],
   );
-  const incidentsData = (incidentsQuery.data?.items as Incident[]) ?? [];
 
   const [incidents, setIncidents] = useState<Incident[]>([]);
 
   // Keep local incidents in sync with query
   useEffect(() => {
-    setIncidents(incidentsData);
-  }, [incidentsData]);
+    setIncidents(incidentsQuery.data?.items ?? []);
+  }, [incidentsQuery.data]);
 
   // Sync initial timer state from REST
   useEffect(() => {
@@ -77,16 +86,28 @@ export default function LivePage() {
       status: String(data.status ?? "sin_sesion"),
       remaining_seconds: Number(data.remaining_seconds ?? 0),
       current_station_index: Number(data.current_station_index ?? 0),
+      station_time_seconds: Number(data.station_time_seconds ?? prev.station_time_seconds),
+      transition_time_seconds: Number(data.transition_time_seconds ?? prev.transition_time_seconds),
     }));
+    setReceivedAt(Date.now());
   }, [liveQuery.data]);
+
+  // Tick del display: proyecta el remaining del servidor con el tiempo local
+  // transcurrido desde que lo recibimos.
+  useEffect(() => {
+    const compute = () => {
+      const running = timerState.status === "running" || timerState.status === "transition";
+      const elapsed = running && receivedAt ? (Date.now() - receivedAt) / 1000 : 0;
+      setDisplaySeconds(Math.max(0, Math.round(timerState.remaining_seconds - elapsed)));
+    };
+    compute();
+    const intervalId = setInterval(compute, 250);
+    return () => clearInterval(intervalId);
+  }, [timerState, receivedAt]);
 
   // WebSocket connection for real-time timer + incidents
   useEffect(() => {
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsHost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-      ? `${window.location.hostname}:8000`
-      : window.location.host;
-    const wsUrl = `${protocol}//${wsHost}/api/ws/live/${eventId}`;
+    const wsUrl = resolveLiveWsUrl(eventId);
 
     let ws: WebSocket | null = null;
     try {
@@ -107,6 +128,7 @@ export default function LivePage() {
             station_time_seconds: data.station_time_seconds,
             transition_time_seconds: data.transition_time_seconds,
           });
+          setReceivedAt(Date.now());
         } else if (data.type === "incident_created") {
           setIncidents((prev) => [
             { ...data.incident, ecoe_event_id: data.ecoe_event_id } as Incident,
@@ -132,8 +154,15 @@ export default function LivePage() {
   }, [eventId]);
 
   const sendAction = useCallback(async (action: string) => {
-    await api.liveControl({ ecoe_event_id: eventId, action }, token!);
-  }, [eventId, token]);
+    setControlMessage(null);
+    try {
+      await api.liveControl({ ecoe_event_id: eventId, action });
+    } catch (err) {
+      setControlMessage(
+        err instanceof Error ? err.message : "No se pudo enviar la accion al cronometro.",
+      );
+    }
+  }, [eventId]);
 
   const handleCreateIncident = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,7 +176,7 @@ export default function LivePage() {
         title: incidentTitle.trim(),
         detail: incidentDetail.trim(),
         severity: incidentSeverity,
-      }, token!);
+      });
       setIncidentTitle("");
       setIncidentDetail("");
       setIncidentSeverity("media");
@@ -163,7 +192,7 @@ export default function LivePage() {
 
   const handleResolveIncident = async (incidentId: number, resolved: boolean) => {
     try {
-      await api.resolveIncident(incidentId, resolved, token!);
+      await api.resolveIncident(incidentId, resolved);
       // State updated via WebSocket, but also update locally
       setIncidents((prev) =>
         prev.map((inc) => (inc.id === incidentId ? { ...inc, resolved } : inc)),
@@ -202,7 +231,7 @@ export default function LivePage() {
               </span>
             </div>
             <p className="mt-4 text-7xl font-bold tabular-nums tracking-tight">
-              {formatTime(timerState.remaining_seconds)}
+              {formatTime(displaySeconds)}
             </p>
             <p className="mt-3 text-lg text-slate-100/80">
               Estación {timerState.current_station_index} ·{" "}
@@ -239,6 +268,7 @@ export default function LivePage() {
             </ul>
           </div>
         </div>
+        <StatusNotice message={controlMessage} className="mt-4" />
       </SectionCard>
 
       {/* Incidents panel */}

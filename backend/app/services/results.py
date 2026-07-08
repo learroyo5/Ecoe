@@ -25,23 +25,47 @@ from app.models.entities import (
 from app.models.enums import RoleCode, SessionMode
 
 
+def compute_equivalent_grade(percentage: float, passing_reference_percent: float) -> float:
+    """Chilean 1.0-7.0 grading scale ("escala de exigencia").
+
+    `passing_reference_percent` maps to exactly 4.0 (the minimum passing
+    grade); the scale is piecewise-linear below and above that point, so a
+    stricter or looser passing threshold per ECOE actually changes grades
+    instead of being decorative.
+    """
+    passing = min(max(passing_reference_percent, 0.01), 99.99)
+    if percentage >= passing:
+        return 4.0 + (percentage - passing) / (100 - passing) * 3.0
+    return 1.0 + (percentage / passing) * 3.0
+
+
 def compute_results(db: Session, ecoe_event_id: int) -> list[dict]:
+    ecoe_event = db.get(ECOEEvent, ecoe_event_id)
+    passing_reference_percent = ecoe_event.passing_reference_percent if ecoe_event else 60.0
     students = db.scalars(
         select(Student).where(Student.ecoe_event_id == ecoe_event_id, Student.is_active.is_(True))
     ).all()
-    results = []
-    for student in students:
-        records = db.scalars(
-            select(EvaluatorRecord).where(
+    # Single aggregated query instead of one query per student.
+    totals_by_student: dict[int, tuple[float, float]] = {
+        row[0]: (row[1] or 0, row[2] or 0)
+        for row in db.execute(
+            select(
+                EvaluatorRecord.student_id,
+                func.sum(EvaluatorRecord.score_obtained),
+                func.sum(EvaluatorRecord.max_score),
+            )
+            .where(
                 EvaluatorRecord.ecoe_event_id == ecoe_event_id,
-                EvaluatorRecord.student_id == student.id,
                 EvaluatorRecord.mode == SessionMode.ejecucion.value,
             )
+            .group_by(EvaluatorRecord.student_id)
         ).all()
-        total_score = sum(record.score_obtained for record in records)
-        max_score = sum(record.max_score for record in records)
+    }
+    results = []
+    for student in students:
+        total_score, max_score = totals_by_student.get(student.id, (0, 0))
         percentage = (total_score / max_score * 100) if max_score else 0
-        grade = 1.0 + (percentage / 100) * 6.0
+        grade = compute_equivalent_grade(percentage, passing_reference_percent)
         results.append({
             "student_id": student.id,
             "student_name": f"{student.name} {student.last_name}",

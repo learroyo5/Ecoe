@@ -8,13 +8,16 @@ class Settings(BaseSettings):
     api_prefix: str = "/api"
     environment: str = "development"
     auto_seed_demo: bool = True
-    allow_create_all_fallback: bool = True
+    # Alembic is the only supported way to create/upgrade the schema.
+    # create_all is opt-in for throwaway local environments only.
+    allow_create_all_fallback: bool = False
     # SECURITY: secret_key MUST be set via .env in production.
     # The default below is only for local development with Docker Compose.
     secret_key: str = ""
     jwt_issuer: str = "ecoe-backend"
     jwt_audience: str = "ecoe-web"
-    access_token_expire_minutes: int = 60 * 24
+    # 12h: cubre la jornada completa de un examen sin dejar tokens vivos un dia entero.
+    access_token_expire_minutes: int = 60 * 12
     auth_cookie_name: str = "ecoe_session"
     auth_cookie_samesite: str = "lax"
     database_url: str = "postgresql+psycopg://ecoe:ecoe@db:5432/ecoe"

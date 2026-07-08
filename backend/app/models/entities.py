@@ -17,12 +17,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
 from app.models.enums import ECOEStatus, InstrumentType, RoleCode, SessionMode, StationStatus
+from app.utils.clock import utcnow_naive
 
 
 class TimestampMixin:
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=utcnow_naive, onupdate=utcnow_naive
     )
 
 
@@ -43,6 +44,9 @@ class User(Base, TimestampMixin):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     role_id: Mapped[int] = mapped_column(ForeignKey("roles.id"), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Bumped on deactivation/password change: invalidates every JWT issued
+    # with the previous value.
+    token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     role: Mapped["Role"] = relationship()
 
@@ -362,7 +366,11 @@ class LiveSession(Base, TimestampMixin):
     station_time_seconds: Mapped[int] = mapped_column(Integer, default=480)
     transition_time_seconds: Mapped[int] = mapped_column(Integer, default=120)
     current_station_index: Mapped[int] = mapped_column(Integer, default=1)
+    # remaining_seconds is the value frozen at the last state change; while
+    # the timer runs, the authoritative remaining time is computed from
+    # phase_started_at (see live_session_state in operational routes).
     remaining_seconds: Mapped[int] = mapped_column(Integer, default=480)
+    phase_started_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     ecoe_event: Mapped["ECOEEvent"] = relationship(back_populates="live_sessions")
 
@@ -381,7 +389,7 @@ class StationCheckIn(Base, TimestampMixin):
     evaluator_email: Mapped[str] = mapped_column(String(255), nullable=False)
     evaluator_name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="confirmado")
-    confirmed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive)
 
 
 class EvaluatorRecord(Base, TimestampMixin):
@@ -421,7 +429,7 @@ class StudentResponse(Base, TimestampMixin):
     student_id: Mapped[int] = mapped_column(ForeignKey("students.id"), nullable=False)
     mode: Mapped[SessionMode] = mapped_column(String(32), default=SessionMode.ejecucion)
     answers: Mapped[dict] = mapped_column(JSON, default=dict)
-    submitted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive)
     locked: Mapped[bool] = mapped_column(Boolean, default=True)
     by_contingency: Mapped[bool] = mapped_column(Boolean, default=False)
 

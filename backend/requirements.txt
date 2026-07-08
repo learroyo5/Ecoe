@@ -1,10 +1,21 @@
 fastapi==0.116.1
 uvicorn[standard]==0.35.0
+# Pinned to a version verified end-to-end (authenticated connect + receive
+# a broadcast) via tests/test_live_timer.py::TestLiveTimerWebSocket. An
+# unauthenticated handshake correctly gets HTTP 403 regardless of this
+# version — that is uvicorn turning a pre-accept websocket.close() into a
+# 403, not a version incompatibility (an earlier diagnosis on 2026-07-08
+# mistook that expected rejection for a bug; websockets==16 was retested
+# with the same authenticated test and also passes).
+websockets<14
 sqlalchemy==2.0.43
 psycopg[binary]==3.2.9
 pydantic-settings==2.10.1
 python-jose[cryptography]==3.5.0
-passlib[bcrypt]==1.7.4
+pwdlib[argon2]==0.3.0
+# Transitional: only verifies pbkdf2_sha256 hashes created before the argon2
+# migration (core/security.py). Remove once no legacy hashes remain.
+passlib==1.7.4
 python-multipart==0.0.20
 pandas==2.3.2
 openpyxl==3.1.5

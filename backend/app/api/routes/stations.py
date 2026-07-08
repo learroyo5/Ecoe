@@ -20,31 +20,42 @@ from app.models.entities import (
 )
 from app.models.enums import ECOEStatus, RoleCode, StationStatus
 from app.schemas.common import (
-    StationCreate,
-    StationTemplateCreate,
     AssessmentToolCreate,
-    SimulatedPatientCreate,
-    StationBankCreate,
-    StationBankStatusUpdate,
+    AssessmentToolRead,
     PilotRunCreate,
+    PilotRunRead,
+    SimulatedPatientCreate,
+    SimulatedPatientRead,
+    StationBankCreate,
+    StationBankRead,
+    StationBankStatusUpdate,
+    StationCreate,
+    StationRead,
+    StationTemplateCreate,
+    StationTemplateRead,
 )
 from app.services.dependencies import get_current_user, require_roles
 from app.services.ecoe import compute_ecoe_validation
-from app.utils.helpers import (
+from app.services.authorization import (
     ADMIN_EVENT_ROLE_CODES,
     ensure_event_access,
 )
 
 router = APIRouter()
 
+# Roles that may read exam design content (templates, instruments,
+# simulated patients, station bank). Students/evaluators receive only
+# what they need through /student/access and /evaluator/context.
+CONTENT_MANAGER_ROLES = ("admin_ecoe", "coeditor_docente", "coordinador_operativo")
+
 # ── Station Templates ───────────────────────────────────────────────────
 
-@router.get("/templates")
-def list_templates(db: Session = Depends(get_db), user=Depends(get_current_user)):
+@router.get("/templates", response_model=list[StationTemplateRead])
+def list_templates(db: Session = Depends(get_db), user=Depends(require_roles(*CONTENT_MANAGER_ROLES))):
     return db.scalars(select(StationTemplate)).all()
 
 
-@router.post("/templates")
+@router.post("/templates", response_model=StationTemplateRead)
 def create_template(
     payload: StationTemplateCreate,
     db: Session = Depends(get_db),
@@ -59,12 +70,12 @@ def create_template(
 
 # ── Assessment Tools / Instruments ──────────────────────────────────────
 
-@router.get("/instruments")
-def list_instruments(db: Session = Depends(get_db), user=Depends(get_current_user)):
+@router.get("/instruments", response_model=list[AssessmentToolRead])
+def list_instruments(db: Session = Depends(get_db), user=Depends(require_roles(*CONTENT_MANAGER_ROLES))):
     return db.scalars(select(AssessmentTool)).all()
 
 
-@router.post("/instruments")
+@router.post("/instruments", response_model=AssessmentToolRead)
 def create_instrument(
     payload: AssessmentToolCreate,
     db: Session = Depends(get_db),
@@ -87,12 +98,12 @@ def create_instrument(
 
 # ── Simulated Patients ─────────────────────────────────────────────────
 
-@router.get("/simulated-patients")
-def list_patients(db: Session = Depends(get_db), user=Depends(get_current_user)):
+@router.get("/simulated-patients", response_model=list[SimulatedPatientRead])
+def list_patients(db: Session = Depends(get_db), user=Depends(require_roles(*CONTENT_MANAGER_ROLES))):
     return db.scalars(select(SimulatedPatient)).all()
 
 
-@router.post("/simulated-patients")
+@router.post("/simulated-patients", response_model=SimulatedPatientRead)
 def create_patient(
     payload: SimulatedPatientCreate,
     db: Session = Depends(get_db),
@@ -107,12 +118,12 @@ def create_patient(
 
 # ── Station Bank ────────────────────────────────────────────────────────
 
-@router.get("/station-bank")
-def list_station_bank(db: Session = Depends(get_db), user=Depends(get_current_user)):
+@router.get("/station-bank", response_model=list[StationBankRead])
+def list_station_bank(db: Session = Depends(get_db), user=Depends(require_roles(*CONTENT_MANAGER_ROLES))):
     return db.scalars(select(StationBank).order_by(StationBank.updated_at.desc(), StationBank.id.desc())).all()
 
 
-@router.post("/station-bank")
+@router.post("/station-bank", response_model=StationBankRead)
 def create_station_bank(
     payload: StationBankCreate,
     db: Session = Depends(get_db),
@@ -125,7 +136,7 @@ def create_station_bank(
     return bank_station
 
 
-@router.put("/station-bank/{bank_station_id}")
+@router.put("/station-bank/{bank_station_id}", response_model=StationBankRead)
 def update_station_bank(
     bank_station_id: int,
     payload: StationBankCreate,
@@ -143,7 +154,7 @@ def update_station_bank(
     return bank_station
 
 
-@router.patch("/station-bank/{bank_station_id}/status")
+@router.patch("/station-bank/{bank_station_id}/status", response_model=StationBankRead)
 def update_station_bank_status(
     bank_station_id: int,
     payload: StationBankStatusUpdate,
@@ -162,13 +173,13 @@ def update_station_bank_status(
 
 # ── Stations ────────────────────────────────────────────────────────────
 
-@router.get("/stations/{ecoe_event_id}")
+@router.get("/stations/{ecoe_event_id}", response_model=list[StationRead])
 def list_stations(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
     return db.scalars(select(Station).where(Station.ecoe_event_id == ecoe_event_id)).all()
 
 
-@router.post("/stations")
+@router.post("/stations", response_model=StationRead)
 def create_station(
     payload: StationCreate,
     db: Session = Depends(get_db),
@@ -196,7 +207,7 @@ def create_station(
     return station
 
 
-@router.put("/stations/{station_id}")
+@router.put("/stations/{station_id}", response_model=StationRead)
 def update_station(
     station_id: int,
     payload: StationCreate,
@@ -245,7 +256,7 @@ def delete_station(
 
 # ── Pilotage ────────────────────────────────────────────────────────────
 
-@router.post("/pilotage")
+@router.post("/pilotage", response_model=PilotRunRead)
 def create_pilotage(
     payload: PilotRunCreate,
     db: Session = Depends(get_db),
@@ -310,7 +321,7 @@ def create_pilotage(
     return pilot_run
 
 
-@router.get("/pilotage/{ecoe_event_id}")
+@router.get("/pilotage/{ecoe_event_id}", response_model=list[PilotRunRead])
 def list_pilotage(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
     return db.scalars(select(PilotRun).where(PilotRun.ecoe_event_id == ecoe_event_id)).all()

@@ -17,8 +17,16 @@ COPY app ./app
 COPY alembic.ini .
 COPY alembic ./alembic
 
-RUN mkdir -p /app/storage
+# Run as an unprivileged user; /app/storage receives user uploads.
+# NOTE for existing deployments: the backend_storage volume was created by
+# root — run once before deploying:
+#   docker run --rm -v ecoe_backend_storage:/s alpine chown -R 1000:1000 /s
+RUN useradd --create-home --uid 1000 app \
+    && mkdir -p /app/storage \
+    && chown -R app:app /app/storage
+
+USER app
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]

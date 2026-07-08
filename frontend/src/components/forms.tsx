@@ -29,6 +29,8 @@ export function StatusNotice({
   const tone = getMessageTone(message);
   return (
     <div
+      role={tone === "warning" ? "alert" : "status"}
+      aria-live={tone === "warning" ? "assertive" : "polite"}
       className={`rounded-2xl border px-4 py-4 text-sm font-medium ${
         tone === "success"
           ? "border-emerald-200 bg-emerald-50 text-emerald-900"

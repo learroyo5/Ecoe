@@ -1,3 +1,9 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
     image: postgres:16-alpine
@@ -6,7 +12,7 @@ services:
     environment:
       POSTGRES_DB: ecoe
       POSTGRES_USER: ecoe
-      POSTGRES_PASSWORD: ecoe
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env (raiz del repo)}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -16,6 +22,35 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    mem_limit: 1g
+    logging: *default-logging
+
+  db-backup:
+    image: postgres:16-alpine
+    container_name: ecoe-db-backup
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env (raiz del repo)}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backups:/backups
+    # Daily pg_dump with 14-day rotation. Restore procedure: scripts/restore_db.sh
+    entrypoint: /bin/sh
+    command: >-
+      -c 'while true; do
+        ts=$$(date +%Y%m%d-%H%M%S);
+        if pg_dump -h db -U ecoe ecoe | gzip > /backups/ecoe-$$ts.sql.gz; then
+          echo "backup ok: ecoe-$$ts.sql.gz";
+        else
+          echo "backup FAILED: $$ts" >&2;
+        fi;
+        find /backups -name "ecoe-*.sql.gz" -mtime +14 -delete;
+        sleep 86400;
+      done'
+    mem_limit: 256m
+    logging: *default-logging
 
   backend:
     build:
@@ -24,8 +59,10 @@ services:
     restart: unless-stopped
     env_file:
       - ./backend/.env
+    # ENVIRONMENT se define en backend/.env (production en el servidor real).
+    # No agregarlo aqui: environment: tiene precedencia sobre env_file:.
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://ecoe:ecoe@db:5432/ecoe}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://ecoe:${POSTGRES_PASSWORD}@db:5432/ecoe}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://frontend:3000,https://ecoe.drnotus.cl}
       STORAGE_PATH: ${STORAGE_PATH:-/app/storage}
     depends_on:
@@ -35,6 +72,14 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - backend_storage:/app/storage
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    mem_limit: 1g
+    logging: *default-logging
 
   frontend:
     build:
@@ -42,15 +87,30 @@ services:
       args:
         NEXT_PUBLIC_API_URL: /api
         INTERNAL_API_URL: http://backend:8000
+        # Opcional: fija la URL del WebSocket del panel en vivo para
+        # topologias distintas a "docker-compose directo" (backend:8000) o
+        # "produccion detras de nginx" (mismo origen, ver lib/ws.ts).
+        # NEXT_PUBLIC_WS_URL: wss://mi-dominio.cl/api
     container_name: ecoe-frontend
     restart: unless-stopped
+    env_file:
+      - ./backend/.env
     environment:
       NEXT_PUBLIC_API_URL: /api
       INTERNAL_API_URL: http://backend:8000
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
       - "127.0.0.1:3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    mem_limit: 768m
+    logging: *default-logging
 
 volumes:
   postgres_data:

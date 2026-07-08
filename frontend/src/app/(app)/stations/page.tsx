@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
 import { SectionCard } from "@/components/section-card";
+import { StatusNotice } from "@/components/forms";
 
 const STATUS_COLORS: Record<string, string> = {
   en_diseno: "bg-slate-100 text-slate-700",
@@ -27,20 +28,23 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function StationsPage() {
-  const { token, eventId, user } = useECOE();
+  const { authenticated, eventId, user } = useECOE();
   const router = useRouter();
   const { data, loading, error, setData } = useApi(
-    () => api.stations(eventId, token!) as Promise<Record<string, unknown>[]>,
-    [eventId, token],
+    () => api.stations(eventId) as Promise<Record<string, unknown>[]>,
+    [eventId, authenticated],
   );
+  const [message, setMessage] = useState<string | null>(null);
 
   const handleDelete = async (stationId: number) => {
     if (!window.confirm("Vas a eliminar esta estacion permanentemente. Esta accion no se puede deshacer. Continuar?")) return;
+    setMessage(null);
     try {
-      await api.deleteStation(stationId, token!);
+      await api.deleteStation(stationId);
       setData((prev) => (prev ?? []).filter((s) => Number(s.id) !== stationId));
+      setMessage("Estacion borrada correctamente.");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "No se pudo eliminar la estacion");
+      setMessage(err instanceof Error ? err.message : "No se pudo eliminar la estacion");
     }
   };
 
@@ -77,6 +81,7 @@ export default function StationsPage() {
             Banco de estaciones
           </Link>
         </div>
+        <StatusNotice message={message} className="mt-4" />
       </SectionCard>
 
       {loading ? (

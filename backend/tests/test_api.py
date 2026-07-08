@@ -1,50 +1,10 @@
 """Tests for security and core API functionality."""
 
-import os
-
-os.environ["SECRET_KEY"] = "test-secret-key-for-testing-only"
-os.environ["DATABASE_URL"] = "sqlite:///./test.db"
-os.environ["ADMIN_PASSWORD"] = "test-admin"
-os.environ["COEDITOR_PASSWORD"] = "test-coeditor"
-os.environ["EVALUATOR_PASSWORD"] = "test-evaluator"
-os.environ["STUDENT_PASSWORD"] = "test-student"
-os.environ["COORDINATOR_PASSWORD"] = "test-coordinator"
-os.environ["TIMER_PASSWORD"] = "test-timer"
-os.environ["STORAGE_PATH"] = "/tmp/ecoe-test-storage"
-
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from starlette.websockets import WebSocketDisconnect
 
-from app.db.session import Base, get_db
-from app.main import app
-from app.db.seed import seed_data
+from conftest import ADMIN, EVALUATOR, STUDENT, login
 from app.models.entities import ECOEResult, MediaAsset, StationCheckIn
-
-# Disable rate limiting for tests
-import app.services.dependencies as deps
-deps._LOGIN_MAX_ATTEMPTS = 9999
-
-engine = create_engine("sqlite:///./test.db", connect_args={"check_same_thread": False})
-TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-
-Base.metadata.create_all(bind=engine)
-
-with TestingSessionLocal() as db:
-    seed_data(db)
-
-
-def override_get_db():
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-app.dependency_overrides[get_db] = override_get_db
 
 
 def ecoe_payload(name: str = "ECOE Aislado") -> dict:
@@ -65,30 +25,6 @@ def ecoe_payload(name: str = "ECOE Aislado") -> dict:
     }
 
 
-@pytest.fixture
-def client():
-    with TestClient(app) as c:
-        yield c
-
-
-@pytest.fixture
-def auth_client(client):
-    """Client with authenticated admin session via cookie."""
-    login_resp = client.post("/api/auth/login", json={
-        "email": "admin@ecoe.cl",
-        "password": "test-admin",
-    })
-    assert login_resp.status_code == 200
-    return client
-
-
-@pytest.fixture(scope="module")
-def unauth_client():
-    """Separate unauthenticated client for tests that need no session."""
-    with TestClient(app) as c:
-        yield c
-
-
 class TestHealth:
     def test_health_check(self, client):
         response = client.get("/health")
@@ -103,8 +39,8 @@ class TestHealth:
 class TestAuth:
     def test_login_success(self, client):
         response = client.post("/api/auth/login", json={
-            "email": "admin@ecoe.cl",
-            "password": "test-admin",
+            "email": ADMIN[0],
+            "password": ADMIN[1],
         })
         assert response.status_code == 200
         data = response.json()
@@ -113,7 +49,7 @@ class TestAuth:
 
     def test_login_invalid_credentials(self, client):
         response = client.post("/api/auth/login", json={
-            "email": "admin@ecoe.cl",
+            "email": ADMIN[0],
             "password": "wrong-password",
         })
         assert response.status_code == 401
@@ -147,21 +83,7 @@ class TestECOE:
         assert response.json()["name"] == "ECOE Medicina Interna 2026"
 
     def test_create_ecoe(self, auth_client):
-        response = auth_client.post("/api/ecoe", json={
-            "name": "ECOE Test",
-            "date": "2026-06-15",
-            "course_name": "Test Course",
-            "school_name": "Test School",
-            "responsible_teacher": "Dr. Test",
-            "contact_email": "test@ecoe.cl",
-            "circuit_mode": "paralelo_espejo",
-            "total_stations": 4,
-            "station_time_minutes": 10,
-            "transition_time_minutes": 2,
-            "total_students": 20,
-            "total_groups": 4,
-            "passing_reference_percent": 60,
-        })
+        response = auth_client.post("/api/ecoe", json=ecoe_payload("ECOE Test"))
         assert response.status_code == 200
         assert response.json()["name"] == "ECOE Test"
 
@@ -206,8 +128,6 @@ class TestStations:
             "max_score": 20,
             "materials": "",
             "multimedia_notes": "",
-            "station_time_minutes": 8,
-            "transition_time_minutes": 2,
             "requires_evaluator": True,
             "requires_student_form": False,
             "uses_multimedia": False,
@@ -242,7 +162,6 @@ class TestIncidents:
         assert data["resolved"] == False
 
     def test_resolve_incident(self, auth_client):
-        # Create first
         create_resp = auth_client.post("/api/incidents", json={
             "ecoe_event_id": 1,
             "title": "Para resolver",
@@ -251,7 +170,6 @@ class TestIncidents:
         assert create_resp.status_code == 200
         incident_id = create_resp.json()["id"]
 
-        # Resolve
         resolve_resp = auth_client.patch(f"/api/incidents/{incident_id}/resolve", json={
             "resolved": True,
         })
@@ -260,7 +178,6 @@ class TestIncidents:
         assert resolve_resp.json()["resolved_at"] is not None
 
     def test_reopen_incident(self, auth_client):
-        # Create and resolve
         create_resp = auth_client.post("/api/incidents", json={
             "ecoe_event_id": 1,
             "title": "Para reabrir",
@@ -269,7 +186,6 @@ class TestIncidents:
         incident_id = create_resp.json()["id"]
         auth_client.patch(f"/api/incidents/{incident_id}/resolve", json={"resolved": True})
 
-        # Reopen
         reopen_resp = auth_client.patch(f"/api/incidents/{incident_id}/resolve", json={
             "resolved": False,
         })
@@ -314,8 +230,8 @@ class TestMediaSecurity:
         )
         assert response.status_code == 400
 
-    def test_student_cannot_access_evaluator_media(self, client):
-        with TestingSessionLocal() as db:
+    def test_student_cannot_access_evaluator_media(self, client, db_factory):
+        with db_factory() as db:
             checkin = StationCheckIn(
                 ecoe_event_id=1,
                 station_id=1,
@@ -338,52 +254,29 @@ class TestMediaSecurity:
             db.refresh(asset)
             asset_id = asset.id
 
-        login_resp = client.post("/api/auth/login", json={
-            "email": "student1@ecoe.cl",
-            "password": "test-student",
-        })
-        assert login_resp.status_code == 200
-
+        login(client, STUDENT)
         response = client.get(f"/api/media/file/{asset_id}")
         assert response.status_code == 403
 
 
 class TestP0Permissions:
     def test_user_without_event_access_cannot_read_ecoe(self, client):
-        admin_login = client.post("/api/auth/login", json={
-            "email": "admin@ecoe.cl",
-            "password": "test-admin",
-        })
-        assert admin_login.status_code == 200
+        login(client, ADMIN)
         create_resp = client.post("/api/ecoe", json=ecoe_payload("ECOE Sin Evaluador"))
         assert create_resp.status_code == 200
         isolated_event_id = create_resp.json()["id"]
 
-        evaluator_login = client.post("/api/auth/login", json={
-            "email": "eval1@ecoe.cl",
-            "password": "test-evaluator",
-        })
-        assert evaluator_login.status_code == 200
-
+        login(client, EVALUATOR)
         response = client.get(f"/api/ecoe/{isolated_event_id}")
         assert response.status_code == 403
 
     def test_evaluator_cannot_access_other_ecoe_dashboard(self, client):
-        admin_login = client.post("/api/auth/login", json={
-            "email": "admin@ecoe.cl",
-            "password": "test-admin",
-        })
-        assert admin_login.status_code == 200
+        login(client, ADMIN)
         create_resp = client.post("/api/ecoe", json=ecoe_payload("ECOE Dashboard Aislado"))
         assert create_resp.status_code == 200
         isolated_event_id = create_resp.json()["id"]
 
-        evaluator_login = client.post("/api/auth/login", json={
-            "email": "eval1@ecoe.cl",
-            "password": "test-evaluator",
-        })
-        assert evaluator_login.status_code == 200
-
+        login(client, EVALUATOR)
         response = client.get(f"/api/dashboard/{isolated_event_id}")
         assert response.status_code == 403
 
@@ -393,54 +286,35 @@ class TestP0Permissions:
                 pass
 
     def test_websocket_rejects_token_without_event_permission(self, client):
-        admin_login = client.post("/api/auth/login", json={
-            "email": "admin@ecoe.cl",
-            "password": "test-admin",
-        })
-        assert admin_login.status_code == 200
+        login(client, ADMIN)
         create_resp = client.post("/api/ecoe", json=ecoe_payload("ECOE WS Aislado"))
         assert create_resp.status_code == 200
         isolated_event_id = create_resp.json()["id"]
 
-        evaluator_login = client.post("/api/auth/login", json={
-            "email": "eval1@ecoe.cl",
-            "password": "test-evaluator",
-        })
-        assert evaluator_login.status_code == 200
-
+        login(client, EVALUATOR)
         with pytest.raises(WebSocketDisconnect):
             with client.websocket_connect(f"/api/ws/live/{isolated_event_id}"):
                 pass
 
-    def test_get_results_does_not_persist_or_delete_results(self, auth_client):
-        with TestingSessionLocal() as db:
+    def test_get_results_does_not_persist_or_delete_results(self, auth_client, db_factory):
+        with db_factory() as db:
             before = db.query(ECOEResult).filter(ECOEResult.ecoe_event_id == 1).count()
 
         response = auth_client.get("/api/results/1")
         assert response.status_code == 200
         assert "results" in response.json()
 
-        with TestingSessionLocal() as db:
+        with db_factory() as db:
             after = db.query(ECOEResult).filter(ECOEResult.ecoe_event_id == 1).count()
 
         assert after == before
 
-    def test_consolidate_results_is_explicit_mutation(self, auth_client):
+    def test_consolidate_results_is_explicit_mutation(self, auth_client, db_factory):
         response = auth_client.post("/api/results/1/consolidate")
         assert response.status_code == 200
         assert response.json()["consolidated"] is True
 
-        with TestingSessionLocal() as db:
+        with db_factory() as db:
             count = db.query(ECOEResult).filter(ECOEResult.ecoe_event_id == 1).count()
 
         assert count > 0
-
-
-def teardown_module():
-    import shutil
-    db_path = "./test.db"
-    if os.path.exists(db_path):
-        os.remove(db_path)
-    storage = "/tmp/ecoe-test-storage"
-    if os.path.exists(storage):
-        shutil.rmtree(storage, ignore_errors=True)

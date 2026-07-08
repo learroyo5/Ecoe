@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 import warnings
 
 from fastapi import FastAPI
@@ -9,6 +10,12 @@ from app.core.config import get_settings
 from app.db.seed import seed_data
 from app.db.session import Base, SessionLocal, engine
 from app import models  # noqa: F401
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger("ecoe")
 
 settings = get_settings()
 
@@ -26,6 +33,12 @@ async def lifespan(app: FastAPI):
         )
     if settings.auth_cookie_samesite.lower() not in {"lax", "strict", "none"}:
         raise RuntimeError("AUTH_COOKIE_SAMESITE debe ser lax, strict o none.")
+    if settings.is_production and settings.auth_cookie_samesite.lower() == "none":
+        # Session auth is cookie-based without CSRF tokens: SameSite=none
+        # would leave every mutating endpoint open to cross-site requests.
+        raise RuntimeError(
+            "AUTH_COOKIE_SAMESITE=none no esta permitido en produccion sin proteccion CSRF."
+        )
     if settings.is_production and "*" in {
         origin.strip() for origin in settings.cors_origins.split(",")
     }:

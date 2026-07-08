@@ -18,15 +18,15 @@ const bankStatusOptions = [
 ];
 
 export default function StationBankPage() {
-  const { token, user } = useECOE();
+  const { authenticated, user } = useECOE();
   const router = useRouter();
   const { data: templates } = useApi(
-    () => api.templates(token!) as Promise<Record<string, unknown>[]>,
-    [token],
+    () => api.templates() as Promise<Record<string, unknown>[]>,
+    [authenticated],
   );
   const { data, loading, error, setData } = useApi(
-    () => api.stationBank(token!) as Promise<Record<string, unknown>[]>,
-    [token],
+    () => api.stationBank() as Promise<Record<string, unknown>[]>,
+    [authenticated],
   );
 
   useEffect(() => {
@@ -99,7 +99,6 @@ export default function StationBankPage() {
                         const updated = (await api.updateStationBankStatus(
                           Number(currentRow.id),
                           { status: event.target.value },
-                          token!,
                         )) as Record<string, unknown>;
                         setData((current) =>
                           (current ?? []).map((item) =>

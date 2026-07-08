@@ -21,17 +21,17 @@ function formatTimestamp(value: unknown) {
 }
 
 export default function ResultsPage() {
-  const { token, eventId } = useECOE();
+  const { authenticated, eventId } = useECOE();
   const { data, loading, error } = useApi(
     () =>
-      api.results(eventId, token!) as Promise<{
+      api.results(eventId) as Promise<{
         results: Record<string, unknown>[];
         summary: Record<string, unknown>;
         student_traceability: Record<string, unknown>[];
         station_traceability: Record<string, unknown>[];
         activity_log: Record<string, unknown>[];
       }>,
-    [eventId, token],
+    [eventId, authenticated],
   );
   const summary = (data?.summary as Record<string, unknown> | undefined) ?? {};
   const studentTraceability = (data?.student_traceability as Record<string, unknown>[] | undefined) ?? [];

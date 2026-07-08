@@ -58,10 +58,10 @@ function CheckList({
 }
 
 export default function ValidationPage() {
-  const { token, eventId } = useECOE();
+  const { authenticated, eventId } = useECOE();
   const { data, loading, error } = useApi(
-    () => api.validation(eventId, token!) as Promise<Record<string, unknown>>,
-    [eventId, token],
+    () => api.validation(eventId) as Promise<Record<string, unknown>>,
+    [eventId, authenticated],
   );
 
   const pilotChecks = ((data?.pilot_checks as ValidationCheck[] | undefined) ?? []);

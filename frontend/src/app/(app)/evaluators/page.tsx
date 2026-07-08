@@ -10,12 +10,12 @@ import { FileImport, StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 
 export default function EvaluatorsPage() {
-  const { token, eventId } = useECOE();
+  const { authenticated, eventId } = useECOE();
   const { data: rawStaff, loading, error, setData: setRawStaff } = useApi(
-    () => api.staff(eventId, token!) as unknown as Promise<Record<string, unknown>>,
-    [eventId, token],
+    () => api.staff(eventId),
+    [eventId, authenticated],
   );
-  const data = (rawStaff?.items as Record<string, unknown>[]) ?? (Array.isArray(rawStaff) ? rawStaff as Record<string, unknown>[] : []);
+  const data = rawStaff?.items ?? [];
 
   // Count current staff by role for validation warnings
   const roleCounts: Record<string, number> = {};
@@ -29,12 +29,12 @@ export default function EvaluatorsPage() {
     cronometrador: "Ya existe un cronometrador en este ECOE. Normalmente basta con uno. ¿Agregar otro de todas formas?",
   };
   const { data: rawStations } = useApi(
-    () => api.stations(eventId, token!) as Promise<Record<string, unknown>[]>,
-    [eventId, token],
+    () => api.stations(eventId) as Promise<Record<string, unknown>[]>,
+    [eventId, authenticated],
   );
   const { data: users } = useApi(
-    () => api.listUsers(token!),
-    [token],
+    () => api.listUsers(),
+    [authenticated],
   );
   const stations = rawStations ?? [];
   const [form, setForm] = useState({
@@ -50,7 +50,7 @@ export default function EvaluatorsPage() {
   const [processingAction, setProcessingAction] = useState<string | null>(null);
 
   const refresh = async () => {
-    const result = await api.staff(eventId, token!) as unknown as Record<string, unknown>;
+    const result = await api.staff(eventId);
     setRawStaff(result);
   };
 
@@ -167,7 +167,7 @@ export default function EvaluatorsPage() {
               </div>
             }
             onImport={async (file) => {
-              const response = (await api.importStaff(eventId, file, token!)) as {
+              const response = (await api.importStaff(eventId, file)) as {
                 imported?: number;
                 skipped?: number;
                 skipped_duplicate?: number;
@@ -210,7 +210,6 @@ export default function EvaluatorsPage() {
                     role_code: form.role_code,
                     station_ids: form.station_id ? [Number(form.station_id)] : [],
                   },
-                  token!,
                 );
                 await refresh();
                 setForm({
@@ -350,7 +349,7 @@ export default function EvaluatorsPage() {
               setProcessingAction("deduplicate-staff");
               setMessage(null);
               try {
-                const response = (await api.deduplicateStaffByEmail(eventId, token!)) as {
+                const response = (await api.deduplicateStaffByEmail(eventId)) as {
                   removed?: number;
                 };
                 await refresh();
@@ -444,7 +443,6 @@ export default function EvaluatorsPage() {
                                 role_code: String(staff.role_code ?? "evaluador"),
                                 station_ids: selectedStationId ? [Number(selectedStationId)] : [],
                               },
-                              token!,
                             );
                             await refresh();
                             setMessage("Asignación principal actualizada correctamente.");
@@ -486,7 +484,7 @@ export default function EvaluatorsPage() {
                         setProcessingAction(`delete-${String(staff.id ?? "")}`);
                         setMessage(null);
                         try {
-                          await api.deleteStaff(Number(staff.id), token!);
+                          await api.deleteStaff(Number(staff.id));
                           await refresh();
                           setMessage("Evaluador o colaborador borrado correctamente.");
                         } catch (actionError) {
