@@ -84,7 +84,7 @@ class TestEvaluatorSubmissionRules:
             record = db.get(EvaluatorRecord, record_id)
             # Seed tool items sum to 20; client sent max_score=99.
             assert record.max_score == 20
-            # ECOE 1 is "publicado": mode is ejecucion regardless of the payload.
+            # ECOE 1 is "en_ejecucion": mode is ejecucion regardless of the payload.
             assert record.mode == "ejecucion"
 
     def test_duplicate_submit_rejected(self, auth_client):

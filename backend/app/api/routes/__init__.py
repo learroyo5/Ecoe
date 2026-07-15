@@ -12,6 +12,7 @@ from app.api.routes.stations import router as stations_router
 from app.api.routes.operational import router as operational_router
 from app.api.routes.users import router as users_router
 from app.api.routes.invitations import router as invitations_router
+from app.api.routes.contingency import router as contingency_router
 
 router = APIRouter()
 router.include_router(auth_router)
@@ -24,3 +25,4 @@ router.include_router(stations_router)
 router.include_router(operational_router)
 router.include_router(users_router)
 router.include_router(invitations_router)
+router.include_router(contingency_router)

@@ -71,6 +71,23 @@ def ensure_primary_station_assignment(staff: StaffAssignment | None) -> tuple[li
 SUBMISSION_GRACE_SECONDS = 30
 
 
+def checkin_submission_deadline(
+    checkin: "StationCheckIn",
+    station: "Station",
+    *,
+    extra_minutes: float = 0.0,
+):
+    """Nominal end of the submission window (without the latency grace).
+
+    This is the deadline the UI should display and enforce; the server
+    accepts up to SUBMISSION_GRACE_SECONDS beyond it to absorb network
+    latency and clock skew.
+    """
+    return checkin.confirmed_at + timedelta(
+        minutes=float(station.station_time_minutes or 0) + float(extra_minutes),
+    )
+
+
 def ensure_checkin_within_time(
     checkin: "StationCheckIn",
     station: "Station",
@@ -84,11 +101,8 @@ def ensure_checkin_within_time(
     also blocks the UI, but the server is the authority: client clocks can
     be wrong or manipulated.
     """
-    window = timedelta(
-        minutes=float(station.station_time_minutes or 0) + float(extra_minutes),
-        seconds=grace_seconds,
-    )
-    if utcnow_naive() > checkin.confirmed_at + window:
+    deadline = checkin_submission_deadline(checkin, station, extra_minutes=extra_minutes)
+    if utcnow_naive() > deadline + timedelta(seconds=grace_seconds):
         raise HTTPException(
             status_code=400,
             detail="El tiempo de la estacion ya expiro; el envio no puede aceptarse.",
@@ -124,16 +138,41 @@ def compute_remaining_seconds(session) -> int:
 
 
 def resolve_session_mode(ecoe_event) -> str:
-    """Server-side session mode: piloting states record as pilotaje."""
+    """Server-side session mode for READS: en_pilotaje maps to pilotaje.
+
+    Non-raising: use it to scope queries (duplicate checks, exists flags).
+    Writes must go through ensure_submission_stage instead, which rejects
+    every state outside en_pilotaje / en_ejecucion.
+    """
     from app.models.enums import ECOEStatus, SessionMode
 
-    piloting = {
-        ECOEStatus.listo_para_pilotaje.value,
-        ECOEStatus.en_pilotaje.value,
-    }
-    if str(ecoe_event.status) in piloting:
+    if str(ecoe_event.status) == ECOEStatus.en_pilotaje.value:
         return SessionMode.pilotaje.value
     return SessionMode.ejecucion.value
+
+
+def ensure_submission_stage(ecoe_event) -> str:
+    """Authoritative mode for WRITES (check-ins and submissions).
+
+    Operational records are only accepted while the ECOE is formally in
+    pilotaje or in real execution; anything recorded outside those states
+    would contaminate results (e.g. a rehearsal while "publicado" would be
+    stored as ejecucion). Returns the mode to record with.
+    """
+    from app.models.enums import ECOEStatus, SessionMode
+
+    status = str(ecoe_event.status)
+    if status == ECOEStatus.en_pilotaje.value:
+        return SessionMode.pilotaje.value
+    if status == ECOEStatus.en_ejecucion.value:
+        return SessionMode.ejecucion.value
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            "Los registros operativos solo se aceptan con el ECOE en pilotaje o en ejecucion real "
+            f"(estado actual: {status})."
+        ),
+    )
 
 
 # ── Check-in / lookup helpers ───────────────────────────────────────────
@@ -154,6 +193,29 @@ def get_active_checkin(
     if checkin_id is not None:
         statement = statement.where(StationCheckIn.id == checkin_id)
     return db.scalar(statement.order_by(StationCheckIn.confirmed_at.desc(), StationCheckIn.id.desc()))
+
+
+def get_latest_checkin_any_status(
+    db: Session,
+    ecoe_event_id: int,
+    station_id: int,
+    student_id: int,
+) -> StationCheckIn | None:
+    """Latest check-in for the tuple regardless of status.
+
+    Contingency submissions arrive after the rotation moved on: the original
+    check-in is usually already "cerrado" (or its window expired), so the
+    active-only lookup would reject exactly the cases contingency exists for.
+    """
+    return db.scalar(
+        select(StationCheckIn)
+        .where(
+            StationCheckIn.ecoe_event_id == ecoe_event_id,
+            StationCheckIn.station_id == station_id,
+            StationCheckIn.student_id == student_id,
+        )
+        .order_by(StationCheckIn.confirmed_at.desc(), StationCheckIn.id.desc())
+    )
 
 
 def find_student_by_ecoe_number(

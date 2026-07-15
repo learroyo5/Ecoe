@@ -78,7 +78,7 @@ def compute_results(db: Session, ecoe_event_id: int) -> list[dict]:
     return results
 
 
-def persist_results(db: Session, ecoe_event_id: int) -> list[dict]:
+def persist_results(db: Session, ecoe_event_id: int, *, commit: bool = True) -> list[dict]:
     results = compute_results(db, ecoe_event_id)
     db.query(ECOEResult).filter(ECOEResult.ecoe_event_id == ecoe_event_id).delete()
     for item in results:
@@ -90,7 +90,8 @@ def persist_results(db: Session, ecoe_event_id: int) -> list[dict]:
             percentage=item["percentage"],
             equivalent_grade=item["equivalent_grade"],
         ))
-    db.commit()
+    if commit:
+        db.commit()
     return results
 
 

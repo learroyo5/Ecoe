@@ -11,6 +11,7 @@ from app.models.entities import (
     PilotRun,
     StaffAssignment,
     Station,
+    StationCheckIn,
     Student,
 )
 from app.models.enums import ECOEStatus, RoleCode, StationStatus
@@ -241,29 +242,60 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
     }
 
 
+# State machine for the ECOE lifecycle. Mirrors the transitions the UI
+# offers (frontend/src/components/ecoe-form.tsx); the backend is the
+# authority: any jump outside this graph is rejected even if a client
+# crafts the request by hand. Keeping the target equal to the current
+# status is always a no-op (full-form PUTs resend the status unchanged).
+ALLOWED_STATUS_TRANSITIONS: dict[str, set[str]] = {
+    ECOEStatus.borrador.value: {ECOEStatus.en_configuracion.value},
+    ECOEStatus.en_configuracion.value: {
+        ECOEStatus.borrador.value,
+        ECOEStatus.listo_para_pilotaje.value,
+    },
+    ECOEStatus.listo_para_pilotaje.value: {
+        ECOEStatus.en_configuracion.value,
+        ECOEStatus.en_pilotaje.value,
+    },
+    ECOEStatus.en_pilotaje.value: {
+        ECOEStatus.listo_para_pilotaje.value,
+        ECOEStatus.pilotaje_validado.value,
+    },
+    ECOEStatus.pilotaje_validado.value: {
+        ECOEStatus.en_pilotaje.value,
+        ECOEStatus.publicado.value,
+    },
+    ECOEStatus.publicado.value: {
+        ECOEStatus.pilotaje_validado.value,
+        ECOEStatus.en_ejecucion.value,
+    },
+    ECOEStatus.en_ejecucion.value: {ECOEStatus.cerrado.value},
+    ECOEStatus.cerrado.value: {ECOEStatus.archivado.value},
+    ECOEStatus.archivado.value: {ECOEStatus.borrador.value},
+}
+
+
 def update_ecoe_status(
     db: Session, ecoe_event: ECOEEvent, target_status: str, *, commit: bool = True
 ) -> ECOEEvent:
     validation = compute_ecoe_validation(db, ecoe_event)
-    allowed = {
-        ECOEStatus.borrador.value,
-        ECOEStatus.en_configuracion.value,
-        ECOEStatus.listo_para_pilotaje.value,
-        ECOEStatus.en_pilotaje.value,
-        ECOEStatus.pilotaje_validado.value,
-        ECOEStatus.publicado.value,
-        ECOEStatus.en_ejecucion.value,
-        ECOEStatus.cerrado.value,
-        ECOEStatus.archivado.value,
-    }
-    if target_status not in allowed:
+    current_status = str(ecoe_event.status)
+    if target_status not in ALLOWED_STATUS_TRANSITIONS:
         raise ValueError("Estado no permitido")
-    if target_status == ECOEStatus.listo_para_pilotaje.value and not validation["can_pilot"]:
-        raise ValueError("El ECOE aun no cumple condiciones para pilotaje")
-    if target_status == ECOEStatus.publicado.value and not validation["can_publish"]:
-        raise ValueError("El ECOE aun no cumple condiciones para publicacion")
-    if target_status == ECOEStatus.en_ejecucion.value and not validation["can_start_live"]:
-        raise ValueError("El ECOE aun no esta listo para ejecucion real")
+    if target_status != current_status:
+        if target_status not in ALLOWED_STATUS_TRANSITIONS.get(current_status, set()):
+            raise ValueError(
+                f"Transicion de estado no permitida: {current_status} → {target_status}"
+            )
+        # Readiness gates guard the transition itself; staying in the same
+        # state (full-form PUTs) must not re-run them, otherwise an event in
+        # ejecucion could never be edited (can_start_live requires publicado).
+        if target_status == ECOEStatus.listo_para_pilotaje.value and not validation["can_pilot"]:
+            raise ValueError("El ECOE aun no cumple condiciones para pilotaje")
+        if target_status == ECOEStatus.publicado.value and not validation["can_publish"]:
+            raise ValueError("El ECOE aun no cumple condiciones para publicacion")
+        if target_status == ECOEStatus.en_ejecucion.value and not validation["can_start_live"]:
+            raise ValueError("El ECOE aun no esta listo para ejecucion real")
 
     if target_status == ECOEStatus.publicado.value:
         live_session = db.scalar(
@@ -284,6 +316,23 @@ def update_ecoe_status(
             }:
                 station.status = StationStatus.publicada.value
                 db.add(station)
+
+    if target_status == ECOEStatus.cerrado.value and current_status != ECOEStatus.cerrado.value:
+        # Closing freezes the event: consolidate results in the same
+        # transaction and close every check-in still open, so no submission
+        # window survives the closure (the stage gate rejects new records).
+        from app.services.results import persist_results
+
+        persist_results(db, ecoe_event.id, commit=False)
+        open_checkins = db.scalars(
+            select(StationCheckIn).where(
+                StationCheckIn.ecoe_event_id == ecoe_event.id,
+                StationCheckIn.status == "confirmado",
+            )
+        ).all()
+        for checkin in open_checkins:
+            checkin.status = "cerrado"
+            db.add(checkin)
 
     ecoe_event.status = target_status
     db.add(ecoe_event)

@@ -7,9 +7,17 @@ from sqlalchemy import select
 from starlette.websockets import WebSocketDisconnect
 
 from app.core.security import get_password_hash
-from app.models.entities import Role, StaffAssignment, StationCheckIn, Student, User
-from app.models.enums import RoleCode
+from app.models.entities import ECOEEvent, Role, StaffAssignment, StationCheckIn, Student, User
+from app.models.enums import ECOEStatus, RoleCode
 from conftest import ADMIN, COEDITOR, COORDINATOR, login
+
+
+def set_event_status(db, event_id: int, status: str) -> None:
+    """Force the lifecycle state directly: tests exercise authorization,
+    not the transition graph (covered in test_state_machine_and_modes)."""
+    event = db.get(ECOEEvent, event_id)
+    event.status = status
+    db.add(event)
 
 
 def event_payload(name: str) -> dict:
@@ -133,6 +141,9 @@ def test_effective_evaluator_role_enforces_station_assignment(client, db_factory
             role_code=RoleCode.evaluador.value,
             station_ids=[assigned_station_id],
         ))
+        # El gate de etapa exige en_pilotaje/en_ejecucion para registrar
+        # check-ins; este test valida la autorizacion por asignacion.
+        set_event_status(db, event_id, ECOEStatus.en_ejecucion.value)
         db.commit()
 
     login(client, ("mixed-evaluator@example.edu", password))
@@ -176,6 +187,9 @@ def test_student_only_event_relationship_cannot_submit_for_another_student(clien
             status="confirmado",
         )
         db.add(checkin)
+        # El gate de etapa exige en_pilotaje/en_ejecucion para aceptar
+        # envios; este test valida la autorizacion de identidad.
+        set_event_status(db, event_id, ECOEStatus.en_ejecucion.value)
         db.commit()
         db.refresh(victim)
         db.refresh(checkin)

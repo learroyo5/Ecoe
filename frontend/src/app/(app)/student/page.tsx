@@ -48,6 +48,10 @@ export default function StudentPage() {
     [serverNow],
   );
   const timerDurationSeconds = Number(context?.station_time_minutes ?? 0) * 60;
+  // Deadline autoritativo del servidor: la UI y el backend cierran la
+  // ventana en el mismo instante (el backend suma además una gracia breve
+  // para absorber latencia de red).
+  const submissionDeadline = String(context?.submission_deadline ?? "");
   const draftStorageKey = context ? `student-station-draft-${String(context.checkin_id)}` : "";
   const submitted = Boolean(context?.student_response_exists);
   const questions = useMemo(() => {
@@ -135,6 +139,12 @@ export default function StudentPage() {
     if (!context) {
       return null;
     }
+    if (submissionDeadline) {
+      return Math.max(
+        0,
+        Math.floor((parseServerUtc(submissionDeadline) - (nowMs + serverClockOffsetMs)) / 1000),
+      );
+    }
     if (!confirmedAt || !timerDurationSeconds) {
       return timerDurationSeconds || null;
     }
@@ -143,7 +153,7 @@ export default function StudentPage() {
       Math.floor((nowMs + serverClockOffsetMs - parseServerUtc(confirmedAt)) / 1000),
     );
     return Math.max(timerDurationSeconds - elapsedSeconds, 0);
-  }, [confirmedAt, context, nowMs, serverClockOffsetMs, timerDurationSeconds]);
+  }, [confirmedAt, context, nowMs, serverClockOffsetMs, submissionDeadline, timerDurationSeconds]);
 
   const timerLabel = useMemo(() => {
     if (remainingSeconds === null) {

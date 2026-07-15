@@ -124,7 +124,10 @@ def seed_data(db: Session) -> None:
         total_students=10,
         total_groups=2,
         passing_reference_percent=60,
-        status=ECOEStatus.publicado.value,
+        # en_ejecucion: el gate de envios solo acepta registros operativos en
+        # pilotaje/ejecucion; el evento demo debe permitir probar el flujo
+        # completo (check-in, evaluacion, respuesta) sin transiciones previas.
+        status=ECOEStatus.en_ejecucion.value,
     )
     db.add(ecoe)
     db.flush()

@@ -42,6 +42,10 @@ export default function EvaluatorPage() {
     Number(activeCheckin?.station_time_minutes ?? assignedStation?.station_time_minutes ?? 0) *
     60;
   const confirmedAt = String(activeCheckin?.confirmed_at ?? "");
+  // Deadline autoritativo del servidor para el REGISTRO del evaluador:
+  // incluye el tiempo de transición (el evaluador marca después de que el
+  // estudiante sale). Sin esto, la UI bloqueaba antes que el backend.
+  const evaluatorDeadline = String(activeCheckin?.evaluator_deadline ?? "");
   const serverNow = String(context?.server_now ?? "");
   // Offset reloj servidor - reloj local: el bloqueo por tiempo no depende
   // del reloj del dispositivo (el backend igualmente re-valida al enviar).
@@ -96,6 +100,12 @@ export default function EvaluatorPage() {
     if (!activeCheckin) {
       return null;
     }
+    if (evaluatorDeadline) {
+      return Math.max(
+        0,
+        Math.floor((parseServerUtc(evaluatorDeadline) - (nowMs + serverClockOffsetMs)) / 1000),
+      );
+    }
     if (!confirmedAt || !timerDurationSeconds) {
       return timerDurationSeconds || null;
     }
@@ -104,7 +114,7 @@ export default function EvaluatorPage() {
       Math.floor((nowMs + serverClockOffsetMs - parseServerUtc(confirmedAt)) / 1000),
     );
     return Math.max(timerDurationSeconds - elapsedSeconds, 0);
-  }, [activeCheckin, confirmedAt, nowMs, serverClockOffsetMs, timerDurationSeconds]);
+  }, [activeCheckin, confirmedAt, evaluatorDeadline, nowMs, serverClockOffsetMs, timerDurationSeconds]);
 
   const timerLabel = useMemo(() => {
     if (remainingSeconds === null) {
@@ -168,8 +178,8 @@ export default function EvaluatorPage() {
             </p>
             <p className="mt-2 text-sm text-slate-600">
               {timeExpired
-                ? "El tiempo de la estación ha terminado. Ya no puedes enviar la evaluación."
-                : "El evaluador visualiza el tiempo, pero el cierre de su evaluación sigue siendo manual."}
+                ? "El tiempo de registro ha terminado. Si necesitas ingresar esta evaluación, contacta a coordinación (registro por contingencia)."
+                : "Incluye el tiempo de transición: puedes terminar de registrar mientras el estudiante cambia de estación."}
             </p>
           </div>
 
@@ -202,6 +212,8 @@ export default function EvaluatorPage() {
                       assessment_tool: checkin.assessment_tool,
                       station_time_minutes: checkin.station_time_minutes,
                       confirmed_at: checkin.confirmed_at,
+                      submission_deadline: checkin.submission_deadline,
+                      evaluator_deadline: checkin.evaluator_deadline,
                       evaluator_submission_exists: false,
                       student_response_exists: false,
                       status: "confirmado",
