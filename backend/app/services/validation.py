@@ -13,8 +13,10 @@ from app.models.entities import (
     Station,
     StationCheckIn,
     Student,
+    User,
 )
 from app.models.enums import ECOEStatus, RoleCode, StationStatus
+from app.utils.helpers import normalize_email
 
 # Re-export for backward compatibility
 __all__ = ["compute_ecoe_validation", "update_ecoe_status"]
@@ -156,6 +158,40 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
         ).requires_evaluator
         for issue in station_issues
     ) if station_issues else True
+    # Evaluadores asignados cuyo correo no tiene cuenta activa: el dia del
+    # examen no podran iniciar sesion, pero la asignacion "se ve" completa.
+    evaluator_emails = {
+        normalize_email(assignment.email)
+        for assignment in evaluator_assignments
+        if assignment.email
+    }
+    active_account_emails: set[str] = set()
+    if evaluator_emails:
+        active_account_emails = {
+            normalize_email(email)
+            for (email,) in db.execute(
+                select(User.email).where(
+                    func.lower(User.email).in_(evaluator_emails),
+                    User.is_active.is_(True),
+                    User.account_status == "active",
+                )
+            ).all()
+        }
+    evaluators_without_account = sorted(evaluator_emails - active_account_emails)
+
+    # Formularios del estudiante sin puntaje: registran respuestas que no
+    # suman al consolidado; debe ser una decision consciente, no un olvido.
+    unscored_form_stations = sorted(
+        station.station_number
+        for station in stations
+        if station.requires_student_form
+        and (station.student_form_definition or {}).get("questions")
+        and not any(
+            isinstance(question, dict) and float(question.get("points") or 0) > 0
+            for question in (station.student_form_definition or {}).get("questions", [])
+        )
+    )
+
     timer_ready = ecoe_event.station_time_minutes > 0 and ecoe_event.transition_time_minutes >= 0
     metadata_ready = bool(
         ecoe_event.name and ecoe_event.course_name and ecoe_event.school_name
@@ -190,6 +226,14 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
                 None if forms_ready else "Hay estaciones que requieren formulario del estudiante y aun no tienen preguntas guardadas.",
                 None if multimedia_ready else "Hay estaciones multimedia sin archivos cargados.",
                 None if assignments_ready else "Hay estaciones con evaluador requerido, pero sin asignacion principal.",
+                None if not evaluators_without_account else (
+                    "Evaluadores asignados sin cuenta de usuario activa (no podran iniciar sesion): "
+                    + ", ".join(evaluators_without_account)
+                ),
+                None if not unscored_form_stations else (
+                    "Estaciones con formulario sin puntaje definido (las respuestas no sumaran a Resultados): "
+                    + ", ".join(str(number) for number in unscored_form_stations)
+                ),
             ] if item
         ],
         "blockers": [
