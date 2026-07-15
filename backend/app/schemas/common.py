@@ -329,6 +329,11 @@ class StudentAccessRequest(BaseModel):
     ecoe_number: str
 
 
+class KioskSubmit(BaseModel):
+    checkin_id: int
+    answers: dict[str, Any]
+
+
 # ── Incidents ─────────────────────────────────────────────────────────
 
 class IncidentCreate(BaseModel):

@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     # 12h: cubre la jornada completa de un examen sin dejar tokens vivos un dia entero.
     access_token_expire_minutes: int = 60 * 12
     invitation_expire_hours: int = 72
+    # Debe cubrir la jornada completa del examen desde que se vincula la tablet.
+    kiosk_token_expire_hours: int = 24
     auth_cookie_name: str = "ecoe_session"
     auth_cookie_samesite: str = "lax"
     database_url: str = "postgresql+psycopg://ecoe:ecoe@db:5432/ecoe"

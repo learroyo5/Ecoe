@@ -409,6 +409,29 @@ class LiveSession(Base, TimestampMixin):
     ecoe_event: Mapped["ECOEEvent"] = relationship(back_populates="live_sessions")
 
 
+class StationKioskSession(Base, TimestampMixin):
+    """Device-level session for the shared tablet installed at a station.
+
+    The kiosk never authenticates a person: it holds a station-scoped token
+    (hashed here, shown once at issue time) and the student identity always
+    derives from the station's active check-in. Issuing a new token for the
+    station revokes the previous ones.
+    """
+
+    __tablename__ = "station_kiosk_sessions"
+    __table_args__ = (
+        Index("ix_station_kiosk_sessions_station", "station_id", "revoked_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ecoe_event_id: Mapped[int] = mapped_column(ForeignKey("ecoe_events.id"), nullable=False)
+    station_id: Mapped[int] = mapped_column(ForeignKey("stations.id"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    issued_by_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class StationCheckIn(Base, TimestampMixin):
     __tablename__ = "station_checkins"
     __table_args__ = (

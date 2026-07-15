@@ -163,6 +163,25 @@ export const api = {
   submitStudent: (payload: Record<string, unknown>) =>
     request<MutationResult>("/student/submit", { method: "POST", body: JSON.stringify(payload) }),
 
+  // Kiosk (dispositivo compartido por estación; autentica con token propio,
+  // nunca con la sesión de usuario)
+  issueKioskToken: (stationId: number) =>
+    request<{ token: string; kiosk_path: string; expires_at: string }>(
+      `/kiosk/stations/${stationId}/token`, { method: "POST" },
+    ),
+  revokeKioskToken: (stationId: number) =>
+    request<{ revoked: number }>(`/kiosk/stations/${stationId}/token`, { method: "DELETE" }),
+  kioskContext: (token: string) =>
+    request<Record<string, unknown>>("/kiosk/context", { headers: { "X-Kiosk-Token": token } }),
+  kioskSubmit: (token: string, payload: { checkin_id: number; answers: Record<string, unknown> }) =>
+    request<MutationResult>("/kiosk/submit", {
+      method: "POST",
+      headers: { "X-Kiosk-Token": token },
+      body: JSON.stringify(payload),
+    }),
+  kioskMediaFile: (token: string, assetId: number) =>
+    request<Blob>(`/kiosk/media/${assetId}`, { headers: { "X-Kiosk-Token": token } }),
+
   // Station Bank
   stationBank: (eventId: number) => request<StationBank[]>(`/station-bank?ecoe_event_id=${eventId}`),
   createStationBank: (eventId: number, payload: Record<string, unknown>) =>

@@ -35,6 +35,28 @@ export default function StationsPage() {
     [eventId, authenticated],
   );
   const [message, setMessage] = useState<string | null>(null);
+  const [kioskLink, setKioskLink] = useState<{ stationId: number; url: string; expiresAt: string } | null>(null);
+  const [issuingKioskFor, setIssuingKioskFor] = useState<number | null>(null);
+
+  const handleIssueKiosk = async (stationId: number) => {
+    if (!window.confirm(
+      "Se generará un nuevo enlace de kiosco para esta estación y se invalidará el anterior (si existía). ¿Continuar?",
+    )) return;
+    setMessage(null);
+    setIssuingKioskFor(stationId);
+    try {
+      const result = await api.issueKioskToken(stationId);
+      setKioskLink({
+        stationId,
+        url: `${window.location.origin}${result.kiosk_path}`,
+        expiresAt: result.expires_at,
+      });
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "No se pudo generar el enlace de kiosco");
+    } finally {
+      setIssuingKioskFor(null);
+    }
+  };
 
   const handleDelete = async (stationId: number) => {
     if (!window.confirm("Vas a eliminar esta estacion permanentemente. Esta accion no se puede deshacer. Continuar?")) return;
@@ -126,6 +148,14 @@ export default function StationsPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <StatusBadge status={String(station.status ?? "en_diseno")} />
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-400"
+                    disabled={issuingKioskFor === id}
+                    onClick={() => handleIssueKiosk(id)}
+                  >
+                    {issuingKioskFor === id ? "Generando..." : "Modo kiosco"}
+                  </button>
                   <Link
                     href={`/stations/builder?stationId=${id}`}
                     className="inline-flex items-center gap-1 rounded-xl border border-[var(--color-primary)] px-3 py-1.5 text-xs font-semibold text-[var(--color-primary)] transition hover:bg-[var(--color-primary)] hover:text-white"
@@ -140,6 +170,40 @@ export default function StationsPage() {
                     Eliminar
                   </button>
                 </div>
+                {kioskLink?.stationId === id ? (
+                  <div className="w-full rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-800">
+                      Enlace de kiosco — se muestra una sola vez
+                    </p>
+                    <p className="mt-2 break-all rounded-xl bg-white px-3 py-2 font-mono text-xs text-slate-800">
+                      {kioskLink.url}
+                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        className="btn-primary px-4 py-1.5 text-xs"
+                        onClick={() => {
+                          navigator.clipboard.writeText(kioskLink.url).then(
+                            () => setMessage("Enlace copiado al portapapeles."),
+                            () => setMessage("No se pudo copiar; selecciona y copia el enlace manualmente."),
+                          );
+                        }}
+                      >
+                        Copiar enlace
+                      </button>
+                      <button
+                        type="button"
+                        className="text-xs font-semibold text-slate-600 underline-offset-4 hover:underline"
+                        onClick={() => setKioskLink(null)}
+                      >
+                        Ocultar
+                      </button>
+                      <span className="text-xs text-emerald-800">
+                        Ábrelo en la tablet de la estación. Expira: {new Date(kioskLink.expiresAt).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             );
           })}

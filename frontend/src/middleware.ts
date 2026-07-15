@@ -11,7 +11,7 @@ const JWT_AUDIENCE = process.env.JWT_AUDIENCE ?? "ecoe-web";
 // Nunca se expone al navegador: el middleware corre en el servidor.
 const SECRET_KEY = process.env.SECRET_KEY ?? "";
 
-const PUBLIC_PATHS = ["/login", "/activate"];
+const PUBLIC_PATHS = ["/login", "/activate", "/kiosk"];
 
 async function verifySession(token: string): Promise<{ role: string } | null> {
   if (!SECRET_KEY) {
