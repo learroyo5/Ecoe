@@ -8,6 +8,7 @@ import { useApi } from "@/hooks/use-api";
 import { clockOffsetMs, parseServerUtc } from "@/lib/time";
 import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
+import { ConfirmDialog, TIMER_TONE_CLASSES, timerTone } from "@/components/confirm-dialog";
 
 export default function EvaluatorPage() {
   const { authenticated, eventId, user } = useECOE();
@@ -22,6 +23,7 @@ export default function EvaluatorPage() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [confirmingStudent, setConfirmingStudent] = useState(false);
   const [submittingEvaluation, setSubmittingEvaluation] = useState(false);
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [itemScoreState, setItemScoreState] = useState<{
     checkinId: string;
     scores: Record<string, number>;
@@ -126,6 +128,13 @@ export default function EvaluatorPage() {
   }, [remainingSeconds]);
 
   const timeExpired = remainingSeconds !== null && remainingSeconds <= 0 && Boolean(activeCheckin);
+  const windowTotalSeconds = useMemo(() => {
+    if (evaluatorDeadline && confirmedAt) {
+      return Math.max(0, Math.floor((parseServerUtc(evaluatorDeadline) - parseServerUtc(confirmedAt)) / 1000));
+    }
+    return timerDurationSeconds;
+  }, [confirmedAt, evaluatorDeadline, timerDurationSeconds]);
+  const tone = timeExpired ? "danger" : timerTone(remainingSeconds, windowTotalSeconds);
 
   const computedScore = useMemo(
     () => Object.values(itemScores).reduce((sum, value) => sum + Number(value || 0), 0),
@@ -140,6 +149,41 @@ export default function EvaluatorPage() {
         [itemKey]: value,
       },
     }));
+  };
+
+  const submitEvaluation = async () => {
+    if (!activeCheckin) return;
+    setMessage(null);
+    setSubmittingEvaluation(true);
+    try {
+      await api.submitEvaluator(
+        {
+          checkin_id: Number(activeCheckin.id),
+          ecoe_event_id: eventId,
+          station_id: stationId,
+          student_id: Number(activeCheckin.student_id),
+          evaluator_name: user?.full_name ?? "Evaluador",
+          score_obtained: assessmentItems.length ? computedScore : Number(scoreObtained),
+          max_score: Number(assessmentTool?.max_score ?? maxScore),
+          observation,
+          answers: {
+            tool_id: assessmentTool?.id ?? null,
+            tool_name: assessmentTool?.name ?? null,
+            tool_type: assessmentTool?.tool_type ?? null,
+            item_scores: itemScores,
+          },
+        },
+      );
+      setShowSubmitConfirm(false);
+      resetForNextStudent(
+        "Evaluación enviada correctamente. Ingresa el Número ECOE del siguiente estudiante.",
+      );
+    } catch (error) {
+      setShowSubmitConfirm(false);
+      setMessage(error instanceof Error ? error.message : "No se pudo guardar.");
+    } finally {
+      setSubmittingEvaluation(false);
+    }
   };
 
   const resetForNextStudent = (notice: string) => {
@@ -173,7 +217,7 @@ export default function EvaluatorPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
               Tiempo visible de la estación
             </p>
-            <p className={`mt-2 text-3xl font-semibold tabular-nums ${timeExpired ? "text-red-600 animate-pulse" : "text-slate-900"}`}>
+            <p className={`mt-2 text-3xl font-semibold tabular-nums ${TIMER_TONE_CLASSES[tone]}`}>
               {timerLabel}
             </p>
             <p className="mt-2 text-sm text-slate-600">
@@ -310,43 +354,9 @@ export default function EvaluatorPage() {
           ) : (
             <form
               className="grid gap-4"
-              onSubmit={async (event) => {
+              onSubmit={(event) => {
                 event.preventDefault();
-                const confirmed = window.confirm(
-                  "Vas a enviar la evaluación final de esta estación. Luego no se podrá modificar durante el ECOE. ¿Quieres continuar?",
-                );
-                if (!confirmed) {
-                  return;
-                }
-                setMessage(null);
-                setSubmittingEvaluation(true);
-                try {
-                  await api.submitEvaluator(
-                    {
-                      checkin_id: Number(activeCheckin.id),
-                      ecoe_event_id: eventId,
-                      station_id: stationId,
-                      student_id: Number(activeCheckin.student_id),
-                      evaluator_name: user?.full_name ?? "Evaluador",
-                      score_obtained: assessmentItems.length ? computedScore : Number(scoreObtained),
-                      max_score: Number(assessmentTool?.max_score ?? maxScore),
-                      observation,
-                      answers: {
-                        tool_id: assessmentTool?.id ?? null,
-                        tool_name: assessmentTool?.name ?? null,
-                        tool_type: assessmentTool?.tool_type ?? null,
-                        item_scores: itemScores,
-                      },
-                    },
-                  );
-                  resetForNextStudent(
-                    "Evaluación enviada correctamente. Ingresa el Número ECOE del siguiente estudiante.",
-                  );
-                } catch (error) {
-                  setMessage(error instanceof Error ? error.message : "No se pudo guardar.");
-                } finally {
-                  setSubmittingEvaluation(false);
-                }
+                setShowSubmitConfirm(true);
               }}
             >
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
@@ -491,6 +501,34 @@ export default function EvaluatorPage() {
         </section>
       </div>
       <StatusNotice message={message} className="mt-4" />
+      <ConfirmDialog
+        open={showSubmitConfirm}
+        title="Enviar evaluación final"
+        message="Una vez enviada, la evaluación queda cerrada y no puede modificarse durante el ECOE."
+        confirmLabel="Enviar evaluación"
+        severity="danger"
+        busy={submittingEvaluation}
+        onConfirm={submitEvaluation}
+        onCancel={() => setShowSubmitConfirm(false)}
+      >
+        {activeCheckin ? (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-800">
+            <p className="font-semibold">
+              {String(activeCheckin.student_ecoe_number)} · {String(activeCheckin.student_name)}
+            </p>
+            <p className="mt-2">
+              Puntaje a registrar:{" "}
+              <span className="font-semibold">
+                {assessmentItems.length ? computedScore : Number(scoreObtained)} /{" "}
+                {String(assessmentTool?.max_score ?? maxScore)} pts
+              </span>
+            </p>
+            {observation.trim() ? (
+              <p className="mt-2 text-slate-600">Observación: {observation.trim().slice(0, 120)}</p>
+            ) : null}
+          </div>
+        ) : null}
+      </ConfirmDialog>
     </SectionCard>
   );
 }

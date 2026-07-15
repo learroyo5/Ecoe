@@ -8,7 +8,10 @@ import { useApi } from "@/hooks/use-api";
 import { resolveLiveWsUrl } from "@/lib/ws";
 import { SectionCard } from "@/components/section-card";
 import { StatusNotice } from "@/components/forms";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { Incident } from "@/lib/types";
+
+const WS_RETRY_MS = 5000;
 
 type TimerState = {
   status: string;
@@ -32,6 +35,17 @@ const SEVERITY_COLORS: Record<string, string> = {
   critica: "bg-red-100 text-red-700",
 };
 
+function ProjectorEscape({ onExit }: { onExit: () => void }) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onExit();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onExit]);
+  return null;
+}
+
 export default function LivePage() {
   const { authenticated, eventId } = useECOE();
   const wsRef = useRef<WebSocket | null>(null);
@@ -44,6 +58,9 @@ export default function LivePage() {
   });
 
   const [controlMessage, setControlMessage] = useState<string | null>(null);
+  const [wsConnected, setWsConnected] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [projectorMode, setProjectorMode] = useState(false);
 
   // Incident form state
   const [showIncidentForm, setShowIncidentForm] = useState(false);
@@ -105,51 +122,89 @@ export default function LivePage() {
     return () => clearInterval(intervalId);
   }, [timerState, receivedAt]);
 
-  // WebSocket connection for real-time timer + incidents
+  // WebSocket en tiempo real con reconexión automática: si la conexión cae,
+  // el indicador lo muestra y se reintenta cada pocos segundos en vez de
+  // dejar el panel congelado en silencio.
   useEffect(() => {
-    const wsUrl = resolveLiveWsUrl(eventId);
+    let disposed = false;
+    let retryTimer: number | null = null;
 
-    let ws: WebSocket | null = null;
-    try {
-      ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-    } catch {
-      return;
-    }
-
-    ws.onmessage = (event) => {
+    const connect = () => {
+      if (disposed) return;
+      const wsUrl = resolveLiveWsUrl(eventId);
+      let ws: WebSocket | null = null;
       try {
-        const data = JSON.parse(event.data);
-        if (data.type === "timer_update") {
-          setTimerState({
-            status: data.status,
-            remaining_seconds: data.remaining_seconds,
-            current_station_index: data.current_station_index,
-            station_time_seconds: data.station_time_seconds,
-            transition_time_seconds: data.transition_time_seconds,
-          });
-          setReceivedAt(Date.now());
-        } else if (data.type === "incident_created") {
-          setIncidents((prev) => [
-            { ...data.incident, ecoe_event_id: data.ecoe_event_id } as Incident,
-            ...prev,
-          ]);
-        } else if (data.type === "incident_resolved") {
-          setIncidents((prev) =>
-            prev.map((inc) =>
-              inc.id === data.incident_id ? { ...inc, resolved: data.resolved } : inc,
-            ),
-          );
-        }
+        ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
       } catch {
-        // Ignore malformed messages
+        setWsConnected(false);
+        retryTimer = window.setTimeout(connect, WS_RETRY_MS);
+        return;
       }
+
+      ws.onopen = () => {
+        setWsConnected(true);
+        // Resincroniza el estado al reconectar: pudo cambiar mientras
+        // estuvimos desconectados.
+        api.live(eventId).then((data) => {
+          setTimerState((prev) => ({
+            ...prev,
+            status: String(data.status ?? prev.status),
+            remaining_seconds: Number(data.remaining_seconds ?? prev.remaining_seconds),
+            current_station_index: Number(data.current_station_index ?? prev.current_station_index),
+            station_time_seconds: Number(data.station_time_seconds ?? prev.station_time_seconds),
+            transition_time_seconds: Number(data.transition_time_seconds ?? prev.transition_time_seconds),
+          }));
+          setReceivedAt(Date.now());
+        }).catch(() => { /* el WS seguirá empujando updates */ });
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "timer_update") {
+            setTimerState({
+              status: data.status,
+              remaining_seconds: data.remaining_seconds,
+              current_station_index: data.current_station_index,
+              station_time_seconds: data.station_time_seconds,
+              transition_time_seconds: data.transition_time_seconds,
+            });
+            setReceivedAt(Date.now());
+          } else if (data.type === "incident_created") {
+            setIncidents((prev) => [
+              { ...data.incident, ecoe_event_id: data.ecoe_event_id } as Incident,
+              ...prev,
+            ]);
+          } else if (data.type === "incident_resolved") {
+            setIncidents((prev) =>
+              prev.map((inc) =>
+                inc.id === data.incident_id ? { ...inc, resolved: data.resolved } : inc,
+              ),
+            );
+          }
+        } catch {
+          // Ignore malformed messages
+        }
+      };
+
+      ws.onclose = () => {
+        setWsConnected(false);
+        if (!disposed) {
+          retryTimer = window.setTimeout(connect, WS_RETRY_MS);
+        }
+      };
+      ws.onerror = () => {
+        try { ws?.close(); } catch { /* onclose reintenta */ }
+      };
     };
 
-    ws.onerror = () => { /* degrade gracefully */ };
+    connect();
 
     return () => {
-      try { ws?.close(); } catch { /* ignore */ }
+      disposed = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
+      try { wsRef.current?.close(); } catch { /* ignore */ }
     };
   }, [eventId]);
 
@@ -211,24 +266,78 @@ export default function LivePage() {
   const activeIncidents = incidents.filter((i) => !i.resolved);
   const resolvedIncidents = incidents.filter((i) => i.resolved);
 
+  if (projectorMode) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950 text-white">
+        <div className="absolute right-6 top-6 flex items-center gap-3">
+          <span
+            className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-semibold ${
+              wsConnected ? "bg-emerald-600" : "bg-red-600"
+            }`}
+          >
+            <span className={`h-2.5 w-2.5 rounded-full bg-white ${wsConnected ? "" : "animate-ping"}`} />
+            {wsConnected ? "En línea" : "Reconectando"}
+          </span>
+          <button
+            className="rounded-full border border-white/30 px-4 py-1.5 text-sm font-semibold text-white/80 transition hover:bg-white/10"
+            onClick={() => setProjectorMode(false)}
+          >
+            Salir (Esc)
+          </button>
+        </div>
+        <p className="text-[3vw] font-semibold uppercase tracking-[0.3em] text-white/60">
+          {timerState.status === "transition" ? "Transición" : `Estación ${timerState.current_station_index}`}
+        </p>
+        <p
+          className={`font-bold tabular-nums leading-none ${
+            displaySeconds <= 60 && (timerState.status === "running" || timerState.status === "transition")
+              ? "animate-pulse text-red-500"
+              : "text-white"
+          }`}
+          style={{ fontSize: "24vw" }}
+        >
+          {formatTime(displaySeconds)}
+        </p>
+        <p className="mt-4 text-[2.5vw] font-semibold uppercase tracking-[0.2em] text-white/70">
+          {timerState.status === "running" ? "▶ En curso" :
+           timerState.status === "paused" ? "⏸ Pausado" :
+           timerState.status === "transition" ? "↻ Cambio de estación" :
+           timerState.status === "ready" ? "Listo para iniciar" : timerState.status}
+        </p>
+        <ProjectorEscape onExit={() => setProjectorMode(false)} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Timer panel */}
       <SectionCard title="Panel central en vivo" subtitle="Cronómetro central con sincronización en tiempo real vía WebSocket.">
         <div className="grid gap-4 md:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded-[2rem] bg-[linear-gradient(135deg,var(--color-primary-dark),var(--color-primary))] p-6 text-white shadow-[0_18px_40px_rgba(27,73,101,0.24)]">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <p className="text-sm uppercase tracking-[0.18em] text-slate-100/80">Cronómetro central</p>
-              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                timerState.status === "running" ? "bg-green-500" :
-                timerState.status === "paused" ? "bg-yellow-500" :
-                timerState.status === "transition" ? "bg-orange-500" : "bg-slate-500"
-              }`}>
-                {timerState.status === "running" ? "▶ EN VIVO" :
-                 timerState.status === "paused" ? "⏸ PAUSADO" :
-                 timerState.status === "transition" ? "↻ TRANSICIÓN" :
-                 timerState.status.toUpperCase()}
-              </span>
+              <div className="flex items-center gap-2">
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
+                    wsConnected ? "bg-emerald-500/90" : "bg-red-500/90"
+                  }`}
+                  title={wsConnected ? "Sincronización en tiempo real activa" : "Reconectando..."}
+                >
+                  <span className={`h-2 w-2 rounded-full bg-white ${wsConnected ? "" : "animate-ping"}`} />
+                  {wsConnected ? "Conectado" : "Reconectando"}
+                </span>
+                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                  timerState.status === "running" ? "bg-green-500" :
+                  timerState.status === "paused" ? "bg-yellow-500" :
+                  timerState.status === "transition" ? "bg-orange-500" : "bg-slate-500"
+                }`}>
+                  {timerState.status === "running" ? "▶ EN VIVO" :
+                   timerState.status === "paused" ? "⏸ PAUSADO" :
+                   timerState.status === "transition" ? "↻ TRANSICIÓN" :
+                   timerState.status.toUpperCase()}
+                </span>
+              </div>
             </div>
             <p className="mt-4 text-7xl font-bold tabular-nums tracking-tight">
               {formatTime(displaySeconds)}
@@ -245,7 +354,9 @@ export default function LivePage() {
                 <button
                   key={action}
                   className={action === "start" ? "btn-primary" : "btn-secondary"}
-                  onClick={() => sendAction(action)}
+                  onClick={() =>
+                    action === "reset" ? setShowResetConfirm(true) : sendAction(action)
+                  }
                 >
                   {action === "start" ? "Iniciar" :
                    action === "pause" ? "Pausar" :
@@ -254,6 +365,12 @@ export default function LivePage() {
                    "Sig. estación"}
                 </button>
               ))}
+              <button
+                className="rounded-full border border-white/40 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
+                onClick={() => setProjectorMode(true)}
+              >
+                🖥 Vista proyector
+              </button>
             </div>
           </div>
           <div className="clinical-panel">
@@ -269,6 +386,18 @@ export default function LivePage() {
           </div>
         </div>
         <StatusNotice message={controlMessage} className="mt-4" />
+        <ConfirmDialog
+          open={showResetConfirm}
+          title="Reiniciar cronómetro"
+          message="El cronómetro volverá a la estación 1 con el tiempo completo. Esto afecta a todos los paneles conectados. ¿Continuar?"
+          confirmLabel="Reiniciar"
+          severity="danger"
+          onConfirm={() => {
+            setShowResetConfirm(false);
+            sendAction("reset");
+          }}
+          onCancel={() => setShowResetConfirm(false)}
+        />
       </SectionCard>
 
       {/* Incidents panel */}

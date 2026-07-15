@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
 import { clockOffsetMs, parseServerUtc } from "@/lib/time";
+import { ConfirmDialog, TIMER_TONE_CLASSES, timerTone } from "@/components/confirm-dialog";
 
 const TOKEN_STORAGE_KEY = "ecoe-kiosk-token";
 const POLL_INTERVAL_MS = 3000;
@@ -67,6 +68,8 @@ export default function KioskPage() {
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [serverOffsetMs, setServerOffsetMs] = useState(0);
@@ -170,6 +173,9 @@ export default function KioskPage() {
   useEffect(() => {
     if (!draftKey || submitted) return;
     window.localStorage.setItem(draftKey, JSON.stringify(answers));
+    if (Object.keys(answers).length > 0) {
+      setDraftSavedAt(new Date());
+    }
   }, [answers, draftKey, submitted]);
 
   // ── Cronómetro (deadline autoritativo del servidor) ─────────────────
@@ -333,13 +339,20 @@ export default function KioskPage() {
               {current.student_ecoe_number} · {current.student_name}
             </p>
           </div>
-          <p
-            className={`text-3xl font-semibold tabular-nums ${
-              timeExpired ? "animate-pulse text-red-600" : "text-slate-900"
-            }`}
-          >
-            {timerLabel}
-          </p>
+          <div className="text-right">
+            <p
+              className={`text-3xl font-semibold tabular-nums ${
+                TIMER_TONE_CLASSES[timeExpired ? "danger" : timerTone(remainingSeconds, Number(current.station_time_minutes) * 60)]
+              }`}
+            >
+              {timerLabel}
+            </p>
+            {draftSavedAt && !submitted ? (
+              <p className="text-[11px] font-semibold text-emerald-700">
+                ✓ borrador {draftSavedAt.toLocaleTimeString()}
+              </p>
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -415,23 +428,9 @@ export default function KioskPage() {
 
         <form
           className="grid gap-4"
-          onSubmit={async (event) => {
+          onSubmit={(event) => {
             event.preventDefault();
-            const confirmed = window.confirm(
-              "Vas a enviar tu respuesta final. Luego no podrás modificarla. ¿Quieres continuar?",
-            );
-            if (!confirmed) return;
-            setMessage(null);
-            setSubmitting(true);
-            try {
-              await submitAnswers(current, answersRef.current);
-              setSubmitted(true);
-              setMessage("Respuesta enviada correctamente. Puedes avanzar a tu siguiente estación.");
-            } catch (error) {
-              setMessage(error instanceof Error ? error.message : "No se pudo enviar.");
-            } finally {
-              setSubmitting(false);
-            }
+            setShowSubmitConfirm(true);
           }}
         >
           {questions.length ? (
@@ -536,6 +535,30 @@ export default function KioskPage() {
           </p>
         ) : null}
       </main>
+      <ConfirmDialog
+        open={showSubmitConfirm}
+        title="Enviar respuesta final"
+        message="Una vez enviada no podrás modificarla. Verifica tus respuestas antes de continuar."
+        confirmLabel="Enviar respuesta"
+        severity="danger"
+        busy={submitting}
+        onConfirm={async () => {
+          setMessage(null);
+          setSubmitting(true);
+          try {
+            await submitAnswers(current, answersRef.current);
+            setShowSubmitConfirm(false);
+            setSubmitted(true);
+            setMessage("Respuesta enviada correctamente. Puedes avanzar a tu siguiente estación.");
+          } catch (error) {
+            setShowSubmitConfirm(false);
+            setMessage(error instanceof Error ? error.message : "No se pudo enviar.");
+          } finally {
+            setSubmitting(false);
+          }
+        }}
+        onCancel={() => setShowSubmitConfirm(false)}
+      />
     </div>
   );
 }

@@ -399,6 +399,7 @@ export default function EvaluatorsPage() {
         ) : (
           <DataTable
             rows={data ?? []}
+            searchKeys={["name", "last_name", "email", "role_code"]}
             columns={[
               { key: "name", label: "Nombre" },
               { key: "last_name", label: "Apellidos" },

@@ -8,6 +8,7 @@ import { clockOffsetMs, parseServerUtc } from "@/lib/time";
 import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 import { EmptyState } from "@/components/toast";
+import { ConfirmDialog, TIMER_TONE_CLASSES, timerTone } from "@/components/confirm-dialog";
 
 type StudentFormQuestion = {
   label: string;
@@ -36,6 +37,8 @@ export default function StudentPage() {
   const [autoSubmitting, setAutoSubmitting] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [manualSubmitting, setManualSubmitting] = useState(false);
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
   const [resolvedMediaAssets, setResolvedMediaAssets] = useState<ResolvedMediaAsset[]>([]);
   const [expandedImage, setExpandedImage] = useState<ResolvedMediaAsset | null>(null);
   const autoSubmitAttemptedRef = useRef(false);
@@ -122,6 +125,9 @@ export default function StudentPage() {
       return;
     }
     window.localStorage.setItem(draftStorageKey, JSON.stringify(answers));
+    if (Object.keys(answers).length > 0) {
+      setDraftSavedAt(new Date());
+    }
   }, [answers, draftStorageKey, submitted]);
 
   useEffect(() => {
@@ -341,11 +347,18 @@ export default function StudentPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
               Tiempo visible de la estación
             </p>
-            <p className="mt-2 text-3xl font-semibold text-slate-900">{timerLabel}</p>
+            <p className={`mt-2 text-3xl font-semibold tabular-nums ${TIMER_TONE_CLASSES[timerTone(remainingSeconds, timerDurationSeconds)]}`}>
+              {timerLabel}
+            </p>
             <p className="mt-2 text-sm text-slate-600">
               Tus respuestas se guardan localmente mientras escribes y se enviarán automáticamente
               al terminar el tiempo si aún no las has enviado.
             </p>
+            {draftSavedAt && !submitted ? (
+              <p className="mt-1 text-xs font-semibold text-emerald-700">
+                ✓ Borrador guardado a las {draftSavedAt.toLocaleTimeString()}
+              </p>
+            ) : null}
           </div>
 
           <form
@@ -473,23 +486,9 @@ export default function StudentPage() {
               ) : null}
               <form
                 className="grid gap-4"
-                onSubmit={async (event) => {
+                onSubmit={(event) => {
                   event.preventDefault();
-                  const confirmed = window.confirm(
-                    "Vas a enviar tu respuesta final. Luego no podrás modificarla. ¿Quieres continuar?",
-                  );
-                  if (!confirmed) {
-                    return;
-                  }
-                  setMessage(null);
-                  setManualSubmitting(true);
-                  try {
-                    await submitResponse("manual");
-                  } catch (error) {
-                    setMessage(error instanceof Error ? error.message : "No se pudo enviar.");
-                  } finally {
-                    setManualSubmitting(false);
-                  }
+                  setShowSubmitConfirm(true);
                 }}
               >
                 {questions.length ? (
@@ -603,6 +602,28 @@ export default function StudentPage() {
         </section>
       </div>
       <StatusNotice message={message} className="mt-4" />
+      <ConfirmDialog
+        open={showSubmitConfirm}
+        title="Enviar respuesta final"
+        message="Una vez enviada no podrás modificarla. Verifica que respondiste todo lo que querías responder."
+        confirmLabel="Enviar respuesta"
+        severity="danger"
+        busy={manualSubmitting}
+        onConfirm={async () => {
+          setMessage(null);
+          setManualSubmitting(true);
+          try {
+            await submitResponse("manual");
+            setShowSubmitConfirm(false);
+          } catch (error) {
+            setShowSubmitConfirm(false);
+            setMessage(error instanceof Error ? error.message : "No se pudo enviar.");
+          } finally {
+            setManualSubmitting(false);
+          }
+        }}
+        onCancel={() => setShowSubmitConfirm(false)}
+      />
     </SectionCard>
   );
 }
