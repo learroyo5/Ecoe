@@ -28,33 +28,44 @@
 
 ---
 
-## Prioridad actual (antes "Prioridad media")
+## Completado en la estabilizacion pre-examen (julio 2026)
 
-1. Multimedia
+- ~~Aislar pilotaje de ejecucion (mode en duplicados y flags)~~ ✅
+- ~~Maquina de estados backend + gate de envios por etapa~~ ✅
+- ~~Deadlines autoritativos + registro por contingencia~~ ✅
+- ~~Cierre que consolida y congela~~ ✅
+- ~~Modo kiosco por estacion (tablets compartidas)~~ ✅
+- ~~Formularios del estudiante puntuables + pantalla Correccion~~ ✅
+- ~~Trazabilidad por circuito (modo espejo)~~ ✅
+- ~~Pilotaje con hallazgos~~ ✅
+- ~~Modales de confirmacion con resumen, semaforo de tiempo, indicador de borrador~~ ✅
+- ~~Reconexion WS con indicador + vista proyector en panel en vivo~~ ✅
+- ~~Filtros/buscadores en tablas de estudiantes y staff~~ ✅
+- ~~E2E Playwright del flujo dorado + checklist del dia D~~ ✅
+
+## Prioridad actual
+
+1. Primera prueba funcional real
+   - Ensayo general con el equipo usando la app en `en_pilotaje` (guiarse por docs/OPERACION_DIA_EXAMEN.md).
+   - Retro post-ensayo y ajustes.
+
+2. Multimedia
    - Mejorar preview de audio y video con controles avanzados.
    - Definir si el material se muestra antes, durante o despues de la estacion.
 
-2. Exportaciones
+3. Exportaciones
    - Mejorar formato de Excel consolidado con estadisticas por estacion.
    - PDF por estacion con formato imprimible real (membrete, tabla de puntajes).
-   - Hojas manuales de contingencia mejor estructuradas.
 
-3. Seguridad operativa
+4. Seguridad operativa
    - Logout real del lado cliente (invalidar token).
    - Expiracion de token mejor manejada (refresh token).
-   - ~~Separar administrador global, administrador por ECOE y cerrar IDOR principales.~~ ✅
-   - ~~Permitir que `admin_ecoe` incorpore usuarios mediante cuenta reutilizable o invitacion de activacion de un solo uso.~~ ✅
    - Integrar envio transaccional de invitaciones y un flujo seguro de reemision; hoy el enlace se comparte manualmente.
    - Ampliar auditoria y MFA para acciones institucionales sensibles.
 
-4. UX/UI
-   - Mejorar version tablet en formularios largos.
-   - Reforzar feedback de guardado (toast animations).
-   - Filtros y buscadores en tablas de datos.
-
 5. Testing
-   - Agregar tests de frontend (componentes, integracion).
-   - Tests de integracion para flujos completos (crear ECOE → construir estacion → publicar → ejecutar).
+   - Tests de frontend de componentes clave (kiosco, evaluador).
+   - Ampliar el e2e: pausa/contingencia y correccion manual en UI.
 
 ## Prioridad media (antes "Prioridad baja")
 

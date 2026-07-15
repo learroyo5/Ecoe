@@ -1,0 +1,79 @@
+# Stack efímero para las pruebas end-to-end de Playwright.
+#
+#   docker compose -p ecoe-e2e -f docker-compose.e2e.yml up --build -d
+#   (o directamente ./scripts/run_e2e.sh)
+#
+# Aislado del stack productivo: proyecto propio (ecoe-e2e), puertos 13001/
+# 18001, base de datos SIN volumen persistente (cada corrida parte limpia y
+# se siembra la demo), y credenciales fijas de prueba.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ecoe
+      POSTGRES_USER: ecoe
+      POSTGRES_PASSWORD: e2e-only-password
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecoe -d ecoe"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+    mem_limit: 512m
+
+  backend:
+    build:
+      context: ./backend
+    # Access log explícito: imprescindible para depurar qué cliente golpea
+    # qué endpoint durante las corridas e2e.
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*", "--access-log"]
+    environment:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql+psycopg://ecoe:e2e-only-password@db:5432/ecoe
+      SECRET_KEY: e2e-secret-key-not-for-production
+      CORS_ORIGINS: http://127.0.0.1:13001,http://localhost:13001,http://frontend:3000
+      STORAGE_PATH: /app/storage
+      AUTO_SEED_DEMO: "true"
+      ADMIN_PASSWORD: e2e-admin-password
+      COEDITOR_PASSWORD: e2e-coeditor-password
+      EVALUATOR_PASSWORD: e2e-evaluator-password
+      STUDENT_PASSWORD: e2e-student-password
+      COORDINATOR_PASSWORD: e2e-coordinator-password
+      TIMER_PASSWORD: e2e-timer-password
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:18001:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+    mem_limit: 1g
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: /api
+        INTERNAL_API_URL: http://backend:8000
+    environment:
+      NEXT_PUBLIC_API_URL: /api
+      INTERNAL_API_URL: http://backend:8000
+      SECRET_KEY: e2e-secret-key-not-for-production
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:13001:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+    mem_limit: 768m

@@ -12,3 +12,5 @@ frontend/node_modules
 datos_proyecto/credenciales_locales.md
 backups/
 backend/.env.bak*
+frontend/test-results/
+frontend/playwright-report/

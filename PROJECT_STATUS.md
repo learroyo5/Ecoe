@@ -8,7 +8,19 @@
 
 ## Estado general
 
-La v2 del producto esta completa: CRUD del ECOE con transiciones de estado guiadas, constructor de estaciones con multimedia, panel en vivo con WebSocket, gestion de incidencias en tiempo real, y suite de tests (23/23 pasando). El proyecto corre con Docker Compose en este servidor, tiene salida publica por `nginx` y esta listo para seguir evolucionando desde la rama `main`.
+La v2 del producto esta completa y sobre ella corre la estabilizacion previa a las primeras pruebas funcionales reales (rama `refactor/p0-core-institucional`): CRUD del ECOE con maquina de estados real en backend, constructor de estaciones con multimedia y formularios puntuables, panel en vivo con WebSocket con reconexion automatica y vista proyector, modo kiosco por estacion para tablets compartidas, correccion manual de respuestas, registro por contingencia, y suite de tests (157 backend + 29 frontend + e2e Playwright del flujo dorado). El proyecto corre con Docker Compose en este servidor con salida publica por `nginx`.
+
+### Estabilizacion pre-examen (fases 1-5, julio 2026)
+
+- Aislamiento pilotaje/ejecucion: los registros del ensayo no bloquean ni contaminan la ejecucion real (duplicados y flags por `mode`).
+- Maquina de estados del ciclo de vida en backend (mismo grafo que la UI) y gate de envios: check-ins/evaluaciones/respuestas solo en `en_pilotaje` o `en_ejecucion`.
+- Deadlines autoritativos del servidor en las interfaces (el evaluador dispone del tiempo de transicion) y endpoints de contingencia auditados para envios fuera de ventana.
+- Cierre que consolida resultados y congela la operacion.
+- Modo kiosco: token por estacion (hasheado, revocable), la tablet muestra automaticamente al estudiante del check-in activo; carrera de rotacion cubierta.
+- Formularios puntuables: autocorreccion de alternativas al enviar, correccion manual de texto (pantalla Correccion), resultados suman formularios corregidos.
+- Trazabilidad por circuito (modo espejo ya no infla faltantes) y pilotaje con hallazgos.
+- UX operativa: modales de confirmacion con resumen, semaforo de tiempo, indicador de borrador, reconexion WS visible, vista proyector, busqueda en tablas.
+- E2E Playwright (`scripts/run_e2e.sh`) y checklist operativa (`docs/OPERACION_DIA_EXAMEN.md`).
 
 ## Arquitectura implementada
 
@@ -125,13 +137,12 @@ La v2 del producto esta completa: CRUD del ECOE con transiciones de estado guiad
 - Las incidencias se transmiten en tiempo real via WebSocket.
 - El storage path de multimedia es configurable via `STORAGE_PATH`.
 
-## Limites actuales de esta v2
+## Limites actuales
 
 - No hay reproduccion real de audio integrada en el cronometro; solo estructura preparada.
 - Hay scoping por ECOE, estacion, audiencia y check-in; aun falta ACL institucional mas granular para bancos compartidos y otras unidades academicas.
-- No hay backups automatizados de PostgreSQL.
-- No hay filtros/buscadores avanzados en las tablas de datos.
 - Las invitaciones nuevas se comparten manualmente; aun no hay envio por correo ni recuperacion automatica del enlace mostrado una vez.
+- La pausa del cronometro central no extiende las ventanas de envio de la rotacion en curso; esos casos se resuelven por contingencia (documentado en docs/OPERACION_DIA_EXAMEN.md).
 - La operacion publica depende de configuracion externa de `nginx`, router y Cloudflare, no solo del repo.
 
 ## Repo y continuidad

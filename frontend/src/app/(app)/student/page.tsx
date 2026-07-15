@@ -7,7 +7,6 @@ import { useECOE } from "@/lib/auth";
 import { clockOffsetMs, parseServerUtc } from "@/lib/time";
 import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
-import { EmptyState } from "@/components/toast";
 import { ConfirmDialog, TIMER_TONE_CLASSES, timerTone } from "@/components/confirm-dialog";
 
 type StudentFormQuestion = {
@@ -291,18 +290,9 @@ export default function StudentPage() {
     );
   };
 
-  if (!context) {
-    return (
-      <SectionCard title="Interfaz del estudiante" subtitle="Ingresa tu número ECOE para comenzar.">
-        <EmptyState
-          icon="🎓"
-          title="Bienvenido al ECOE"
-          description="Ingresa tu número ECOE asignado para ver las instrucciones de tu estación actual. El evaluador debe confirmar tu ingreso primero."
-        />
-      </SectionCard>
-    );
-  }
-
+  // Sin early-return cuando no hay contexto: el formulario de identificación
+  // (número ECOE) vive en el layout principal y debe estar SIEMPRE visible;
+  // un estado vacío sin ese formulario deja al estudiante sin forma de entrar.
   return (
     <SectionCard
       title="Interfaz del estudiante"

@@ -49,6 +49,9 @@ async def lifespan(app: FastAPI):
         from alembic import command
         alembic_cfg = AlembicConfig("alembic.ini")
         alembic_cfg.set_main_option("sqlalchemy.url", settings.database_url)
+        # Sin esto, el fileConfig de alembic.ini desactiva los loggers de
+        # uvicorn y el backend queda mudo (sin access log) tras migrar.
+        alembic_cfg.attributes["configure_logger"] = False
         command.upgrade(alembic_cfg, "head")
     except Exception as exc:
         if settings.is_production or not settings.allow_create_all_fallback:
