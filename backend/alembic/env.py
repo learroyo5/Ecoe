@@ -15,8 +15,10 @@ from app.models import entities  # noqa: F401 — ensure all models are loaded
 # Alembic Config object
 config = context.config
 
-# Set up logging
-if config.config_file_name is not None:
+# Set up logging. configure_logger=False lo pasa el arranque de la app:
+# sin ese guard, fileConfig deshabilita los loggers de uvicorn y el backend
+# queda sin access log en produccion.
+if config.config_file_name is not None and config.attributes.get("configure_logger", True):
     fileConfig(config.config_file_name)
 
 # Target metadata for autogenerate
