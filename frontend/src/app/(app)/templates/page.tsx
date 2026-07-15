@@ -74,16 +74,18 @@ function FeatureToggle({
 }
 
 export default function TemplatesPage() {
-  const { authenticated } = useECOE();
+  const { authenticated, eventId, eventRoles, user } = useECOE();
+  const canEditContent = user?.role === "admin_global"
+    || eventRoles.some((role) => role === "admin_ecoe" || role === "coeditor_docente");
   const { data, loading, error, setData } = useApi(
-    () => api.templates() as Promise<Record<string, unknown>[]>,
-    [authenticated],
+    () => api.templates(eventId) as Promise<Record<string, unknown>[]>,
+    [authenticated, eventId],
   );
   const [values, setValues] = useState(defaultValues);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  const refresh = async () => setData((await api.templates()) as Record<string, unknown>[]);
+  const refresh = async () => setData((await api.templates(eventId)) as Record<string, unknown>[]);
   const selectedCategoryLabel =
     categoryOptions.find((option) => option.value === values.category)?.label ?? values.category;
   const activeFeatures = useMemo(() => {
@@ -109,14 +111,19 @@ export default function TemplatesPage() {
         title="Banco de plantillas"
         subtitle="Define estructuras base reutilizables para orientar el flujo real de cada tipo de estación."
       >
+        {!canEditContent ? (
+          <p className="mb-4 text-sm text-slate-600">Tu rol permite consultar plantillas, pero no modificarlas.</p>
+        ) : null}
         <form
-          className="space-y-5"
+          className={`space-y-5 ${canEditContent ? "" : "pointer-events-none opacity-60"}`}
           onSubmit={async (event) => {
             event.preventDefault();
+            if (!canEditContent) return;
             setSaving(true);
             setMessage(null);
             try {
               await api.createTemplate(
+                eventId,
                 {
                   name: values.name,
                   category: values.category,
@@ -232,7 +239,7 @@ export default function TemplatesPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <button className="btn-primary" disabled={saving}>
+            <button className="btn-primary" disabled={saving || !canEditContent}>
               {saving ? "Guardando..." : "Guardar plantilla"}
             </button>
             <span className="text-sm text-slate-600">

@@ -22,7 +22,7 @@ class TestContentProtection:
                              ids=["estudiante", "evaluador", "cronometrador"])
     def test_operational_roles_cannot_read_exam_content(self, client, credentials, endpoint):
         login(client, credentials)
-        response = client.get(endpoint)
+        response = client.get(f"{endpoint}?ecoe_event_id=1")
         assert response.status_code == 403
 
     @pytest.mark.parametrize("endpoint", CONTENT_ENDPOINTS)
@@ -30,5 +30,5 @@ class TestContentProtection:
                              ids=["admin", "coeditor", "coordinador"])
     def test_content_managers_can_read_exam_content(self, client, credentials, endpoint):
         login(client, credentials)
-        response = client.get(endpoint)
+        response = client.get(f"{endpoint}?ecoe_event_id=1")
         assert response.status_code == 200

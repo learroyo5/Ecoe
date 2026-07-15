@@ -13,6 +13,8 @@ from app.utils.files import parse_tabular_file
 from app.services.authorization import (
     ensure_event_access,
     ensure_matching_operational_user,
+    ensure_staff_assignment_can_be_managed,
+    ensure_staff_role_can_be_delegated,
     validate_staff_role_code,
 )
 from app.utils.helpers import (
@@ -65,12 +67,13 @@ def create_staff(
     db: Session = Depends(get_db),
     user=Depends(require_roles("admin_ecoe", "coeditor_docente", "coordinador_operativo")),
 ):
-    ensure_event_access(db, user, payload.ecoe_event_id,
+    actor_roles = ensure_event_access(db, user, payload.ecoe_event_id,
                         RoleCode.admin_ecoe.value,
                         RoleCode.coeditor_docente.value,
                         RoleCode.coordinador_operativo.value)
     email = normalize_email(payload.email)
     normalized_role_code = validate_staff_role_code(payload.role_code)
+    ensure_staff_role_can_be_delegated(actor_roles, normalized_role_code)
     ensure_matching_operational_user(db, email=email, expected_role=normalized_role_code)
     existing = db.scalar(
         select(StaffAssignment).where(
@@ -112,11 +115,13 @@ def update_staff(
     staff = db.get(StaffAssignment, staff_id)
     if not staff:
         raise HTTPException(status_code=404, detail="Evaluador o colaborador no encontrado")
-    ensure_event_access(db, user, staff.ecoe_event_id,
+    actor_roles = ensure_event_access(db, user, staff.ecoe_event_id,
                         RoleCode.admin_ecoe.value,
                         RoleCode.coeditor_docente.value,
                         RoleCode.coordinador_operativo.value)
+    ensure_staff_assignment_can_be_managed(actor_roles, staff.role_code)
     normalized_role_code = validate_staff_role_code(payload.role_code)
+    ensure_staff_role_can_be_delegated(actor_roles, normalized_role_code)
     ensure_matching_operational_user(db, email=staff.email, expected_role=normalized_role_code)
     station_ids = normalize_station_ids(payload.station_ids)
     if normalized_role_code == RoleCode.evaluador.value and not station_ids:
@@ -143,8 +148,9 @@ def delete_staff(
     staff = db.get(StaffAssignment, staff_id)
     if not staff:
         raise HTTPException(status_code=404, detail="Evaluador o colaborador no encontrado")
-    ensure_event_access(db, user, staff.ecoe_event_id,
+    actor_roles = ensure_event_access(db, user, staff.ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    ensure_staff_assignment_can_be_managed(actor_roles, staff.role_code)
     db.delete(staff)
     db.commit()
     return {"deleted": True}
@@ -154,10 +160,9 @@ def delete_staff(
 def deduplicate_staff_by_email(
     ecoe_event_id: int,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
+    user=Depends(require_roles("admin_ecoe")),
 ):
-    ensure_event_access(db, user, ecoe_event_id,
-                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    ensure_event_access(db, user, ecoe_event_id, RoleCode.admin_ecoe.value)
     staff_rows = db.scalars(
         select(StaffAssignment)
         .where(StaffAssignment.ecoe_event_id == ecoe_event_id)
@@ -185,12 +190,13 @@ async def import_staff(
     db: Session = Depends(get_db),
     user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
-    ensure_event_access(db, user, ecoe_event_id,
+    actor_roles = ensure_event_access(db, user, ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     rows = await parse_tabular_file(file)
     imported = 0
     skipped_duplicate = 0
     skipped_no_account = 0
+    skipped_forbidden_role = 0
     skipped_missing_data = 0
     existing_emails = {
         normalize_email(email)
@@ -207,6 +213,11 @@ async def import_staff(
             skipped_duplicate += 1
             continue
         role_code = validate_staff_role_code(row.get("rol", row.get("role_code", "evaluador")))
+        try:
+            ensure_staff_role_can_be_delegated(actor_roles, role_code)
+        except HTTPException:
+            skipped_forbidden_role += 1
+            continue
         try:
             ensure_matching_operational_user(db, email=email, expected_role=role_code)
         except HTTPException:
@@ -227,8 +238,9 @@ async def import_staff(
     db.commit()
     return {
         "imported": imported,
-        "skipped": skipped_duplicate + skipped_no_account + skipped_missing_data,
+        "skipped": skipped_duplicate + skipped_no_account + skipped_forbidden_role + skipped_missing_data,
         "skipped_duplicate": skipped_duplicate,
         "skipped_no_account": skipped_no_account,
+        "skipped_forbidden_role": skipped_forbidden_role,
         "skipped_missing_data": skipped_missing_data,
     }

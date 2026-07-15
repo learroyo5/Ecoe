@@ -7,6 +7,7 @@ from app.core.config import get_settings
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.entities import User
+from app.models.enums import RoleCode
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
@@ -24,6 +25,8 @@ def authenticate_session_token(db: Session, session_token: str | None) -> User:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no existe")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario inactivo")
+    if user.account_status != "active":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Cuenta no activada")
     if int(claims.get("ver", 0)) != int(user.token_version or 0):
         # Token issued before a deactivation/password change: revoked.
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesion revocada")
@@ -51,7 +54,10 @@ def require_roles(*roles: str):
         user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> User:
-        if user.role.code in roles:
+        # The institutional administrator is the only global bypass. Every
+        # other role remains subject to the event-level policy check made by
+        # the endpoint immediately after this coarse gate.
+        if user.role.code == RoleCode.admin_global.value or user.role.code in roles:
             return user
         from app.models.entities import ECOEPermission, StaffAssignment
 
@@ -75,5 +81,22 @@ def require_roles(*roles: str):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tiene permisos para esta accion",
         )
+
+    return dependency
+
+
+def require_global_roles(*roles: str):
+    """Authorize exclusively from the account's institutional/global role.
+
+    Event grants must never unlock global resources such as user management.
+    """
+
+    def dependency(user: User = Depends(get_current_user)) -> User:
+        if user.role.code not in roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tiene permisos institucionales para esta accion",
+            )
+        return user
 
     return dependency

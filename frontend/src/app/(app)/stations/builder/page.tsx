@@ -73,24 +73,24 @@ export default function StationBuilderPage() {
   const isUsingBankStation =
     builderScope === "ecoe" && Number.isFinite(useBankStationId) && useBankStationId > 0;
   const { data: templates } = useApi(
-    () => api.templates() as Promise<Record<string, unknown>[]>,
-    [authenticated],
+    () => api.templates(eventId) as Promise<Record<string, unknown>[]>,
+    [authenticated, eventId],
   );
   const { data: instruments, setData: setInstruments } = useApi(
-    () => api.instruments() as Promise<Record<string, unknown>[]>,
-    [authenticated],
+    () => api.instruments(eventId) as Promise<Record<string, unknown>[]>,
+    [authenticated, eventId],
   );
   const { data: stations, setData: setStations } = useApi(
     () => api.stations(eventId) as Promise<Record<string, unknown>[]>,
     [eventId, authenticated],
   );
   const { data: bankStations, setData: setBankStations } = useApi(
-    () => api.stationBank() as Promise<Record<string, unknown>[]>,
-    [authenticated],
+    () => api.stationBank(eventId) as Promise<Record<string, unknown>[]>,
+    [authenticated, eventId],
   );
   const { data: patients } = useApi(
-    () => api.simulatedPatients() as Promise<Record<string, unknown>[]>,
-    [authenticated],
+    () => api.simulatedPatients(eventId) as Promise<Record<string, unknown>[]>,
+    [authenticated, eventId],
   );
   const { data: mediaAssets, setData: setMediaAssets } = useApi(
     () =>
@@ -309,6 +309,7 @@ export default function StationBuilderPage() {
 
   const saveInstrumentDraft = async () => {
     const createdInstrument = (await api.createInstrument(
+      eventId,
       buildInstrumentPayload(),
     )) as Record<string, unknown>;
 
@@ -767,6 +768,7 @@ export default function StationBuilderPage() {
 
               if (isEditingBankStation) {
                 const updatedBankStation = (await api.updateStationBank(
+                  eventId,
                   editingBankStationId,
                   bankPayload,
                 )) as Record<string, unknown>;
@@ -781,6 +783,7 @@ export default function StationBuilderPage() {
               }
 
               const createdBankStation = (await api.createStationBank(
+                eventId,
                 bankPayload,
               )) as Record<string, unknown>;
               setBankStations((current) => [createdBankStation, ...(current ?? [])]);
@@ -967,6 +970,7 @@ export default function StationBuilderPage() {
                     await saveInstrumentDraft();
                   }
                   const createdBankStation = (await api.createStationBank(
+                    eventId,
                     buildStationBankPayload(),
                   )) as Record<string, unknown>;
                   setBankStations((current) => [createdBankStation, ...(current ?? [])]);

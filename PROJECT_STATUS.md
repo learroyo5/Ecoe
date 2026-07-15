@@ -37,7 +37,8 @@ La v2 del producto esta completa: CRUD del ECOE con transiciones de estado guiad
   - login con JWT (cookie + Bearer)
   - sesion por token
   - proteccion por rol
-  - panel de gestion de usuarios (admin)
+  - panel institucional de usuarios (`admin_global`)
+  - delegacion de `admin_ecoe` por evento
 - Gestion ECOE:
   - listado con selector de ECOE activo
   - formulario completo en 3 secciones con validacion frontend
@@ -116,7 +117,9 @@ La v2 del producto esta completa: CRUD del ECOE con transiciones de estado guiad
 
 - El frontend consume la API mediante proxy interno (`/backend/api`) para evitar romper acceso desde otras maquinas de la red.
 - La persistencia usa migraciones Alembic + creacion automatica de tablas en startup como respaldo.
-- El control de permisos es por rol, simple y claro, sin ACL avanzada.
+- El control combina autoridad institucional global con roles efectivos por ECOE.
+- La incorporacion de equipos es descentralizada por evento: `admin_ecoe` puede reutilizar una cuenta activa o emitir una invitacion de activacion para una identidad nueva, sin acceso al directorio institucional completo ni a las contrasenas.
+- Las identidades son institucionales y unicas por correo; las funciones operativas se representan como asignaciones independientes por ECOE.
 - El cronometro es manual y operativo, sincronizado entre clientes via WebSocket.
 - Pilotaje y ejecucion real estan separados a nivel de modelo y registros.
 - Las incidencias se transmiten en tiempo real via WebSocket.
@@ -125,10 +128,10 @@ La v2 del producto esta completa: CRUD del ECOE con transiciones de estado guiad
 ## Limites actuales de esta v2
 
 - No hay reproduccion real de audio integrada en el cronometro; solo estructura preparada.
-- No hay ACL avanzada por recurso (solo control por rol).
+- Hay scoping por ECOE, estacion, audiencia y check-in; aun falta ACL institucional mas granular para bancos compartidos y otras unidades academicas.
 - No hay backups automatizados de PostgreSQL.
 - No hay filtros/buscadores avanzados en las tablas de datos.
-- No hay tests de frontend (solo backend).
+- Las invitaciones nuevas se comparten manualmente; aun no hay envio por correo ni recuperacion automatica del enlace mostrado una vez.
 - La operacion publica depende de configuracion externa de `nginx`, router y Cloudflare, no solo del repo.
 
 ## Repo y continuidad

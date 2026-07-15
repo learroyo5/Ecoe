@@ -16,6 +16,7 @@ describe("defaultRouteForRole", () => {
 
   it("defaults every other role to /dashboard", () => {
     expect(defaultRouteForRole("admin_ecoe")).toBe("/dashboard");
+    expect(defaultRouteForRole("admin_global")).toBe("/dashboard");
     expect(defaultRouteForRole("coeditor_docente")).toBe("/dashboard");
     expect(defaultRouteForRole("unknown_role")).toBe("/dashboard");
   });
@@ -25,7 +26,8 @@ describe("isRouteAllowedForRole", () => {
   it("blocks estudiante/evaluador from admin-only routes", () => {
     expect(isRouteAllowedForRole("/users", "estudiante")).toBe(false);
     expect(isRouteAllowedForRole("/users", "evaluador")).toBe(false);
-    expect(isRouteAllowedForRole("/users", "admin_ecoe")).toBe(true);
+    expect(isRouteAllowedForRole("/users", "admin_ecoe")).toBe(false);
+    expect(isRouteAllowedForRole("/users", "admin_global")).toBe(true);
   });
 
   it("blocks estudiante/evaluador from management routes hidden for them", () => {
@@ -51,5 +53,10 @@ describe("isRouteAllowedForRole", () => {
 
   it("allows any role on routes with no matching nav entry (backend remains the authority)", () => {
     expect(isRouteAllowedForRole("/some-unlisted-route", "estudiante")).toBe(true);
+  });
+
+  it("uses effective ECOE roles when a user has different duties per event", () => {
+    expect(isRouteAllowedForRole("/stations/builder", ["coeditor_docente"])).toBe(true);
+    expect(isRouteAllowedForRole("/live", ["evaluador"])).toBe(false);
   });
 });

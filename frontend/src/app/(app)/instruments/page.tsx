@@ -10,10 +10,12 @@ import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 
 export default function InstrumentsPage() {
-  const { authenticated } = useECOE();
+  const { authenticated, eventId, eventRoles, user } = useECOE();
+  const canEditContent = user?.role === "admin_global"
+    || eventRoles.some((role) => role === "admin_ecoe" || role === "coeditor_docente");
   const { data, loading, error, setData } = useApi(
-    () => api.instruments() as Promise<Record<string, unknown>[]>,
-    [authenticated],
+    () => api.instruments(eventId) as Promise<Record<string, unknown>[]>,
+    [authenticated, eventId],
   );
   const [message, setMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -26,7 +28,7 @@ export default function InstrumentsPage() {
           <p className="text-sm leading-6 text-slate-600">
             Esta pantalla todavía usa una acción rápida de demostración. El constructor de estaciones ya permite crear pautas reales dentro del flujo docente.
           </p>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
+          {canEditContent ? <div className="mt-4 flex flex-wrap items-center gap-3">
             <button
               className={`btn-primary transition-all ${
                 isSaving
@@ -49,6 +51,7 @@ export default function InstrumentsPage() {
                 setMessage(null);
                 try {
                   await api.createInstrument(
+                    eventId,
                     {
                       name: "Rúbrica de comunicación",
                       tool_type: "rubrica_simple",
@@ -61,7 +64,7 @@ export default function InstrumentsPage() {
                       ],
                     },
                   );
-                  setData((await api.instruments()) as Record<string, unknown>[]);
+                  setData((await api.instruments(eventId)) as Record<string, unknown>[]);
                   setLastCreateSucceeded(true);
                   setMessage("Instrumento de prueba creado correctamente.");
                 } catch (saveError) {
@@ -97,7 +100,7 @@ export default function InstrumentsPage() {
                   ? "Acción completada"
                   : "Requiere confirmación"}
             </span>
-          </div>
+          </div> : <p className="mt-4 text-sm text-slate-600">Tu rol permite consultar instrumentos, pero no crearlos.</p>}
           <StatusNotice message={message} className="mt-4" />
         </div>
       </SectionCard>

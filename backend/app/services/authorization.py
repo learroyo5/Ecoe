@@ -50,7 +50,13 @@ def get_user_event_roles(db: Session, user: User, ecoe_event_id: int) -> set[str
     user's global role: the same person can be evaluador in one ECOE and
     coeditor in another. The global role only acts as the account's default.
     """
-    roles: set[str] = set()
+    # A global administrator has institutional oversight over every event,
+    # but is represented as admin_ecoe to keep event policies simple.
+    roles: set[str] = (
+        {RoleCode.admin_ecoe.value}
+        if str(user.role.code) == RoleCode.admin_global.value
+        else set()
+    )
     normalized_email = normalize_email(user.email)
 
     permission_roles = db.scalars(
@@ -111,6 +117,12 @@ def ensure_event_access(db: Session, user: User, ecoe_event_id: int, *allowed_ro
 
 def list_accessible_ecoe_events(db: Session, user: User) -> list[ECOEEvent]:
     """Events reachable through any event-scoped grant (see get_user_event_roles)."""
+    if str(user.role.code) == RoleCode.admin_global.value:
+        return list(
+            db.scalars(
+                select(ECOEEvent).order_by(ECOEEvent.date.desc(), ECOEEvent.id.desc())
+            ).all()
+        )
     normalized_email = normalize_email(user.email)
 
     event_ids: set[int] = set()
@@ -151,7 +163,7 @@ def ensure_matching_operational_user(
     db: Session,
     *,
     email: str,
-    expected_role: str,
+    expected_role: str | None = None,
 ) -> User:
     normalized_email = normalize_email(email)
     user = db.scalar(
@@ -162,14 +174,37 @@ def ensure_matching_operational_user(
             status_code=400,
             detail=f"No se encontro un usuario con el correo '{email}'. Debes crearlo primero en la seccion Usuarios.",
         )
-    if str(user.role.code) != expected_role:
-        raise HTTPException(
-            status_code=400,
-            detail=f"El usuario {user.full_name} tiene rol '{user.role.code}', pero se requiere '{expected_role}'. Cambia el rol del usuario o asigna el rol correcto.",
-        )
     if not user.is_active:
         raise HTTPException(
             status_code=400,
             detail=f"La cuenta de {user.full_name} ({email}) esta inactiva. Reactivala en la seccion Usuarios.",
         )
     return user
+
+
+def ensure_staff_role_can_be_delegated(actor_event_roles: set[str], target_role: str) -> None:
+    """Prevent operational/content roles from granting equal or higher power."""
+    if RoleCode.admin_ecoe.value in actor_event_roles:
+        return
+    limited_roles = {RoleCode.evaluador.value, RoleCode.cronometrador.value}
+    if actor_event_roles & {
+        RoleCode.coeditor_docente.value,
+        RoleCode.coordinador_operativo.value,
+    } and target_role in limited_roles:
+        return
+    raise HTTPException(
+        status_code=403,
+        detail="No puedes asignar ese rol dentro de este ECOE",
+    )
+
+
+def ensure_staff_assignment_can_be_managed(actor_event_roles: set[str], current_role: str) -> None:
+    """Only event admins may alter privileged staff assignments."""
+    if RoleCode.admin_ecoe.value in actor_event_roles:
+        return
+    if current_role in {RoleCode.evaluador.value, RoleCode.cronometrador.value}:
+        return
+    raise HTTPException(
+        status_code=403,
+        detail="Solo un administrador del ECOE puede modificar esa asignacion",
+    )

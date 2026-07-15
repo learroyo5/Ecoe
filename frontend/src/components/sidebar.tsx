@@ -8,9 +8,14 @@ import { NAV_ITEMS, type RoleCode } from "@/lib/routes";
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
-  const { user } = useECOE();
+  const { user, eventRoles } = useECOE();
+  const effectiveRoles = user?.role === "admin_global"
+    ? ["admin_global"]
+    : eventRoles.length > 0
+      ? eventRoles
+      : [user?.role ?? ""];
   const visibleItems = NAV_ITEMS.filter(
-    (item) => !item.hiddenFor?.includes((user?.role ?? "") as RoleCode),
+    (item) => effectiveRoles.some((role) => item.allowedFor.includes(role as RoleCode)),
   );
 
   return (

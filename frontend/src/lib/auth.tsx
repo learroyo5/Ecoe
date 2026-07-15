@@ -12,6 +12,7 @@ type ECOEContextValue = {
   dashboard: DashboardSummary | null;
   authenticated: boolean;
   user: UserSession | null;
+  eventRoles: string[];
   ready: boolean;
   eventId: number;
   loading: boolean;
@@ -28,6 +29,7 @@ const ECOEContext = createContext<ECOEContextValue | null>(null);
 export function ECOEProvider({ children }: { children: React.ReactNode }) {
   const [authenticated, setAuthenticated] = useState(false);
   const [user, setUser] = useState<UserSession | null>(null);
+  const [eventRoles, setEventRoles] = useState<string[]>([]);
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [ecoeList, setECOEList] = useState<ECOEEvent[]>([]);
@@ -73,11 +75,13 @@ export function ECOEProvider({ children }: { children: React.ReactNode }) {
     if (!authenticated || !eventId) return;
     setLoading(true);
     try {
-      const [event, dash] = await Promise.all([
+      const [event, dash, roleContext] = await Promise.all([
         api.ecoe(eventId),
         api.dashboard(eventId).catch(() => null),
+        api.eventRoles(eventId),
       ]);
       setECOEEvent(event);
+      setEventRoles(roleContext.roles);
       if (dash) setDashboard(dash);
       // Not cleared here either — see the comment in loadECOEList above.
     } catch (err) {
@@ -145,6 +149,7 @@ export function ECOEProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setECOEList([]);
     setECOEEvent(null);
+    setEventRoles([]);
     setDashboard(null);
     setReady(true);
     if (typeof window !== "undefined") {
@@ -154,10 +159,10 @@ export function ECOEProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(
     () => ({
-      ecoeList, ecoeEvent, dashboard, authenticated, user, ready, eventId, loading, loadError,
+      ecoeList, ecoeEvent, dashboard, authenticated, user, eventRoles, ready, eventId, loading, loadError,
       setEventId, login, logout, refreshECOE,
     }),
-    [ecoeList, ecoeEvent, dashboard, authenticated, user, ready, eventId, loading, loadError, setEventId, login, logout, refreshECOE],
+    [ecoeList, ecoeEvent, dashboard, authenticated, user, eventRoles, ready, eventId, loading, loadError, setEventId, login, logout, refreshECOE],
   );
 
   return <ECOEContext.Provider value={value}>{children}</ECOEContext.Provider>;

@@ -42,7 +42,10 @@
 3. Seguridad operativa
    - Logout real del lado cliente (invalidar token).
    - Expiracion de token mejor manejada (refresh token).
-   - Endurecer controles de permisos por ruta y accion.
+   - ~~Separar administrador global, administrador por ECOE y cerrar IDOR principales.~~ ✅
+   - ~~Permitir que `admin_ecoe` incorpore usuarios mediante cuenta reutilizable o invitacion de activacion de un solo uso.~~ ✅
+   - Integrar envio transaccional de invitaciones y un flujo seguro de reemision; hoy el enlace se comparte manualmente.
+   - Ampliar auditoria y MFA para acciones institucionales sensibles.
 
 4. UX/UI
    - Mejorar version tablet en formularios largos.
@@ -71,8 +74,8 @@
    - Procedimiento simple de rotacion de credenciales.
 
 2. ACL avanzada
-   - Permisos por recurso (no solo por rol global).
-   - Permisos por ECOE especifico (evaluador solo ve sus estaciones asignadas).
+   - Permisos por unidad academica/centro para bancos institucionales compartidos.
+   - Extender reglas por recurso mas alla de ECOE, estacion, audiencia y check-in ya implementados.
 
 ## Comandos utiles
 

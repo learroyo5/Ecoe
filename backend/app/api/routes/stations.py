@@ -51,16 +51,20 @@ CONTENT_MANAGER_ROLES = ("admin_ecoe", "coeditor_docente", "coordinador_operativ
 # ── Station Templates ───────────────────────────────────────────────────
 
 @router.get("/templates", response_model=list[StationTemplateRead])
-def list_templates(db: Session = Depends(get_db), user=Depends(require_roles(*CONTENT_MANAGER_ROLES))):
+def list_templates(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(require_roles(*CONTENT_MANAGER_ROLES))):
+    ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
     return db.scalars(select(StationTemplate)).all()
 
 
 @router.post("/templates", response_model=StationTemplateRead)
 def create_template(
     payload: StationTemplateCreate,
+    ecoe_event_id: int,
     db: Session = Depends(get_db),
     user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     template = StationTemplate(**payload.model_dump())
     db.add(template)
     db.commit()
@@ -71,16 +75,20 @@ def create_template(
 # ── Assessment Tools / Instruments ──────────────────────────────────────
 
 @router.get("/instruments", response_model=list[AssessmentToolRead])
-def list_instruments(db: Session = Depends(get_db), user=Depends(require_roles(*CONTENT_MANAGER_ROLES))):
+def list_instruments(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(require_roles(*CONTENT_MANAGER_ROLES))):
+    ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
     return db.scalars(select(AssessmentTool)).all()
 
 
 @router.post("/instruments", response_model=AssessmentToolRead)
 def create_instrument(
     payload: AssessmentToolCreate,
+    ecoe_event_id: int,
     db: Session = Depends(get_db),
     user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     tool = AssessmentTool(
         name=payload.name,
         tool_type=payload.tool_type,
@@ -99,16 +107,20 @@ def create_instrument(
 # ── Simulated Patients ─────────────────────────────────────────────────
 
 @router.get("/simulated-patients", response_model=list[SimulatedPatientRead])
-def list_patients(db: Session = Depends(get_db), user=Depends(require_roles(*CONTENT_MANAGER_ROLES))):
+def list_patients(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(require_roles(*CONTENT_MANAGER_ROLES))):
+    ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
     return db.scalars(select(SimulatedPatient)).all()
 
 
 @router.post("/simulated-patients", response_model=SimulatedPatientRead)
 def create_patient(
     payload: SimulatedPatientCreate,
+    ecoe_event_id: int,
     db: Session = Depends(get_db),
     user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     patient = SimulatedPatient(**payload.model_dump())
     db.add(patient)
     db.commit()
@@ -119,16 +131,20 @@ def create_patient(
 # ── Station Bank ────────────────────────────────────────────────────────
 
 @router.get("/station-bank", response_model=list[StationBankRead])
-def list_station_bank(db: Session = Depends(get_db), user=Depends(require_roles(*CONTENT_MANAGER_ROLES))):
+def list_station_bank(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(require_roles(*CONTENT_MANAGER_ROLES))):
+    ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
     return db.scalars(select(StationBank).order_by(StationBank.updated_at.desc(), StationBank.id.desc())).all()
 
 
 @router.post("/station-bank", response_model=StationBankRead)
 def create_station_bank(
     payload: StationBankCreate,
+    ecoe_event_id: int,
     db: Session = Depends(get_db),
     user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     bank_station = StationBank(**payload.model_dump())
     db.add(bank_station)
     db.commit()
@@ -140,9 +156,12 @@ def create_station_bank(
 def update_station_bank(
     bank_station_id: int,
     payload: StationBankCreate,
+    ecoe_event_id: int,
     db: Session = Depends(get_db),
     user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     bank_station = db.get(StationBank, bank_station_id)
     if not bank_station:
         raise HTTPException(status_code=404, detail="Estacion de banco no encontrada")
@@ -158,9 +177,12 @@ def update_station_bank(
 def update_station_bank_status(
     bank_station_id: int,
     payload: StationBankStatusUpdate,
+    ecoe_event_id: int,
     db: Session = Depends(get_db),
     user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     bank_station = db.get(StationBank, bank_station_id)
     if not bank_station:
         raise HTTPException(status_code=404, detail="Estacion de banco no encontrada")
@@ -219,10 +241,15 @@ def update_station(
         raise HTTPException(status_code=404, detail="Estacion no encontrada")
     ensure_event_access(db, user, station.ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    if payload.ecoe_event_id != station.ecoe_event_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Una estacion no puede trasladarse a otro ECOE mediante una actualizacion",
+        )
     ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
     if not ecoe_event:
         raise HTTPException(status_code=404, detail="ECOE no encontrado")
-    for field, value in payload.model_dump().items():
+    for field, value in payload.model_dump(exclude={"ecoe_event_id"}).items():
         setattr(station, field, value)
     station.station_time_minutes = ecoe_event.station_time_minutes
     station.transition_time_minutes = ecoe_event.transition_time_minutes

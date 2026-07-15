@@ -133,6 +133,20 @@ class StaffUpdate(BaseModel):
     station_ids: list[int] = []
 
 
+class EventMemberInvite(BaseModel):
+    ecoe_event_id: int
+    name: str = Field(min_length=1, max_length=128)
+    last_name: str = Field(min_length=1, max_length=128)
+    email: EmailStr
+    role_code: str
+    station_ids: list[int] = []
+
+
+class InvitationActivation(BaseModel):
+    token: str = Field(min_length=32, max_length=256)
+    password: str = Field(min_length=12, max_length=128)
+
+
 class AssessmentItemInput(BaseModel):
     label: str
     score_per_item: float
@@ -351,6 +365,7 @@ class UserRead(ORMBase):
     full_name: str
     role_code: str = ""
     is_active: bool
+    account_status: str
 
     @model_validator(mode="before")
     @classmethod
@@ -362,6 +377,7 @@ class UserRead(ORMBase):
                 "full_name": data.full_name,
                 "role_code": data.role.code,
                 "is_active": data.is_active,
+                "account_status": data.account_status,
             }
         return data
 

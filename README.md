@@ -55,8 +55,12 @@ ecoe/
 
 ### Autenticacion y usuarios
 - Autenticacion con JWT (cookie + Bearer) y control por rol.
-- Panel de gestion de usuarios (`/users`) — solo administrador.
-- Roles: `admin_ecoe`, `coeditor_docente`, `coordinador_operativo`, `evaluador`, `estudiante`, `cronometrador`.
+- Panel institucional de usuarios (`/users`) — solo `admin_global`.
+- Roles: `admin_global`, `admin_ecoe`, `coeditor_docente`, `coordinador_operativo`, `evaluador`, `estudiante`, `cronometrador` y `miembro` como identidad institucional neutra.
+- El administrador global crea ECOE y delega administradores por evento; `admin_ecoe` queda limitado a los eventos asignados.
+- El administrador de un ECOE puede buscar una cuenta por correo exacto e incorporarla a su evento. Si la cuenta ya esta activa, se reutiliza y recibe una asignacion propia del ECOE; si no existe, se crea pendiente y se entrega una invitacion de activacion de un solo uso.
+- La invitacion no entrega una contrasena al administrador: el usuario define la suya al activar la cuenta. El enlace expira por configuracion (`INVITATION_EXPIRE_HOURS`, 72 horas por defecto) y, mientras no exista integracion de correo, se muestra una sola vez para compartirlo por un canal seguro.
+- Una misma identidad puede tener roles distintos en varios ECOE. Solo `admin_global` puede suspender cuentas o delegar `admin_ecoe`; un administrador de ECOE no puede reactivar cuentas suspendidas.
 
 ### Estaciones
 - Listado con cards, badges de estado, y boton de edicion por estacion.
@@ -236,7 +240,7 @@ alembic revision --autogenerate -m "descripcion"  # generar nueva migracion
 
 - Persistencia con migraciones Alembic + creacion automatica en startup como respaldo.
 - Multimedia y exportaciones almacenadas en volumen local del backend, ruta configurable via `STORAGE_PATH`.
-- Permisos por rol simples y claros, sin ACL avanzada todavia.
+- Permisos por rol global y relaciones por ECOE, con scoping de recursos sensibles.
 - Cronometro manual y operativo, sincronizado entre clientes via WebSocket.
 - Pilotaje y ejecucion real estan separados a nivel de modelo y registros.
 - Incidencias gestionables en tiempo real con broadcast WebSocket.

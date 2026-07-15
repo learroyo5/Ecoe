@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     jwt_audience: str = "ecoe-web"
     # 12h: cubre la jornada completa de un examen sin dejar tokens vivos un dia entero.
     access_token_expire_minutes: int = 60 * 12
+    invitation_expire_hours: int = 72
     auth_cookie_name: str = "ecoe_session"
     auth_cookie_samesite: str = "lax"
     database_url: str = "postgresql+psycopg://ecoe:ecoe@db:5432/ecoe"

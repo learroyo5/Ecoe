@@ -8,19 +8,21 @@ import { QuickForm } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 
 export default function SimulatedPatientPage() {
-  const { authenticated } = useECOE();
+  const { authenticated, eventId, eventRoles, user } = useECOE();
+  const canEditContent = user?.role === "admin_global"
+    || eventRoles.some((role) => role === "admin_ecoe" || role === "coeditor_docente");
   const { data, loading, error, setData } = useApi(
-    () => api.simulatedPatients() as Promise<Record<string, unknown>[]>,
-    [authenticated],
+    () => api.simulatedPatients(eventId) as Promise<Record<string, unknown>[]>,
+    [authenticated, eventId],
   );
 
   const refresh = async () =>
-    setData((await api.simulatedPatients()) as Record<string, unknown>[]);
+    setData((await api.simulatedPatients(eventId)) as Record<string, unknown>[]);
 
   return (
     <div className="space-y-6">
       <SectionCard title="Gestor de paciente simulado" subtitle="Construye personajes y guiones reutilizables para estaciones con interaccion clinica.">
-        <QuickForm
+        {canEditContent ? <QuickForm
           fields={[
             { name: "character_name", label: "Nombre personaje" },
             { name: "summary_profile", label: "Perfil resumido" },
@@ -30,10 +32,10 @@ export default function SimulatedPatientPage() {
             { name: "special_instructions", label: "Instrucciones especiales" },
           ]}
           onSubmit={async (values) => {
-            await api.createSimulatedPatient(values);
+            await api.createSimulatedPatient(eventId, values);
             await refresh();
           }}
-        />
+        /> : <p className="text-sm text-slate-600">Tu rol permite consultar el banco, pero no modificarlo.</p>}
       </SectionCard>
       <SectionCard title="Banco de personajes" subtitle="Repositorio docente para asignar personajes simulados segun tipo de estacion.">
         {loading ? (

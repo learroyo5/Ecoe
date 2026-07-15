@@ -58,6 +58,15 @@ router = APIRouter()
 @router.websocket("/ws/live/{ecoe_event_id}")
 async def websocket_live_timer(websocket: WebSocket, ecoe_event_id: int):
     settings = get_settings()
+    origin = websocket.headers.get("origin")
+    allowed_origins = {
+        item.strip().rstrip("/")
+        for item in settings.cors_origins.split(",")
+        if item.strip()
+    }
+    if origin and origin.rstrip("/") not in allowed_origins:
+        await websocket.close(code=1008)
+        return
     token = None
     authorization = websocket.headers.get("authorization", "")
     if authorization.lower().startswith("bearer "):
@@ -354,6 +363,10 @@ def export_pdf(
     user=Depends(get_current_user),
 ):
     ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
+    if station_id is not None:
+        station = db.get(Station, station_id)
+        if not station or station.ecoe_event_id != ecoe_event_id:
+            raise HTTPException(status_code=404, detail="Estacion no encontrada en este ECOE")
     content = export_contingency_pdf(db, ecoe_event_id, station_id)
     return FastAPIResponse(
         content=content,
@@ -375,6 +388,10 @@ def create_incident(
                         RoleCode.admin_ecoe.value,
                         RoleCode.coordinador_operativo.value,
                         RoleCode.cronometrador.value)
+    if payload.station_id is not None:
+        station = db.get(Station, payload.station_id)
+        if not station or station.ecoe_event_id != payload.ecoe_event_id:
+            raise HTTPException(status_code=400, detail="La estacion no pertenece al ECOE indicado")
     incident = Incident(
         ecoe_event_id=payload.ecoe_event_id,
         station_id=payload.station_id,

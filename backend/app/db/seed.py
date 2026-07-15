@@ -48,20 +48,29 @@ def seed_data(db: Session) -> None:
         return
     settings = get_settings()
 
-    roles = [
-        Role(code=RoleCode.admin_ecoe.value, name="Administrador ECOE"),
-        Role(code=RoleCode.coeditor_docente.value, name="Coeditor docente"),
-        Role(code=RoleCode.evaluador.value, name="Evaluador"),
-        Role(code=RoleCode.estudiante.value, name="Estudiante"),
-        Role(code=RoleCode.coordinador_operativo.value, name="Coordinador operativo"),
-        Role(code=RoleCode.cronometrador.value, name="Cronometrador"),
+    role_defs = [
+        (RoleCode.admin_global.value, "Administrador global"),
+        (RoleCode.miembro.value, "Miembro institucional"),
+        (RoleCode.admin_ecoe.value, "Administrador ECOE"),
+        (RoleCode.coeditor_docente.value, "Coeditor docente"),
+        (RoleCode.evaluador.value, "Evaluador"),
+        (RoleCode.estudiante.value, "Estudiante"),
+        (RoleCode.coordinador_operativo.value, "Coordinador operativo"),
+        (RoleCode.cronometrador.value, "Cronometrador"),
     ]
-    db.add_all(roles)
+    existing_roles = {
+        role.code: role for role in db.scalars(select(Role)).all()
+    }
+    roles = [
+        existing_roles.get(code) or Role(code=code, name=name)
+        for code, name in role_defs
+    ]
+    db.add_all([role for role in roles if role.id is None])
     db.flush()
     role_map = {role.code: role.id for role in roles}
 
     user_defs = [
-        ("admin@ecoe.cl", "Admin ECOE", settings.admin_password, RoleCode.admin_ecoe.value),
+        ("admin@ecoe.cl", "Admin global", settings.admin_password, RoleCode.admin_global.value),
         ("coeditor@ecoe.cl", "Dr. Pablo Rojas", settings.coeditor_password, RoleCode.coeditor_docente.value),
         ("eval1@ecoe.cl", "Enf. Camila Soto", settings.evaluator_password, RoleCode.evaluador.value),
         ("student1@ecoe.cl", "Estudiante 1 Demo", settings.student_password, RoleCode.estudiante.value),

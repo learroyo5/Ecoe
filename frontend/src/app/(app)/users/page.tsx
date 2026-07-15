@@ -16,9 +16,12 @@ type UserRow = {
   full_name: string;
   role_code: string;
   is_active: boolean;
+  account_status: string;
 };
 
 const ROLE_OPTIONS = [
+  { value: "admin_global", label: "Administrador global" },
+  { value: "miembro", label: "Miembro institucional" },
   { value: "admin_ecoe", label: "Administrador ECOE" },
   { value: "coeditor_docente", label: "Coeditor docente" },
   { value: "coordinador_operativo", label: "Coordinador operativo" },
@@ -28,10 +31,14 @@ const ROLE_OPTIONS = [
 ];
 
 export default function UsersPage() {
-  const { authenticated } = useECOE();
+  const { authenticated, eventId, ecoeEvent } = useECOE();
   const { data: users, setData } = useApi(
     () => api.listUsers(),
     [authenticated],
+  );
+  const { data: eventAdmins, setData: setEventAdmins } = useApi(
+    () => api.eventAdmins(eventId),
+    [authenticated, eventId],
   );
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -101,9 +108,29 @@ export default function UsersPage() {
     }
   };
 
+  const toggleEventAdmin = async (u: UserRow) => {
+    setMessage(null);
+    try {
+      const assigned = (eventAdmins ?? []).some((item) => item.user_id === u.id);
+      if (assigned) {
+        await api.revokeEventAdmin(eventId, u.id);
+      } else {
+        await api.grantEventAdmin(eventId, u.id);
+      }
+      setEventAdmins(await api.eventAdmins(eventId));
+      setMessage(
+        assigned
+          ? `Se retiro a ${u.full_name} como administrador del ECOE activo.`
+          : `${u.full_name} ahora administra el ECOE activo.`,
+      );
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "No se pudo cambiar la administracion del ECOE.");
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <SectionCard title="Gestión de usuarios" subtitle="Crea, edita y administra las cuentas del sistema. Solo visible para el Administrador ECOE.">
+      <SectionCard title="Gestión institucional de usuarios" subtitle={`El administrador global gestiona cuentas y delega administradores para ${ecoeEvent?.name ?? "el ECOE activo"}.`}>
         <div className="mb-4">
           <button className="btn-primary" onClick={openCreate}>Crear usuario</button>
         </div>
@@ -145,9 +172,21 @@ export default function UsersPage() {
               key: "actions",
               label: "",
               render: (row) => (
-                <button className="text-sm text-[var(--color-primary)] hover:underline" onClick={() => openEdit(row as UserRow)}>
-                  Editar
-                </button>
+                <div className="flex flex-wrap gap-3">
+                  <button className="text-sm text-[var(--color-primary)] hover:underline" onClick={() => openEdit(row as UserRow)}>
+                    Editar
+                  </button>
+                  {(row as UserRow).role_code !== "admin_global" ? (
+                    <button
+                      className="text-sm text-[var(--color-primary)] hover:underline"
+                      onClick={() => toggleEventAdmin(row as UserRow)}
+                    >
+                      {(eventAdmins ?? []).some((item) => item.user_id === (row as UserRow).id)
+                        ? "Quitar admin ECOE"
+                        : "Asignar admin ECOE"}
+                    </button>
+                  ) : null}
+                </div>
               ),
             },
           ]}

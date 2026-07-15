@@ -59,7 +59,8 @@ type ImportResult = { imported: number; skipped: number };
 type MutationResult = { saved: boolean; record_id?: number; response_id?: number };
 type ConfirmCheckinResult = Record<string, unknown> & { checkin_id: number };
 type DeletedResult = { deleted: boolean };
-type UserRow = { id: number; email: string; full_name: string; role_code: string; is_active: boolean };
+type UserRow = { id: number; email: string; full_name: string; role_code: string; is_active: boolean; account_status: string };
+type ECOEAdminRow = { permission_id: number; user_id: number; email: string; full_name: string };
 
 export const api = {
   login: (email: string, password: string) =>
@@ -73,6 +74,12 @@ export const api = {
   // ECOE
   listECOE: () => request<ECOEEvent[]>("/ecoe"),
   ecoe: (eventId: number) => request<ECOEEvent>(`/ecoe/${eventId}`),
+  eventRoles: (eventId: number) => request<{ roles: string[]; is_global_admin: boolean }>(`/ecoe/${eventId}/roles/me`),
+  eventAdmins: (eventId: number) => request<ECOEAdminRow[]>(`/ecoe/${eventId}/admins`),
+  grantEventAdmin: (eventId: number, userId: number) =>
+    request<{ granted: boolean }>(`/ecoe/${eventId}/admins/${userId}`, { method: "POST" }),
+  revokeEventAdmin: (eventId: number, userId: number) =>
+    request<{ revoked: boolean }>(`/ecoe/${eventId}/admins/${userId}`, { method: "DELETE" }),
   createECOE: (payload: Record<string, unknown>) =>
     request<ECOEEvent>("/ecoe", { method: "POST", body: JSON.stringify(payload) }),
   updateECOE: (eventId: number, payload: Record<string, unknown>) =>
@@ -90,6 +97,22 @@ export const api = {
     request<UserRow>("/users", { method: "POST", body: JSON.stringify(payload) }),
   updateUser: (userId: number, payload: { full_name?: string; role_code?: string; password?: string; is_active?: boolean }) =>
     request<UserRow>(`/users/${userId}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  lookupEventMember: (eventId: number, email: string) =>
+    request<{ exists: boolean; full_name?: string; account_status?: string; assigned_to_event: boolean }>(
+      `/event-members/lookup?ecoe_event_id=${eventId}&email=${encodeURIComponent(email)}`,
+    ),
+  inviteEventMember: (payload: Record<string, unknown>) =>
+    request<{
+      status: "assigned" | "invited";
+      email: string;
+      activation_path?: string;
+      expires_at?: string;
+    }>("/event-members/invite", { method: "POST", body: JSON.stringify(payload) }),
+  activateInvitation: (token: string, password: string) =>
+    request<{ activated: boolean }>("/auth/activate-invitation", {
+      method: "POST",
+      body: JSON.stringify({ token, password }),
+    }),
 
   // Students
   students: (eventId: number, page: number = 1, pageSize: number = 50) =>
@@ -141,13 +164,13 @@ export const api = {
     request<MutationResult>("/student/submit", { method: "POST", body: JSON.stringify(payload) }),
 
   // Station Bank
-  stationBank: () => request<StationBank[]>("/station-bank"),
-  createStationBank: (payload: Record<string, unknown>) =>
-    request<StationBank>("/station-bank", { method: "POST", body: JSON.stringify(payload) }),
-  updateStationBank: (bankStationId: number, payload: Record<string, unknown>) =>
-    request<StationBank>(`/station-bank/${bankStationId}`, { method: "PUT", body: JSON.stringify(payload) }),
-  updateStationBankStatus: (bankStationId: number, payload: { status: string }) =>
-    request<StationBank>(`/station-bank/${bankStationId}/status`, { method: "PATCH", body: JSON.stringify(payload) }),
+  stationBank: (eventId: number) => request<StationBank[]>(`/station-bank?ecoe_event_id=${eventId}`),
+  createStationBank: (eventId: number, payload: Record<string, unknown>) =>
+    request<StationBank>(`/station-bank?ecoe_event_id=${eventId}`, { method: "POST", body: JSON.stringify(payload) }),
+  updateStationBank: (eventId: number, bankStationId: number, payload: Record<string, unknown>) =>
+    request<StationBank>(`/station-bank/${bankStationId}?ecoe_event_id=${eventId}`, { method: "PUT", body: JSON.stringify(payload) }),
+  updateStationBankStatus: (eventId: number, bankStationId: number, payload: { status: string }) =>
+    request<StationBank>(`/station-bank/${bankStationId}/status?ecoe_event_id=${eventId}`, { method: "PATCH", body: JSON.stringify(payload) }),
 
   // Stations
   stations: (eventId: number) => request<Station[]>(`/stations/${eventId}`),
@@ -175,15 +198,15 @@ export const api = {
   },
 
   // Templates & Instruments
-  templates: () => request<StationTemplate[]>("/templates"),
-  createTemplate: (payload: Record<string, unknown>) =>
-    request<StationTemplate>("/templates", { method: "POST", body: JSON.stringify(payload) }),
-  instruments: () => request<AssessmentTool[]>("/instruments"),
-  createInstrument: (payload: Record<string, unknown>) =>
-    request<AssessmentTool>("/instruments", { method: "POST", body: JSON.stringify(payload) }),
-  simulatedPatients: () => request<SimulatedPatient[]>("/simulated-patients"),
-  createSimulatedPatient: (payload: Record<string, unknown>) =>
-    request<SimulatedPatient>("/simulated-patients", { method: "POST", body: JSON.stringify(payload) }),
+  templates: (eventId: number) => request<StationTemplate[]>(`/templates?ecoe_event_id=${eventId}`),
+  createTemplate: (eventId: number, payload: Record<string, unknown>) =>
+    request<StationTemplate>(`/templates?ecoe_event_id=${eventId}`, { method: "POST", body: JSON.stringify(payload) }),
+  instruments: (eventId: number) => request<AssessmentTool[]>(`/instruments?ecoe_event_id=${eventId}`),
+  createInstrument: (eventId: number, payload: Record<string, unknown>) =>
+    request<AssessmentTool>(`/instruments?ecoe_event_id=${eventId}`, { method: "POST", body: JSON.stringify(payload) }),
+  simulatedPatients: (eventId: number) => request<SimulatedPatient[]>(`/simulated-patients?ecoe_event_id=${eventId}`),
+  createSimulatedPatient: (eventId: number, payload: Record<string, unknown>) =>
+    request<SimulatedPatient>(`/simulated-patients?ecoe_event_id=${eventId}`, { method: "POST", body: JSON.stringify(payload) }),
 
   // Pilotage
   pilotage: (eventId: number) => request<PilotRun[]>(`/pilotage/${eventId}`),

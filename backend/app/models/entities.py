@@ -44,11 +44,29 @@ class User(Base, TimestampMixin):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     role_id: Mapped[int] = mapped_column(ForeignKey("roles.id"), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    account_status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
     # Bumped on deactivation/password change: invalidates every JWT issued
     # with the previous value.
     token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     role: Mapped["Role"] = relationship()
+
+
+class UserInvitation(Base, TimestampMixin):
+    __tablename__ = "user_invitations"
+    __table_args__ = (
+        Index("ix_user_invitations_user_status", "user_id", "accepted_at"),
+        Index("ix_user_invitations_event", "ecoe_event_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    ecoe_event_id: Mapped[int] = mapped_column(ForeignKey("ecoe_events.id"), nullable=False)
+    role_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    invited_by_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class AuthRateLimit(Base):

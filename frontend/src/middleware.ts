@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
-import { defaultRouteForRole, isRouteAllowedForRole } from "@/lib/routes";
+import { defaultRouteForRole } from "@/lib/routes";
 
 const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME ?? "ecoe_session";
 const JWT_ISSUER = process.env.JWT_ISSUER ?? "ecoe-backend";
@@ -11,7 +11,7 @@ const JWT_AUDIENCE = process.env.JWT_AUDIENCE ?? "ecoe-web";
 // Nunca se expone al navegador: el middleware corre en el servidor.
 const SECRET_KEY = process.env.SECRET_KEY ?? "";
 
-const PUBLIC_PATHS = ["/login"];
+const PUBLIC_PATHS = ["/login", "/activate"];
 
 async function verifySession(token: string): Promise<{ role: string } | null> {
   if (!SECRET_KEY) {
@@ -69,8 +69,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(defaultRouteForRole(session.role), request.url));
   }
 
-  // Role-based route gating (defense in depth: the backend authorizes too).
-  if (session.role && !isRouteAllowedForRole(pathname, session.role)) {
+  // Institutional user management is the only globally gated screen. Other
+  // screens depend on the selected ECOE's effective roles and are enforced
+  // by the backend; the JWT only carries the account's global/default role.
+  if (pathname.startsWith("/users") && session.role !== "admin_global") {
     return NextResponse.redirect(new URL(defaultRouteForRole(session.role), request.url));
   }
 

@@ -2,6 +2,8 @@ from enum import Enum
 
 
 class RoleCode(str, Enum):
+    admin_global = "admin_global"
+    miembro = "miembro"
     admin_ecoe = "admin_ecoe"
     coeditor_docente = "coeditor_docente"
     evaluador = "evaluador"

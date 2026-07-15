@@ -18,15 +18,17 @@ const bankStatusOptions = [
 ];
 
 export default function StationBankPage() {
-  const { authenticated, user } = useECOE();
+  const { authenticated, eventId, eventRoles, user } = useECOE();
+  const canEditContent = user?.role === "admin_global"
+    || eventRoles.some((role) => role === "admin_ecoe" || role === "coeditor_docente");
   const router = useRouter();
   const { data: templates } = useApi(
-    () => api.templates() as Promise<Record<string, unknown>[]>,
-    [authenticated],
+    () => api.templates(eventId) as Promise<Record<string, unknown>[]>,
+    [authenticated, eventId],
   );
   const { data, loading, error, setData } = useApi(
-    () => api.stationBank() as Promise<Record<string, unknown>[]>,
-    [authenticated],
+    () => api.stationBank(eventId) as Promise<Record<string, unknown>[]>,
+    [authenticated, eventId],
   );
 
   useEffect(() => {
@@ -53,9 +55,11 @@ export default function StationBankPage() {
         subtitle="Aqui viven las estaciones reutilizables del hospital o de la institucion para estandarizar y escalar disenos docentes."
       >
         <div className="flex flex-wrap gap-3">
-          <Link href="/stations/builder?scope=bank" className="btn-primary">
-            Crear estacion de banco
-          </Link>
+          {canEditContent ? (
+            <Link href="/stations/builder?scope=bank" className="btn-primary">
+              Crear estacion de banco
+            </Link>
+          ) : null}
           <Link href="/stations" className="btn-secondary">
             Volver a estaciones del ECOE
           </Link>
@@ -94,9 +98,11 @@ export default function StationBankPage() {
                   const currentRow = row as { id?: number; status?: string };
                   return (
                     <select
+                      disabled={!canEditContent}
                       value={String(currentRow.status ?? "en_diseno")}
                       onChange={async (event) => {
                         const updated = (await api.updateStationBankStatus(
+                          eventId,
                           Number(currentRow.id),
                           { status: event.target.value },
                         )) as Record<string, unknown>;

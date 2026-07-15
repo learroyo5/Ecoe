@@ -18,7 +18,7 @@ def login_user(db: Session, email: str, password: str) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales invalidas",
         )
-    if not user.is_active:
+    if not user.is_active or user.account_status != "active":
         logger.warning("login_inactive_account email=%s", email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

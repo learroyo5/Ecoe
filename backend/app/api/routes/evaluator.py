@@ -123,7 +123,7 @@ def confirm_station_checkin(
     db: Session = Depends(get_db),
     user=Depends(require_roles("evaluador", "coordinador_operativo", "admin_ecoe")),
 ):
-    ensure_event_access(db, user, payload.ecoe_event_id,
+    event_roles = ensure_event_access(db, user, payload.ecoe_event_id,
                         RoleCode.admin_ecoe.value,
                         RoleCode.coordinador_operativo.value,
                         RoleCode.evaluador.value)
@@ -131,7 +131,10 @@ def confirm_station_checkin(
     if not station or station.ecoe_event_id != payload.ecoe_event_id:
         raise HTTPException(status_code=404, detail="Estacion no encontrada")
 
-    if user.role.code == "evaluador":
+    if not event_roles & {
+        RoleCode.admin_ecoe.value,
+        RoleCode.coordinador_operativo.value,
+    }:
         assignment = db.scalar(
             select(StaffAssignment).where(
                 StaffAssignment.ecoe_event_id == payload.ecoe_event_id,
@@ -211,7 +214,7 @@ def submit_evaluator_record(
     db: Session = Depends(get_db),
     user=Depends(require_roles("evaluador", "coordinador_operativo", "admin_ecoe")),
 ):
-    ensure_event_access(db, user, payload.ecoe_event_id,
+    event_roles = ensure_event_access(db, user, payload.ecoe_event_id,
                         RoleCode.admin_ecoe.value,
                         RoleCode.coordinador_operativo.value,
                         RoleCode.evaluador.value)
@@ -230,7 +233,10 @@ def submit_evaluator_record(
     ensure_checkin_within_time(
         checkin, station, extra_minutes=float(station.transition_time_minutes or 0)
     )
-    if user.role.code == RoleCode.evaluador.value:
+    if not event_roles & {
+        RoleCode.admin_ecoe.value,
+        RoleCode.coordinador_operativo.value,
+    }:
         evaluator_assignment = db.scalar(
             select(StaffAssignment).where(
                 StaffAssignment.ecoe_event_id == payload.ecoe_event_id,

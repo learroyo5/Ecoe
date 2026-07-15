@@ -11,6 +11,7 @@ from app.api.routes.student_access import router as student_access_router
 from app.api.routes.stations import router as stations_router
 from app.api.routes.operational import router as operational_router
 from app.api.routes.users import router as users_router
+from app.api.routes.invitations import router as invitations_router
 
 router = APIRouter()
 router.include_router(auth_router)
@@ -22,3 +23,4 @@ router.include_router(student_access_router)
 router.include_router(stations_router)
 router.include_router(operational_router)
 router.include_router(users_router)
+router.include_router(invitations_router)

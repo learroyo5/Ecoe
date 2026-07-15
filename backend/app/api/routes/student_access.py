@@ -106,11 +106,14 @@ def submit_student_response(
     db: Session = Depends(get_db),
     user=Depends(require_roles("estudiante", "coordinador_operativo", "admin_ecoe")),
 ):
-    ensure_event_access(db, user, payload.ecoe_event_id,
+    event_roles = ensure_event_access(db, user, payload.ecoe_event_id,
                         RoleCode.admin_ecoe.value,
                         RoleCode.coordinador_operativo.value,
                         RoleCode.estudiante.value)
-    if user.role.code == RoleCode.estudiante.value:
+    if not event_roles & {
+        RoleCode.admin_ecoe.value,
+        RoleCode.coordinador_operativo.value,
+    }:
         student = db.scalar(
             select(Student).where(
                 Student.ecoe_event_id == payload.ecoe_event_id,

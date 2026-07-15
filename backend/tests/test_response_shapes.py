@@ -52,7 +52,7 @@ class TestInstrumentResponseShape:
         """AssessmentToolRead.items must validate from ORM AssessmentItem
         objects (id, tool_id extras) — a plain AssessmentItemInput without
         from_attributes raises a 500 ResponseValidationError instead."""
-        response = auth_client.post("/api/instruments", json={
+        response = auth_client.post("/api/instruments?ecoe_event_id=1", json={
             "name": "Instrumento Shape Test",
             "tool_type": "lista_cotejo",
             "max_score": 10,
@@ -67,7 +67,7 @@ class TestInstrumentResponseShape:
         assert len(data["items"]) == 2
         assert all("id" in item for item in data["items"])
 
-        list_response = auth_client.get("/api/instruments")
+        list_response = auth_client.get("/api/instruments?ecoe_event_id=1")
         assert list_response.status_code == 200
         assert any(tool["items"] for tool in list_response.json())
 

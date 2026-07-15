@@ -10,7 +10,8 @@ import { FileImport, StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 
 export default function EvaluatorsPage() {
-  const { authenticated, eventId } = useECOE();
+  const { authenticated, eventId, eventRoles, user } = useECOE();
+  const canInviteMembers = user?.role === "admin_global" || eventRoles.includes("admin_ecoe");
   const { data: rawStaff, loading, error, setData: setRawStaff } = useApi(
     () => api.staff(eventId),
     [eventId, authenticated],
@@ -32,10 +33,6 @@ export default function EvaluatorsPage() {
     () => api.stations(eventId) as Promise<Record<string, unknown>[]>,
     [eventId, authenticated],
   );
-  const { data: users } = useApi(
-    () => api.listUsers(),
-    [authenticated],
-  );
   const stations = rawStations ?? [];
   const [form, setForm] = useState({
     name: "",
@@ -46,6 +43,8 @@ export default function EvaluatorsPage() {
   });
   const [assignmentDrafts, setAssignmentDrafts] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
+  const [lookupMessage, setLookupMessage] = useState<string | null>(null);
+  const [activationLink, setActivationLink] = useState<string | null>(null);
   const [savingForm, setSavingForm] = useState(false);
   const [processingAction, setProcessingAction] = useState<string | null>(null);
 
@@ -106,7 +105,7 @@ export default function EvaluatorsPage() {
 
       <SectionCard
         title="Equipo operativo del ECOE"
-        subtitle="Cada integrante debe tener cuenta activa con el rol correcto; los evaluadores además necesitan una estación principal."
+        subtitle="Asigna una cuenta existente o genera una invitación temporal; los evaluadores además necesitan una estación principal."
       >
         <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
           <FileImport
@@ -119,7 +118,7 @@ export default function EvaluatorsPage() {
                     <li>Descarga la plantilla Excel o CSV usando los botones de abajo.</li>
                     <li>Abre el archivo y completa una fila por cada persona.</li>
                     <li>Los unicos campos obligatorios son: <strong>nombre, apellidos, correo, rol</strong>.</li>
-                    <li>El <strong>correo</strong> debe corresponder a un usuario ya registrado en el sistema con el mismo rol.</li>
+                    <li>Para importación masiva, el <strong>correo</strong> debe corresponder a una cuenta institucional activa.</li>
                     <li>Roles validos: <strong>evaluador</strong>, <strong>coeditor_docente</strong>, <strong>coordinador_operativo</strong>, <strong>cronometrador</strong>.</li>
                     <li>Guarda el archivo y arrastralo o seleccionalo en el campo de abajo.</li>
                   </ol>
@@ -139,7 +138,7 @@ export default function EvaluatorsPage() {
                       <tbody className="divide-y divide-slate-50">
                         <tr><td className="py-1 pr-3 font-mono text-slate-700">nombre</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">Nombre de la persona</td></tr>
                         <tr><td className="py-1 pr-3 font-mono text-slate-700">apellidos</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">Apellidos completos</td></tr>
-                        <tr><td className="py-1 pr-3 font-mono text-slate-700">correo</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">Correo del usuario ya registrado con ese rol</td></tr>
+                        <tr><td className="py-1 pr-3 font-mono text-slate-700">correo</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">Correo de una cuenta institucional activa</td></tr>
                         <tr><td className="py-1 pr-3 font-mono text-slate-700">rol</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">evaluador | coeditor_docente | coordinador_operativo | cronometrador</td></tr>
                       </tbody>
                     </table>
@@ -192,6 +191,10 @@ export default function EvaluatorsPage() {
             onSubmit={async (event) => {
               event.preventDefault();
               setMessage(null);
+              if (!canInviteMembers) {
+                setMessage("Solo un administrador del ECOE puede invitar nuevas cuentas.");
+                return;
+              }
 
               // Warn if adding a duplicate single-role staff member
               const warning = SINGLE_ROLE_WARNINGS[form.role_code];
@@ -201,7 +204,7 @@ export default function EvaluatorsPage() {
 
               setSavingForm(true);
               try {
-                await api.createStaff(
+                const result = await api.inviteEventMember(
                   {
                     ecoe_event_id: eventId,
                     name: form.name,
@@ -212,6 +215,11 @@ export default function EvaluatorsPage() {
                   },
                 );
                 await refresh();
+                setActivationLink(
+                  result.activation_path
+                    ? `${window.location.origin}${result.activation_path}`
+                    : null,
+                );
                 setForm({
                   name: "",
                   last_name: "",
@@ -219,7 +227,11 @@ export default function EvaluatorsPage() {
                   role_code: "evaluador",
                   station_id: "",
                 });
-                setMessage("Evaluador o colaborador guardado correctamente.");
+                setMessage(
+                  result.status === "assigned"
+                    ? "La cuenta existente fue asignada correctamente al ECOE."
+                    : "Invitación creada. Comparte el enlace temporal por un canal institucional.",
+                );
               } catch (error) {
                 setMessage(error instanceof Error ? error.message : "No se pudo guardar.");
               } finally {
@@ -227,44 +239,6 @@ export default function EvaluatorsPage() {
               }
             }}
           >
-            {/* Quick-add from existing users */}
-            <div className="md:col-span-2">
-              <label className="space-y-2 rounded-[22px] border border-emerald-200 bg-emerald-50/60 p-4 block">
-                <span className="text-sm font-semibold text-emerald-800">Agregar desde usuarios registrados</span>
-                <p className="text-xs text-emerald-700 mb-2">Selecciona un usuario del sistema para pre-llenar los campos.</p>
-                <select
-                  value=""
-                  onChange={(e) => {
-                    const userId = Number(e.target.value);
-                    if (!userId) return;
-                    const u = (users ?? []).find((user) => user.id === userId);
-                    if (!u) return;
-                    // Split full_name into name and last_name
-                    const parts = (u.full_name ?? "").split(" ");
-                    const name = parts[0] ?? "";
-                    const last_name = parts.slice(1).join(" ") ?? "";
-                    setForm({
-                      name,
-                      last_name,
-                      email: u.email,
-                      role_code: u.role_code ?? "evaluador",
-                      station_id: form.station_id,
-                    });
-                    e.currentTarget.value = "";
-                  }}
-                >
-                  <option value="">— Seleccionar usuario —</option>
-                  {(users ?? [])
-                    .filter((u) => u.role_code !== "estudiante" && u.is_active)
-                    .map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.full_name} · {u.email} · {u.role_code}
-                      </option>
-                    ))}
-                </select>
-              </label>
-            </div>
-
             <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
               <span className="text-sm font-semibold text-slate-700">Nombre</span>
               <input
@@ -287,7 +261,26 @@ export default function EvaluatorsPage() {
                 type="email"
                 value={form.email}
                 onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                onBlur={async () => {
+                  if (!form.email) return;
+                  setLookupMessage(null);
+                  try {
+                    const result = await api.lookupEventMember(eventId, form.email);
+                    if (result.assigned_to_event) {
+                      setLookupMessage("Esta persona ya pertenece al equipo del ECOE.");
+                    } else if (result.account_status === "suspended") {
+                      setLookupMessage("La cuenta está suspendida y requiere revisión del administrador global.");
+                    } else if (result.exists) {
+                      setLookupMessage("Cuenta institucional encontrada; se asignará sin crear otra cuenta.");
+                    } else {
+                      setLookupMessage("No existe una cuenta; se generará una invitación de activación.");
+                    }
+                  } catch {
+                    setLookupMessage("No se pudo comprobar el correo.");
+                  }
+                }}
               />
+              {lookupMessage ? <p className="text-xs leading-5 text-slate-500">{lookupMessage}</p> : null}
             </label>
             <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
               <span className="text-sm font-semibold text-slate-700">Rol</span>
@@ -324,10 +317,31 @@ export default function EvaluatorsPage() {
               </p>
             </label>
             <div className="space-y-3 md:col-span-2">
-              <button className="btn-primary" disabled={savingForm}>
+              <button className="btn-primary" disabled={savingForm || !canInviteMembers}>
                 {savingForm ? "Guardando..." : "Guardar asignación"}
               </button>
+              {!canInviteMembers ? (
+                <p className="text-sm text-slate-600">Solo el administrador del ECOE puede asignar o invitar nuevas personas.</p>
+              ) : null}
               <StatusNotice message={message} />
+              {activationLink ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-sm font-semibold text-amber-900">Enlace de activación — visible solo ahora</p>
+                  <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                    <input readOnly value={activationLink} className="min-w-0 flex-1" />
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(activationLink);
+                        setMessage("Enlace de activación copiado.");
+                      }}
+                    >
+                      Copiar enlace
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </form>
         </div>

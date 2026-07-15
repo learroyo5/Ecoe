@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { Sidebar } from "@/components/sidebar";
@@ -16,16 +16,30 @@ export function AppShell({
   description: string;
   children: React.ReactNode;
 }) {
-  const { user, authenticated, ready, logout, eventId, setEventId, ecoeList, ecoeEvent, loadError } = useECOE();
+  const { user, eventRoles, authenticated, ready, logout, eventId, setEventId, ecoeList, ecoeEvent, loadError } = useECOE();
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
+  const hasManagerRole = eventRoles.some((role) =>
+    ["admin_ecoe", "coeditor_docente", "coordinador_operativo"].includes(role),
+  );
+  const effectiveOperatorRole = !hasManagerRole
+    ? eventRoles.find((role) => role === "evaluador" || role === "estudiante" || role === "cronometrador")
+    : undefined;
+
+  useEffect(() => {
+    if (!ready || !authenticated || !effectiveOperatorRole || pathname !== "/dashboard") return;
+    if (effectiveOperatorRole === "evaluador") router.replace("/evaluator");
+    if (effectiveOperatorRole === "estudiante") router.replace("/student");
+    if (effectiveOperatorRole === "cronometrador") router.replace("/live");
+  }, [authenticated, effectiveOperatorRole, pathname, ready, router]);
+
   if (!ready || !authenticated) return null;
 
-  const isStationOperator = user?.role === "evaluador" || user?.role === "estudiante";
+  const isStationOperator = effectiveOperatorRole === "evaluador" || effectiveOperatorRole === "estudiante";
 
   // ── Evaluator / Student layout ──────────────────────────────────────
   if (isStationOperator) {

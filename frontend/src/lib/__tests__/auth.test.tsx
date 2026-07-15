@@ -12,6 +12,7 @@ vi.mock("@/lib/api", () => ({
     listECOE: vi.fn(),
     ecoe: vi.fn(),
     dashboard: vi.fn(),
+    eventRoles: vi.fn(),
   },
 }));
 
@@ -32,6 +33,7 @@ function Probe() {
 beforeEach(() => {
   vi.clearAllMocks();
   window.localStorage.clear();
+  mockedApi.eventRoles.mockResolvedValue({ roles: ["admin_ecoe"], is_global_admin: false });
 });
 
 describe("ECOEProvider", () => {

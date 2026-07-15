@@ -13,6 +13,7 @@ from app.models.entities import (
     ECOEEvent,
     StaffAssignment,
     Station,
+    User,
 )
 from app.models.enums import ECOEStatus, RoleCode, StationStatus
 from app.schemas.common import (
@@ -24,10 +25,12 @@ from app.schemas.common import (
     ECOEEventUpdate,
 )
 from app.services.dependencies import get_current_user, require_roles
+from app.services.dependencies import require_global_roles
 from app.services.ecoe import build_dashboard, update_ecoe_status
 from app.services.authorization import (
     ADMIN_EVENT_ROLE_CODES,
     ensure_event_access,
+    get_user_event_roles,
     list_accessible_ecoe_events,
 )
 
@@ -61,11 +64,24 @@ def get_ecoe(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get
     return ecoe_event
 
 
+@router.get("/ecoe/{ecoe_event_id}/roles/me")
+def my_ecoe_roles(
+    ecoe_event_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    ensure_event_access(db, user, ecoe_event_id)
+    return {
+        "roles": sorted(get_user_event_roles(db, user, ecoe_event_id)),
+        "is_global_admin": user.role.code == RoleCode.admin_global.value,
+    }
+
+
 @router.post("/ecoe", response_model=ECOEEventRead)
 def create_ecoe(
     payload: ECOEEventCreate,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("admin_ecoe")),
+    user=Depends(require_global_roles(RoleCode.admin_global.value)),
 ):
     ecoe_event = ECOEEvent(**payload.model_dump(), status=ECOEStatus.borrador.value)
     db.add(ecoe_event)
@@ -80,6 +96,102 @@ def create_ecoe(
     db.commit()
     db.refresh(ecoe_event)
     return ecoe_event
+
+
+@router.get("/ecoe/{ecoe_event_id}/admins")
+def list_ecoe_admins(
+    ecoe_event_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_global_roles(RoleCode.admin_global.value)),
+):
+    if not db.get(ECOEEvent, ecoe_event_id):
+        raise HTTPException(status_code=404, detail="ECOE no encontrado")
+    rows = db.execute(
+        select(ECOEPermission, User)
+        .join(User, User.id == ECOEPermission.user_id)
+        .where(
+            ECOEPermission.ecoe_event_id == ecoe_event_id,
+            ECOEPermission.role_code == RoleCode.admin_ecoe.value,
+        )
+        .order_by(User.full_name.asc(), User.id.asc())
+    ).all()
+    return [
+        {
+            "permission_id": permission.id,
+            "user_id": account.id,
+            "email": account.email,
+            "full_name": account.full_name,
+        }
+        for permission, account in rows
+    ]
+
+
+@router.post("/ecoe/{ecoe_event_id}/admins/{user_id}")
+def grant_ecoe_admin(
+    ecoe_event_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    actor=Depends(require_global_roles(RoleCode.admin_global.value)),
+):
+    if not db.get(ECOEEvent, ecoe_event_id):
+        raise HTTPException(status_code=404, detail="ECOE no encontrado")
+    target = db.get(User, user_id)
+    if not target or not target.is_active:
+        raise HTTPException(status_code=400, detail="El usuario no existe o esta inactivo")
+    permission = db.scalar(
+        select(ECOEPermission).where(
+            ECOEPermission.ecoe_event_id == ecoe_event_id,
+            ECOEPermission.user_id == user_id,
+            ECOEPermission.role_code == RoleCode.admin_ecoe.value,
+        )
+    )
+    if not permission:
+        permission = ECOEPermission(
+            ecoe_event_id=ecoe_event_id,
+            user_id=user_id,
+            role_code=RoleCode.admin_ecoe.value,
+        )
+        db.add(permission)
+        db.flush()
+        db.add(AuditLog(
+            user_email=actor.email,
+            action="grant_ecoe_admin",
+            target_type="ECOEPermission",
+            target_id=str(permission.id),
+            payload={"ecoe_event_id": ecoe_event_id, "user_id": user_id},
+        ))
+        db.commit()
+        db.refresh(permission)
+    return {"granted": True, "permission_id": permission.id, "user_id": user_id}
+
+
+@router.delete("/ecoe/{ecoe_event_id}/admins/{user_id}")
+def revoke_ecoe_admin(
+    ecoe_event_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    actor=Depends(require_global_roles(RoleCode.admin_global.value)),
+):
+    permission = db.scalar(
+        select(ECOEPermission).where(
+            ECOEPermission.ecoe_event_id == ecoe_event_id,
+            ECOEPermission.user_id == user_id,
+            ECOEPermission.role_code == RoleCode.admin_ecoe.value,
+        )
+    )
+    if not permission:
+        raise HTTPException(status_code=404, detail="Asignacion de administrador no encontrada")
+    permission_id = permission.id
+    db.delete(permission)
+    db.add(AuditLog(
+        user_email=actor.email,
+        action="revoke_ecoe_admin",
+        target_type="ECOEPermission",
+        target_id=str(permission_id),
+        payload={"ecoe_event_id": ecoe_event_id, "user_id": user_id},
+    ))
+    db.commit()
+    return {"revoked": True, "user_id": user_id}
 
 
 @router.put("/ecoe/{ecoe_event_id}", response_model=ECOEEventRead)
