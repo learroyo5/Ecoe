@@ -61,9 +61,30 @@ def compute_results(db: Session, ecoe_event_id: int) -> list[dict]:
             .group_by(EvaluatorRecord.student_id)
         ).all()
     }
+    # Formularios de estudiante con puntaje definitivo (autocorregidos o ya
+    # corregidos manualmente); los pendientes de correccion no entran aun.
+    form_totals_by_student: dict[int, tuple[float, float]] = {
+        row[0]: (row[1] or 0, row[2] or 0)
+        for row in db.execute(
+            select(
+                StudentResponse.student_id,
+                func.sum(StudentResponse.score_obtained),
+                func.sum(StudentResponse.max_score),
+            )
+            .where(
+                StudentResponse.ecoe_event_id == ecoe_event_id,
+                StudentResponse.mode == SessionMode.ejecucion.value,
+                StudentResponse.score_obtained.is_not(None),
+            )
+            .group_by(StudentResponse.student_id)
+        ).all()
+    }
     results = []
     for student in students:
-        total_score, max_score = totals_by_student.get(student.id, (0, 0))
+        eval_score, eval_max = totals_by_student.get(student.id, (0, 0))
+        form_score, form_max = form_totals_by_student.get(student.id, (0, 0))
+        total_score = eval_score + form_score
+        max_score = eval_max + form_max
         percentage = (total_score / max_score * 100) if max_score else 0
         grade = compute_equivalent_grade(percentage, passing_reference_percent)
         results.append({
@@ -142,11 +163,45 @@ def build_traceability_report(
             if station_id and station_id not in station_primary_evaluator:
                 station_primary_evaluator[int(station_id)] = full_name or assignment.email
 
-    required_evaluator_station_count = sum(1 for station in stations if station.requires_evaluator)
-    required_student_form_station_count = sum(1 for station in stations if station.requires_student_form)
+    # Expected counts are per CIRCUIT: in mirrored circuits each student only
+    # visits their own circuit's stations, so counting every station of the
+    # event would inflate "missing" metrics and completion would never close.
+    def _circuit_key(value: str | None) -> str:
+        return str(value or "").strip().lower()
+
+    evaluator_required_by_circuit: dict[str, int] = {}
+    student_form_required_by_circuit: dict[str, int] = {}
+    for station in stations:
+        key = _circuit_key(station.circuit_name)
+        if station.requires_evaluator:
+            evaluator_required_by_circuit[key] = evaluator_required_by_circuit.get(key, 0) + 1
+        if station.requires_student_form:
+            student_form_required_by_circuit[key] = student_form_required_by_circuit.get(key, 0) + 1
+    total_evaluator_required = sum(evaluator_required_by_circuit.values())
+    total_student_form_required = sum(student_form_required_by_circuit.values())
+    station_circuit_keys = {_circuit_key(station.circuit_name) for station in stations}
+
+    def _required_for_student(student: Student) -> tuple[int, int]:
+        key = _circuit_key(student.circuit_name)
+        if key not in station_circuit_keys:
+            # Circuito sin correspondencia textual con las estaciones:
+            # fallback conservador al total del evento.
+            return total_evaluator_required, total_student_form_required
+        return (
+            evaluator_required_by_circuit.get(key, 0),
+            student_form_required_by_circuit.get(key, 0),
+        )
+
+    expected_evaluations_total = 0
+    expected_student_submissions_total = 0
 
     student_traceability: list[dict] = []
     for student in students:
+        required_evaluator_station_count, required_student_form_station_count = (
+            _required_for_student(student)
+        )
+        expected_evaluations_total += required_evaluator_station_count
+        expected_student_submissions_total += required_student_form_station_count
         student_checkins = [item for item in checkins if item.student_id == student.id]
         student_evaluations = [item for item in evaluator_records if item.student_id == student.id]
         student_form_responses = [item for item in student_responses if item.student_id == student.id]
@@ -266,8 +321,8 @@ def build_traceability_report(
         "summary": {
             "active_students": len(students),
             "stations": len(stations),
-            "expected_evaluations": len(students) * required_evaluator_station_count,
-            "expected_student_submissions": len(students) * required_student_form_station_count,
+            "expected_evaluations": expected_evaluations_total,
+            "expected_student_submissions": expected_student_submissions_total,
             "confirmed_checkins": len(checkins),
             "evaluator_submissions": len(evaluator_records),
             "student_submissions": len(student_responses),

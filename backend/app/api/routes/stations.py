@@ -23,6 +23,7 @@ from app.schemas.common import (
     AssessmentToolCreate,
     AssessmentToolRead,
     PilotRunCreate,
+    PilotRunNotesUpdate,
     PilotRunRead,
     SimulatedPatientCreate,
     SimulatedPatientRead,
@@ -332,7 +333,12 @@ def create_pilotage(
             raise HTTPException(status_code=400,
                                 detail="No puedes pilotear el circuito completo sin haber realizado antes al menos un pilotaje individual de estacion.")
         station_ids = list(event_station_ids)
-    pilot_run = PilotRun(ecoe_event_id=payload.ecoe_event_id, name=payload.name, scope=scope)
+    pilot_run = PilotRun(
+        ecoe_event_id=payload.ecoe_event_id,
+        name=payload.name,
+        scope=scope,
+        notes=payload.notes.strip(),
+    )
     db.add(pilot_run)
     db.flush()
     for sid in station_ids:
@@ -352,6 +358,34 @@ def create_pilotage(
 def list_pilotage(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
     return db.scalars(select(PilotRun).where(PilotRun.ecoe_event_id == ecoe_event_id)).all()
+
+
+@router.patch("/pilotage/{pilot_run_id}/notes", response_model=PilotRunRead)
+def update_pilotage_notes(
+    pilot_run_id: int,
+    payload: PilotRunNotesUpdate,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente", "coordinador_operativo")),
+):
+    run = db.get(PilotRun, pilot_run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Pilotaje no encontrado")
+    ensure_event_access(db, user, run.ecoe_event_id,
+                        RoleCode.admin_ecoe.value,
+                        RoleCode.coeditor_docente.value,
+                        RoleCode.coordinador_operativo.value)
+    run.notes = payload.notes.strip()
+    db.add(run)
+    db.add(AuditLog(
+        user_email=user.email,
+        action="update_pilotage_notes",
+        target_type="PilotRun",
+        target_id=str(run.id),
+        payload={"ecoe_event_id": run.ecoe_event_id},
+    ))
+    db.commit()
+    db.refresh(run)
+    return run
 
 
 @router.post("/pilotage/{pilot_run_id}/archive")

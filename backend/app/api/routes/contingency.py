@@ -26,6 +26,7 @@ from app.models.enums import RoleCode
 from app.schemas.common import EvaluatorSubmission, StudentResponseCreate
 from app.services.dependencies import require_roles
 from app.services.authorization import ensure_event_access
+from app.services.grading import apply_auto_grading
 from app.utils.helpers import (
     ensure_submission_stage,
     get_latest_checkin_any_status,
@@ -122,7 +123,7 @@ def submit_student_response_by_contingency(
     user=Depends(require_roles(*CONTINGENCY_ROLES)),
 ):
     ensure_event_access(db, user, payload.ecoe_event_id, *CONTINGENCY_ROLES)
-    session_mode, _station = _validated_contingency_target(
+    session_mode, station = _validated_contingency_target(
         db, payload.ecoe_event_id, payload.station_id, payload.student_id
     )
     existing_response = db.scalar(
@@ -143,6 +144,7 @@ def submit_student_response_by_contingency(
         mode=session_mode,
         by_contingency=True,
     )
+    apply_auto_grading(response, station.student_form_definition)
     db.add(response)
     db.flush()
     db.add(AuditLog(

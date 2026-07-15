@@ -28,6 +28,7 @@ export const NAV_ITEMS: { label: string; href: string; allowedFor: RoleCode[] }[
   { label: "Panel en vivo", href: "/live", allowedFor: ["admin_global", "admin_ecoe", "coordinador_operativo", "cronometrador"] },
   { label: "Evaluador", href: "/evaluator", allowedFor: ["evaluador"] },
   { label: "Estudiante", href: "/student", allowedFor: ["estudiante"] },
+  { label: "Corrección", href: "/grading", allowedFor: ["admin_global", "admin_ecoe", "coeditor_docente"] },
   { label: "Resultados", href: "/results", allowedFor: ["admin_global", "admin_ecoe", "coeditor_docente", "coordinador_operativo"] },
 ];
 

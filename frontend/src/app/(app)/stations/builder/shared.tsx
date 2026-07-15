@@ -70,6 +70,11 @@ export type StudentQuestion = {
   prompt: string;
   type: string;
   optionsText: string;
+  // Puntaje de la pregunta ("0" = no puntúa). Las alternativas se
+  // autocorrigen en el servidor; short_text con puntos va a corrección manual.
+  points: string;
+  // Clave de respuesta: opción exacta (single) o una por línea (multiple).
+  correctText: string;
 };
 
 export const defaultInstrumentDraft: InstrumentDraft = {
@@ -84,7 +89,7 @@ export const defaultInstrumentDraft: InstrumentDraft = {
 };
 
 export const defaultStudentQuestions: StudentQuestion[] = [
-  { prompt: "", type: "single_choice", optionsText: "" },
+  { prompt: "", type: "single_choice", optionsText: "", points: "0", correctText: "" },
 ];
 
 export const stationTypeOptions = [

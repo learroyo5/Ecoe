@@ -18,6 +18,7 @@ from app.models.enums import RoleCode
 from app.schemas.common import StudentAccessRequest, StudentResponseCreate
 from app.services.dependencies import get_current_user, require_roles
 from app.services.authorization import ensure_event_access
+from app.services.grading import apply_auto_grading
 from app.utils.helpers import (
     checkin_submission_deadline,
     ensure_checkin_within_time,
@@ -162,6 +163,7 @@ def submit_student_response(
         mode=session_mode,
         by_contingency=False,
     )
+    apply_auto_grading(response, station.student_form_definition)
     db.add(response)
     db.flush()
     db.add(

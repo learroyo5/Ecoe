@@ -284,6 +284,11 @@ class PilotRunCreate(BaseModel):
     name: str
     scope: str
     station_ids: list[int] = []
+    notes: str = ""
+
+
+class PilotRunNotesUpdate(BaseModel):
+    notes: str
 
 
 class TimerAction(BaseModel):
@@ -332,6 +337,10 @@ class StudentAccessRequest(BaseModel):
 class KioskSubmit(BaseModel):
     checkin_id: int
     answers: dict[str, Any]
+
+
+class ManualGradeSubmit(BaseModel):
+    scores: dict[str, float]
 
 
 # ── Incidents ─────────────────────────────────────────────────────────
@@ -394,6 +403,7 @@ class PilotRunRead(ORMBase):
     ecoe_event_id: int
     name: str
     scope: str
+    notes: str
     archived: bool
     created_at: datetime
     updated_at: datetime

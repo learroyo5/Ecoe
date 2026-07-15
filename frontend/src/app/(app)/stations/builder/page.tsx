@@ -271,7 +271,7 @@ export default function StationBuilderPage() {
   const addStudentQuestion = () => {
     setStudentQuestions((current) => [
       ...current,
-      { prompt: "", type: "single_choice", optionsText: "" },
+      { prompt: "", type: "single_choice", optionsText: "", points: "0", correctText: "" },
     ]);
   };
 
@@ -359,17 +359,29 @@ export default function StationBuilderPage() {
 
   const buildStudentFormDefinition = () => ({
     questions: studentQuestions
-      .map((question) => ({
-        type: question.type,
-        label: question.prompt.trim(),
-        options:
+      .map((question) => {
+        const options =
           question.type === "short_text"
             ? []
             : question.optionsText
                 .split("\n")
                 .map((option) => option.trim())
-                .filter(Boolean),
-      }))
+                .filter(Boolean);
+        const correctLines = question.correctText
+          .split("\n")
+          .map((option) => option.trim())
+          .filter(Boolean);
+        return {
+          type: question.type,
+          label: question.prompt.trim(),
+          options,
+          points: Number(question.points) || 0,
+          ...(question.type === "single_choice"
+            ? { correct_option: correctLines[0] ?? null }
+            : {}),
+          ...(question.type === "multiple_choice" ? { correct_options: correctLines } : {}),
+        };
+      })
       .filter((question) => question.label),
   });
 
@@ -454,6 +466,12 @@ export default function StationBuilderPage() {
             optionsText: Array.isArray(question.options)
               ? (question.options as unknown[]).map((option) => String(option)).join("\n")
               : "",
+            points: String(question.points ?? "0"),
+            correctText: Array.isArray(question.correct_options)
+              ? (question.correct_options as unknown[]).map((option) => String(option)).join("\n")
+              : question.correct_option
+                ? String(question.correct_option)
+                : "",
           }))
         : defaultStudentQuestions;
 

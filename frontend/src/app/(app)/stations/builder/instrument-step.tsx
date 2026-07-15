@@ -398,6 +398,83 @@ export function InstrumentStep({
   );
 }
 
+function CorrectAnswerPicker({
+  question,
+  index,
+  onChange,
+}: {
+  question: StudentQuestion;
+  index: number;
+  onChange: (index: number, field: keyof StudentQuestion, value: string) => void;
+}) {
+  const options = question.optionsText
+    .split("\n")
+    .map((option) => option.trim())
+    .filter(Boolean);
+  const correct = question.correctText
+    .split("\n")
+    .map((option) => option.trim())
+    .filter(Boolean);
+
+  if (!options.length) {
+    return (
+      <p className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        Escribe primero las opciones para poder marcar la clave de respuesta.
+      </p>
+    );
+  }
+
+  if (question.type === "single_choice") {
+    return (
+      <FieldBlock
+        label="Respuesta correcta"
+        description="La opción que otorga el puntaje completo; el resto vale 0."
+      >
+        <select
+          value={correct[0] ?? ""}
+          onChange={(event) => onChange(index, "correctText", event.target.value)}
+        >
+          <option value="">Sin clave definida</option>
+          {options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </FieldBlock>
+    );
+  }
+
+  return (
+    <FieldBlock
+      label="Respuestas correctas"
+      description="El puntaje se otorga solo si el estudiante marca exactamente este conjunto."
+    >
+      <div className="space-y-2">
+        {options.map((option) => {
+          const checked = correct.includes(option);
+          return (
+            <label key={option} className="flex items-center gap-2 text-sm text-slate-800">
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={(event) => {
+                  const next = event.target.checked
+                    ? [...correct, option]
+                    : correct.filter((item) => item !== option);
+                  onChange(index, "correctText", next.join("\n"));
+                }}
+              />
+              <span>{option}</span>
+            </label>
+          );
+        })}
+      </div>
+    </FieldBlock>
+  );
+}
+
+
 export function StudentFormSection({
   studentQuestions,
   updateStudentQuestion,
@@ -475,6 +552,27 @@ export function StudentFormSection({
                     }
                   />
                 </FieldBlock>
+              ) : null}
+              <FieldBlock
+                label="Puntaje de la pregunta"
+                description={
+                  question.type === "short_text"
+                    ? "Con puntaje > 0, la respuesta breve pasa a corrección manual y luego suma al consolidado."
+                    : "Con puntaje > 0, la pregunta se autocorrige con la clave y suma al consolidado. 0 = solo registro."
+                }
+              >
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={question.points}
+                  onChange={(event) =>
+                    updateStudentQuestion(index, "points", event.target.value)
+                  }
+                />
+              </FieldBlock>
+              {question.type !== "short_text" && Number(question.points) > 0 ? (
+                <CorrectAnswerPicker question={question} index={index} onChange={updateStudentQuestion} />
               ) : null}
             </div>
             <div className="flex items-end">

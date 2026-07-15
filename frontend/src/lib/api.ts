@@ -233,6 +233,17 @@ export const api = {
     request<PilotRun>("/pilotage", { method: "POST", body: JSON.stringify(payload) }),
   archivePilotage: (id: number) =>
     request<{ archived: boolean }>(`/pilotage/${id}/archive`, { method: "POST" }),
+  updatePilotageNotes: (id: number, notes: string) =>
+    request<PilotRun>(`/pilotage/${id}/notes`, { method: "PATCH", body: JSON.stringify({ notes }) }),
+
+  // Grading (corrección manual de formularios del estudiante)
+  gradingList: (eventId: number) =>
+    request<{ responses: Record<string, unknown>[]; pending_count: number }>(`/grading/${eventId}`),
+  gradeResponse: (responseId: number, scores: Record<string, number>) =>
+    request<{ graded: boolean; score_obtained: number; max_score: number }>(
+      `/grading/responses/${responseId}`,
+      { method: "POST", body: JSON.stringify({ scores }) },
+    ),
 
   // Live
   live: (eventId: number) => request<LiveSession>(`/live/${eventId}`),

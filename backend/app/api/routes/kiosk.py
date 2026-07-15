@@ -29,6 +29,7 @@ from app.models.enums import RoleCode
 from app.schemas.common import KioskSubmit
 from app.services.authorization import ensure_event_access
 from app.services.dependencies import require_roles
+from app.services.grading import apply_auto_grading
 from app.services.kiosk import (
     authenticate_kiosk_token,
     issue_kiosk_token,
@@ -217,6 +218,7 @@ def kiosk_submit(
         locked=True,
         by_contingency=False,
     )
+    apply_auto_grading(response, station.student_form_definition)
     db.add(response)
     db.flush()
     db.add(AuditLog(

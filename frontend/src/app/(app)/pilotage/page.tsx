@@ -28,6 +28,8 @@ export default function PilotagePage() {
   const [creatingStationPilot, setCreatingStationPilot] = useState(false);
   const [creatingCircuitPilot, setCreatingCircuitPilot] = useState(false);
   const [processingArchiveId, setProcessingArchiveId] = useState<string | null>(null);
+  const [editingNotes, setEditingNotes] = useState<{ id: number; name: string; notes: string } | null>(null);
+  const [savingNotes, setSavingNotes] = useState(false);
 
   const refresh = async () =>
     setData((await api.pilotage(eventId)) as Record<string, unknown>[]);
@@ -229,6 +231,29 @@ export default function PilotagePage() {
                 ),
               },
               {
+                key: "notes",
+                label: "Hallazgos",
+                render: (row) => {
+                  const notes = String((row as { notes?: string }).notes ?? "").trim();
+                  return (
+                    <button
+                      className="text-left text-xs font-semibold text-[var(--color-primary)] underline-offset-4 hover:underline"
+                      onClick={() =>
+                        setEditingNotes({
+                          id: Number(row.id),
+                          name: String(row.name ?? ""),
+                          notes,
+                        })
+                      }
+                    >
+                      {notes
+                        ? `${notes.slice(0, 60)}${notes.length > 60 ? "…" : ""}`
+                        : "Registrar hallazgos"}
+                    </button>
+                  );
+                },
+              },
+              {
                 key: "actions",
                 label: "Acción",
                 render: (row) => (
@@ -265,6 +290,50 @@ export default function PilotagePage() {
           />
         )}
       </SectionCard>
+      {editingNotes ? (
+        <SectionCard
+          title={`Hallazgos del pilotaje: ${editingNotes.name}`}
+          subtitle="Registra tiempos reales, problemas detectados y ajustes acordados. Este texto queda asociado al pilotaje como insumo para la publicación."
+        >
+          <textarea
+            rows={6}
+            value={editingNotes.notes}
+            onChange={(event) =>
+              setEditingNotes((prev) => (prev ? { ...prev, notes: event.target.value } : prev))
+            }
+            placeholder="Ej.: La estación 2 necesitó 9 minutos reales; el audio del ECG no se escuchaba desde la puerta; se acordó reubicar el parlante."
+          />
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              className="btn-primary"
+              disabled={savingNotes}
+              onClick={async () => {
+                setMessage(null);
+                setSavingNotes(true);
+                try {
+                  await api.updatePilotageNotes(editingNotes.id, editingNotes.notes);
+                  await refresh();
+                  setEditingNotes(null);
+                  setMessage("Hallazgos guardados correctamente.");
+                } catch (notesError) {
+                  setMessage(
+                    notesError instanceof Error
+                      ? notesError.message
+                      : "No se pudieron guardar los hallazgos.",
+                  );
+                } finally {
+                  setSavingNotes(false);
+                }
+              }}
+            >
+              {savingNotes ? "Guardando..." : "Guardar hallazgos"}
+            </button>
+            <button className="btn-secondary" onClick={() => setEditingNotes(null)}>
+              Cancelar
+            </button>
+          </div>
+        </SectionCard>
+      ) : null}
     </div>
   );
 }

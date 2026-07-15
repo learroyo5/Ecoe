@@ -362,6 +362,9 @@ class PilotRun(Base, TimestampMixin):
     ecoe_event_id: Mapped[int] = mapped_column(ForeignKey("ecoe_events.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     scope: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Hallazgos operativos del pilotaje (tiempos reales, problemas, ajustes):
+    # lo que convierte el registro en insumo de mejora antes de publicar.
+    notes: Mapped[str] = mapped_column(Text, default="")
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
 
     ecoe_event: Mapped["ECOEEvent"] = relationship(back_populates="pilot_runs")
@@ -489,6 +492,14 @@ class StudentResponse(Base, TimestampMixin):
     submitted_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive)
     locked: Mapped[bool] = mapped_column(Boolean, default=True)
     by_contingency: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Puntuacion del formulario: score_obtained queda NULL mientras haya
+    # preguntas de correccion manual pendientes; solo las respuestas con
+    # puntaje resuelto entran al consolidado (ver services/grading.py).
+    score_obtained: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    grading: Mapped[dict] = mapped_column(JSON, default=dict)
+    graded_by_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    graded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class StationResult(Base, TimestampMixin):
