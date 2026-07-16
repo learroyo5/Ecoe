@@ -49,6 +49,7 @@ export function StationIdentityStep({
       subtitle="Primero define desde dónde nace esta estación y luego completa su identidad pedagógica central."
       expanded={scaffold.expandedSection === 1}
       completed={scaffold.stepCompleted}
+      pendingHint={scaffold.pendingHint}
       onToggle={() => scaffold.openSection(1)}
       sectionRef={scaffold.sectionRef}
     >

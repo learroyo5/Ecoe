@@ -6,6 +6,7 @@ import { BuilderSection, FieldBlock, type StepScaffoldProps } from "./shared";
 
 export function ResourcesStep({
   scaffold,
+  usesMultimedia,
   renderTextField,
   isEditing,
   builderScope,
@@ -19,6 +20,7 @@ export function ResourcesStep({
   setMediaAssets,
 }: {
   scaffold: StepScaffoldProps;
+  usesMultimedia: boolean;
   renderTextField: (key: "materials" | "multimedia_notes") => React.ReactNode;
   isEditing: boolean;
   builderScope: "bank" | "ecoe";
@@ -38,26 +40,31 @@ export function ResourcesStep({
       subtitle="Cierra aquí todo lo necesario para montar la estación sin incertidumbre el día del ECOE."
       expanded={scaffold.expandedSection === 4}
       completed={scaffold.stepCompleted}
+      pendingHint={scaffold.pendingHint}
       onToggle={() => scaffold.openSection(4)}
       sectionRef={scaffold.sectionRef}
     >
       <div className="grid gap-4 lg:grid-cols-2">
         {renderTextField("materials")}
-        {renderTextField("multimedia_notes")}
+        {usesMultimedia ? renderTextField("multimedia_notes") : null}
       </div>
-      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700">
-        Este bloque no solo documenta materiales: también ayuda a que coordinación, docente y
-        evaluador sepan qué debe estar disponible, qué archivo se mostrará y qué hacer si falta
-        algún recurso.
-      </div>
-      <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5">
+      <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
         <div>
-          <h5 className="text-lg font-semibold text-slate-900">Archivos multimedia de la estación</h5>
-          <p className="mt-1 text-sm text-slate-600">
-            Puedes cargar audio, video, PDF, imágenes y documentos Word para usarlos en la
-            estación. Si la estación aún no ha sido guardada, primero debes guardarla y luego
-            volver a editarla para adjuntar archivos.
-          </p>
+          <h5 className="text-base font-semibold text-slate-900">
+            Archivos multimedia de la estación
+          </h5>
+          {usesMultimedia ? (
+            <p className="mt-1 text-sm text-slate-600">
+              Esta estación <strong>declara uso de multimedia</strong>: necesita al menos un
+              archivo cargado (imagen, audio, video o PDF) para quedar lista. Si aún no has
+              guardado la estación, guárdala primero y vuelve a abrirla para adjuntar.
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-slate-600">
+              Esta estación no declara multimedia. Puedes cargar archivos igualmente como apoyo,
+              o activar el switch «Multimedia» si el recurso es parte esencial de la estación.
+            </p>
+          )}
         </div>
 
         {isEditing && builderScope === "ecoe" ? (

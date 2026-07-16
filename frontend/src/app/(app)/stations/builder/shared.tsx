@@ -98,6 +98,54 @@ export const stationTypeOptions = [
   { value: "conceptual", label: "Conceptual" },
 ];
 
+// ── Capacidades de la estación ──────────────────────────────────────────
+// Fuente de verdad de qué necesita la estación. La plantilla solo precarga
+// estos switches; el backend valida exactamente estas mismas reglas.
+
+export type StationCapabilities = {
+  requiresEvaluator: boolean;
+  requiresStudentForm: boolean;
+  usesMultimedia: boolean;
+  usesSimulatedPatient: boolean;
+};
+
+export const defaultCapabilities: StationCapabilities = {
+  requiresEvaluator: true,
+  requiresStudentForm: false,
+  usesMultimedia: false,
+  usesSimulatedPatient: false,
+};
+
+export const capabilityConfig: {
+  key: keyof StationCapabilities;
+  label: string;
+  requirement: string;
+}[] = [
+  {
+    key: "requiresEvaluator",
+    label: "Evaluador presencial",
+    requirement:
+      "Necesita pauta de evaluación, guía del evaluador y un evaluador asignado en la pantalla Evaluadores.",
+  },
+  {
+    key: "requiresStudentForm",
+    label: "Formulario del estudiante",
+    requirement:
+      "El estudiante responde en pantalla. Necesita al menos 1 pregunta guardada; con puntaje y clave, se autocorrige.",
+  },
+  {
+    key: "usesMultimedia",
+    label: "Multimedia",
+    requirement:
+      "Necesita al menos 1 archivo cargado (imagen, audio, video o PDF) más sus indicaciones de uso.",
+  },
+  {
+    key: "usesSimulatedPatient",
+    label: "Paciente simulado",
+    requirement: "Necesita un personaje asociado del gestor de pacientes simulados.",
+  },
+];
+
 export const circuitOptions = ["Circuito A", "Circuito B", "Circuito C"];
 
 export const instrumentTypeOptions = [
@@ -149,6 +197,7 @@ export function createBuilderSnapshot({
   studentQuestions,
   bankStatus,
   assessmentMode,
+  capabilities,
 }: {
   builderScope: "bank" | "ecoe";
   form: typeof defaultForm;
@@ -159,6 +208,7 @@ export function createBuilderSnapshot({
   studentQuestions: StudentQuestion[];
   bankStatus: string;
   assessmentMode: AssessmentMode;
+  capabilities: StationCapabilities;
 }) {
   return JSON.stringify({
     builderScope,
@@ -173,6 +223,7 @@ export function createBuilderSnapshot({
     studentQuestions,
     bankStatus,
     assessmentMode,
+    capabilities,
   });
 }
 
@@ -285,6 +336,7 @@ export function BuilderSection({
   subtitle,
   expanded,
   completed = false,
+  pendingHint,
   onToggle,
   children,
   sectionRef,
@@ -294,6 +346,8 @@ export function BuilderSection({
   subtitle: string;
   expanded: boolean;
   completed?: boolean;
+  /** Resumen corto de lo que falta, visible con la sección comprimida. */
+  pendingHint?: string;
   onToggle: () => void;
   children: React.ReactNode;
   sectionRef?: (node: HTMLElement | null) => void;
@@ -301,46 +355,42 @@ export function BuilderSection({
   return (
     <section
       ref={sectionRef}
-      className={`scroll-mt-24 rounded-3xl border bg-white/90 transition ${
-        expanded
-          ? "border-teal-200 shadow-[0_18px_40px_-32px_rgba(13,148,136,0.55)]"
-          : "border-slate-200"
+      className={`scroll-mt-24 rounded-2xl border bg-white/90 transition ${
+        expanded ? "border-teal-300 shadow-sm" : "border-slate-200"
       }`}
     >
       <button
         type="button"
-        className="flex w-full items-start justify-between gap-4 px-5 py-5 text-left"
+        className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left"
         onClick={onToggle}
+        aria-expanded={expanded}
       >
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div
-              className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white ${
-                completed ? "bg-emerald-600" : "bg-teal-700"
-              }`}
-            >
-              {completed ? `Paso ${index} listo` : `Paso ${index}`}
-            </div>
-            <span
-              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${
-                completed
-                  ? "bg-emerald-100 text-emerald-700"
-                  : expanded
-                    ? "bg-teal-100 text-teal-700 animate-pulse-soft"
-                    : "bg-orange-50 text-orange-600"
-              }`}
-            >
-              {completed ? "Completo" : expanded ? "Activo" : "Pendiente"}
-            </span>
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            className={`flex size-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
+              completed
+                ? "bg-emerald-600 text-white"
+                : expanded
+                  ? "bg-teal-700 text-white"
+                  : "bg-slate-200 text-slate-600"
+            }`}
+          >
+            {completed ? "✓" : index}
+          </span>
+          <div className="min-w-0">
+            <h4 className="truncate text-base font-semibold text-slate-900">{title}</h4>
+            {expanded ? (
+              <p className="mt-0.5 text-sm leading-5 text-slate-600">{subtitle}</p>
+            ) : !completed && pendingHint ? (
+              <p className="mt-0.5 truncate text-xs text-amber-700">{pendingHint}</p>
+            ) : null}
           </div>
-          <h4 className="mt-2 text-xl text-slate-900">{title}</h4>
-          <p className="mt-1 text-sm leading-6 text-slate-600">{subtitle}</p>
         </div>
-        <span className="rounded-full border border-slate-300 px-3 py-1 text-sm font-semibold text-slate-600">
-          {expanded ? "Ocultar" : "Abrir"}
+        <span className="shrink-0 text-sm font-semibold text-slate-400">
+          {expanded ? "▴" : "▾"}
         </span>
       </button>
-      {expanded ? <div className="border-t border-slate-200 px-5 py-5">{children}</div> : null}
+      {expanded ? <div className="border-t border-slate-200 px-4 py-5">{children}</div> : null}
     </section>
   );
 }
@@ -349,8 +399,9 @@ export type StepIndex = 1 | 2 | 3 | 4;
 
 /** Common scaffolding props shared by every numbered wizard step. */
 export type StepScaffoldProps = {
-  expandedSection: StepIndex;
+  expandedSection: StepIndex | null;
   stepCompleted: boolean;
+  pendingHint?: string;
   openSection: (section: StepIndex) => void;
   sectionRef: (node: HTMLElement | null) => void;
 };

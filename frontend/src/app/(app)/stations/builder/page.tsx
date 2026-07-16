@@ -15,7 +15,9 @@ import { InstructionsStep } from "./instructions-step";
 import { ResourcesStep } from "./resources-step";
 import {
   FieldBlock,
+  capabilityConfig,
   createBuilderSnapshot,
+  defaultCapabilities,
   defaultForm,
   defaultInstrumentDraft,
   defaultStudentQuestions,
@@ -25,31 +27,16 @@ import {
   type FormKey,
   type InstrumentDraft,
   type InstrumentDraftItem,
+  type StationCapabilities,
   type StepIndex,
   type StudentQuestion,
 } from "./shared";
 
 const builderFlowSteps = [
-  {
-    index: 1 as const,
-    title: "1. Identidad de la estación",
-    description: "Nombre, tipo, circuito, y resultados esperados.",
-  },
-  {
-    index: 2 as const,
-    title: "2. Instrumento de evaluación",
-    description: "Plantilla, pauta, y paciente simulado.",
-  },
-  {
-    index: 3 as const,
-    title: "3. Instrucciones",
-    description: "Qué ve el estudiante y cómo evalúa el docente.",
-  },
-  {
-    index: 4 as const,
-    title: "4. Recursos y multimedia",
-    description: "Materiales, archivos, y formulario del estudiante.",
-  },
+  { index: 1 as const, title: "Identidad" },
+  { index: 2 as const, title: "Evaluación" },
+  { index: 3 as const, title: "Instrucciones" },
+  { index: 4 as const, title: "Recursos" },
 ];
 
 const bankStatusOptions = [
@@ -108,7 +95,12 @@ export default function StationBuilderPage() {
   const [studentQuestions, setStudentQuestions] =
     useState<StudentQuestion[]>(defaultStudentQuestions);
   const [bankStatus, setBankStatus] = useState("en_diseno");
-  const [expandedSection, setExpandedSection] = useState<StepIndex>(1);
+  const [capabilities, setCapabilities] = useState<StationCapabilities>(defaultCapabilities);
+  // Al editar, todo parte comprimido: se viene a ajustar algo puntual.
+  // Al crear, el paso 1 parte abierto para no exigir un clic extra.
+  const [expandedSection, setExpandedSection] = useState<StepIndex | null>(
+    isEditing || isEditingBankStation ? null : 1,
+  );
   const [mediaTargetViewer, setMediaTargetViewer] = useState("estudiante");
   const [mediaMessage, setMediaMessage] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -123,23 +115,32 @@ export default function StationBuilderPage() {
   const pendingScrollSectionRef = useRef<StepIndex | null>(null);
   const selectedTemplate =
     (templates ?? []).find((template) => String(template.id) === selectedTemplateId) ?? null;
-  const selectedTemplateConfig =
-    ((selectedTemplate?.default_configuration as Record<string, unknown> | undefined) ?? {});
   const selectedBankStation =
     (bankStations ?? []).find((station) => String(station.id) === String(useBankStationId)) ?? null;
-  const selectedTemplateCategory = String(selectedTemplate?.category ?? "").toLowerCase();
-  const templateUsesStudentForm =
-    Boolean(selectedTemplateConfig.requires_student_form) ||
-    selectedTemplateCategory.includes("formulario") ||
-    selectedTemplateCategory.includes("hibrid");
-  const templateUsesMultimedia =
-    Boolean(selectedTemplateConfig.uses_multimedia) ||
-    selectedTemplateCategory.includes("multimedia") ||
-    selectedTemplateCategory.includes("hibrid");
-  const templateUsesSimulatedPatient =
-    Boolean(selectedTemplateConfig.uses_simulated_patient) ||
-    selectedTemplateCategory.includes("paciente") ||
-    selectedTemplateCategory.includes("hibrid");
+
+  // La plantilla solo PRECARGA las capacidades; los switches mandan después.
+  const applyTemplatePreset = (templateId: string) => {
+    setSelectedTemplateId(templateId);
+    const template = (templates ?? []).find((item) => String(item.id) === templateId);
+    if (!template) {
+      return;
+    }
+    const config = (template.default_configuration as Record<string, unknown> | undefined) ?? {};
+    const category = String(template.category ?? "").toLowerCase();
+    const base: StationCapabilities = {
+      requiresEvaluator: !(category.includes("formulario") || category.includes("multimedia")),
+      requiresStudentForm:
+        category.includes("formulario") || category.includes("multimedia") || category.includes("hibrid"),
+      usesMultimedia: category.includes("multimedia") || category.includes("hibrid"),
+      usesSimulatedPatient: category.includes("paciente"),
+    };
+    setCapabilities({
+      requiresEvaluator: Boolean(config.requires_evaluator ?? base.requiresEvaluator),
+      requiresStudentForm: Boolean(config.requires_student_form ?? base.requiresStudentForm),
+      usesMultimedia: Boolean(config.uses_multimedia ?? base.usesMultimedia),
+      usesSimulatedPatient: Boolean(config.uses_simulated_patient ?? base.usesSimulatedPatient),
+    });
+  };
   const nextStationNumber = String(
     ((stations ?? []).reduce((max, station) => {
       const value = Number(station.station_number ?? 0);
@@ -165,6 +166,11 @@ export default function StationBuilderPage() {
       .filter(Boolean).length > 0;
   });
 
+  const studentFormPointsTotal = studentQuestions.reduce((sum, question) => {
+    const points = Number(question.points);
+    return Number.isFinite(points) && points > 0 && question.prompt.trim() ? sum + points : sum;
+  }, 0);
+
   const stepCompletion: Record<StepIndex, boolean> = {
     1:
       Boolean(form.name.trim()) &&
@@ -172,21 +178,50 @@ export default function StationBuilderPage() {
       Boolean(form.expected_outcomes.trim()) &&
       Boolean(form.student_activity.trim()),
     2:
-      Boolean(selectedAssessmentToolId) &&
-      (!templateUsesSimulatedPatient || Boolean(selectedPatientId)),
+      (!capabilities.requiresEvaluator || Boolean(selectedAssessmentToolId)) &&
+      (!capabilities.usesSimulatedPatient || Boolean(selectedPatientId)) &&
+      (!capabilities.requiresStudentForm || hasStudentQuestions) &&
+      Number(form.max_score) > 0,
     3:
       Boolean(form.pre_entry_instruction.trim()) &&
       Boolean(form.student_station_instruction.trim()) &&
-      Boolean(form.evaluator_instruction.trim()) &&
-      (!templateUsesStudentForm || hasStudentQuestions),
+      (!capabilities.requiresEvaluator || Boolean(form.evaluator_instruction.trim())),
     4:
       Boolean(form.materials.trim()) &&
-      (!templateUsesMultimedia ||
+      (!capabilities.usesMultimedia ||
         Boolean(form.multimedia_notes.trim()) ||
         Boolean((mediaAssets ?? []).length)),
   };
+  const stepPendingHints: Record<StepIndex, string> = {
+    1: "Pendiente: nombre, tipo, desempeños esperados o actividad del estudiante",
+    2: [
+      capabilities.requiresEvaluator && !selectedAssessmentToolId ? "pauta de evaluación" : null,
+      capabilities.requiresStudentForm && !hasStudentQuestions ? "preguntas del formulario" : null,
+      capabilities.usesSimulatedPatient && !selectedPatientId ? "paciente simulado" : null,
+      Number(form.max_score) > 0 ? null : "puntaje máximo",
+    ]
+      .filter(Boolean)
+      .map((item, index) => (index === 0 ? `Pendiente: ${item}` : item))
+      .join(" · "),
+    3: [
+      form.pre_entry_instruction.trim() ? null : "instrucción previa",
+      form.student_station_instruction.trim() ? null : "instrucciones internas",
+      capabilities.requiresEvaluator && !form.evaluator_instruction.trim() ? "guía del evaluador" : null,
+    ]
+      .filter(Boolean)
+      .map((item, index) => (index === 0 ? `Pendiente: ${item}` : item))
+      .join(" · "),
+    4: [
+      form.materials.trim() ? null : "materiales",
+      capabilities.usesMultimedia && !form.multimedia_notes.trim() && !(mediaAssets ?? []).length
+        ? "archivos o indicaciones multimedia"
+        : null,
+    ]
+      .filter(Boolean)
+      .map((item, index) => (index === 0 ? `Pendiente: ${item}` : item))
+      .join(" · "),
+  };
   const completedSteps = (Object.values(stepCompletion).filter(Boolean).length);
-  const completionPercent = Math.round((completedSteps / 4) * 100);
   const currentBuilderSnapshot = useMemo(
     () =>
       createBuilderSnapshot({
@@ -199,11 +234,13 @@ export default function StationBuilderPage() {
         studentQuestions,
         bankStatus,
         assessmentMode,
+        capabilities,
       }),
     [
       assessmentMode,
       bankStatus,
       builderScope,
+      capabilities,
       form,
       instrumentDraft,
       selectedAssessmentToolId,
@@ -393,10 +430,10 @@ export default function StationBuilderPage() {
     ...form,
     station_number: Number(isEditing ? form.station_number : nextStationNumber),
     max_score: Number(form.max_score),
-    requires_evaluator: true,
-    requires_student_form: templateUsesStudentForm,
-    uses_multimedia: templateUsesMultimedia,
-    uses_simulated_patient: templateUsesSimulatedPatient,
+    requires_evaluator: capabilities.requiresEvaluator,
+    requires_student_form: capabilities.requiresStudentForm,
+    uses_multimedia: capabilities.usesMultimedia,
+    uses_simulated_patient: capabilities.usesSimulatedPatient,
     uses_physical_resources: true,
     student_form_definition: buildStudentFormDefinition(),
     contingency_ready: true,
@@ -415,10 +452,10 @@ export default function StationBuilderPage() {
     student_station_instruction: form.student_station_instruction,
     pre_entry_instruction: form.pre_entry_instruction,
     evaluator_instruction: form.evaluator_instruction,
-    requires_evaluator: true,
-    requires_student_form: templateUsesStudentForm,
-    uses_multimedia: templateUsesMultimedia,
-    uses_simulated_patient: templateUsesSimulatedPatient,
+    requires_evaluator: capabilities.requiresEvaluator,
+    requires_student_form: capabilities.requiresStudentForm,
+    uses_multimedia: capabilities.usesMultimedia,
+    uses_simulated_patient: capabilities.usesSimulatedPatient,
     uses_physical_resources: true,
     max_score: Number(form.max_score),
     materials: form.materials,
@@ -454,6 +491,12 @@ export default function StationBuilderPage() {
       ? String(station.assessment_tool_id)
       : "";
     const nextBankStatus = String(station.status ?? "en_diseno");
+    const nextCapabilities: StationCapabilities = {
+      requiresEvaluator: Boolean(station.requires_evaluator ?? true),
+      requiresStudentForm: Boolean(station.requires_student_form),
+      usesMultimedia: Boolean(station.uses_multimedia),
+      usesSimulatedPatient: Boolean(station.uses_simulated_patient),
+    };
     setAssessmentMode("existing");
     const rawQuestions = (
       station.student_form_definition as { questions?: Record<string, unknown>[] } | undefined
@@ -482,6 +525,7 @@ export default function StationBuilderPage() {
     setInstrumentDraft(defaultInstrumentDraft);
     setBankStatus(nextBankStatus);
     setStudentQuestions(nextStudentQuestions);
+    setCapabilities(nextCapabilities);
     setSavedSnapshot(
       createBuilderSnapshot({
         builderScope,
@@ -493,13 +537,22 @@ export default function StationBuilderPage() {
         studentQuestions: nextStudentQuestions,
         bankStatus: nextBankStatus,
         assessmentMode: "existing",
+        capabilities: nextCapabilities,
       }),
     );
   }, [builderScope, nextStationNumber]);
 
+  // Un clic sobre la sección ya abierta la comprime; los botones "Continuar"
+  // siempre apuntan a otra sección, así que el toggle no los afecta.
   const openSection = useCallback((section: StepIndex) => {
-    pendingScrollSectionRef.current = section;
-    setExpandedSection(section);
+    setExpandedSection((current) => {
+      if (current === section) {
+        pendingScrollSectionRef.current = null;
+        return null;
+      }
+      pendingScrollSectionRef.current = section;
+      return section;
+    });
   }, []);
 
   const confirmDiscardChanges = useCallback(() => {
@@ -603,7 +656,7 @@ export default function StationBuilderPage() {
   }, [applyStationLikeData, builderScope, isEditing, isUsingBankStation, selectedBankStation]);
 
   useEffect(() => {
-    if (pendingScrollSectionRef.current !== expandedSection) {
+    if (expandedSection === null || pendingScrollSectionRef.current !== expandedSection) {
       return;
     }
 
@@ -633,131 +686,127 @@ export default function StationBuilderPage() {
     );
   }
 
+  const contextModeLabel =
+    builderScope === "bank"
+      ? isEditingBankStation
+        ? "Editando estación del banco"
+        : "Nueva estación del banco"
+      : isUsingBankStation
+        ? "Desde banco hacia ECOE"
+        : isEditing
+          ? "Editando estación del ECOE"
+          : "Nueva estación del ECOE";
+  const contextStationLabel =
+    builderScope === "ecoe"
+      ? `Estación ${isEditing ? form.station_number : nextStationNumber} · ${form.name.trim() || "sin nombre aún"}`
+      : form.name.trim() || "Estación del banco sin nombre aún";
+
   return (
     <SectionCard>
-      {hasUnsavedChanges ? (
-        <div className="mb-4 flex items-center justify-between rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3">
-          <p className="text-sm font-semibold text-amber-800">
-            ⚠️ Tienes cambios sin guardar. Recuerda guardar antes de salir.
+      {/* Barra fija de contexto: siempre se ve qué estación se edita,
+          el avance y el estado de guardado, sin importar el scroll. */}
+      <div className="sticky top-2 z-30 mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl border border-slate-200 bg-white/95 px-4 py-2.5 shadow-sm backdrop-blur">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-primary)]">
+            {contextModeLabel}
           </p>
-          <button
-            type="button"
-            className="btn-primary text-xs"
-            disabled={isSaving}
-            onClick={() => {
-              const formEl = document.querySelector("form") as HTMLFormElement | null;
-              formEl?.requestSubmit();
-            }}
+          <p className="truncate text-sm font-semibold text-slate-900">{contextStationLabel}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-xs text-slate-500">{completedSteps}/4 pasos</span>
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+              isSaving
+                ? "bg-slate-100 text-slate-600"
+                : hasUnsavedChanges
+                  ? "bg-amber-100 text-amber-800"
+                  : "bg-emerald-100 text-emerald-800"
+            }`}
           >
-            {isSaving ? "Guardando..." : "Guardar ahora"}
+            {isSaving ? "Guardando..." : hasUnsavedChanges ? "Sin guardar" : "Guardado"}
+          </span>
+          <button
+            type="submit"
+            form="station-builder-form"
+            className="btn-primary px-3 py-2 text-xs"
+            disabled={isSaving || !hasUnsavedChanges}
+          >
+            Guardar
           </button>
         </div>
-      ) : null}
-      <section className="space-y-4 rounded-3xl border border-indigo-200 bg-indigo-50/70 p-5">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-700">
-            Ruta de trabajo
-          </p>
-          <h2 className="mt-2 text-2xl text-slate-950">
-            {builderScope === "bank"
-              ? isEditingBankStation
-                ? "Editar estación del banco"
-                : "Constructor del banco de estaciones"
-              : isEditing
-                ? "Editar estación"
-                : "Constructor de estaciones"}
-          </h2>
-          <p className="mt-1 text-sm font-medium text-slate-700">
-            Haz clic en cada paso para abrirlo, completarlo y avanzar con menos ruido visual.
-          </p>
-        </div>
+      </div>
 
-        <div className="grid gap-3 lg:grid-cols-2">
-          {builderFlowSteps.map((step, index) => (
-            <button
-              key={step.title}
-              type="button"
-              className={`rounded-2xl border px-4 py-4 text-left transition ${
-                expandedSection === step.index
-                  ? "border-teal-600 bg-white text-slate-900 shadow-sm"
-                  : "border-indigo-200 bg-white/80 text-slate-700 hover:border-indigo-300"
+      {/* Stepper compacto: estado de cada paso en una sola línea. */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {builderFlowSteps.map((step) => (
+          <button
+            key={step.title}
+            type="button"
+            onClick={() => openSection(step.index)}
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition ${
+              expandedSection === step.index
+                ? "border-teal-600 bg-teal-50 font-semibold text-teal-900"
+                : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+            }`}
+          >
+            <span
+              className={`flex size-5 items-center justify-center rounded-full text-[11px] font-semibold ${
+                stepCompletion[step.index]
+                  ? "bg-emerald-600 text-white"
+                  : "bg-slate-200 text-slate-600"
               }`}
-              onClick={() => openSection(step.index)}
             >
-              <div className="flex items-start gap-4">
-                <div
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
-                    stepCompletion[step.index]
-                      ? "bg-emerald-600 text-white"
-                      : "bg-teal-700 text-white"
-                  }`}
-                >
-                  {stepCompletion[step.index] ? "✓" : index + 1}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-semibold">{step.title}</p>
-                    <span
-                      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${
-                        stepCompletion[step.index]
-                          ? "bg-emerald-100 text-emerald-700"
-                          : expandedSection === step.index
-                            ? "bg-teal-100 text-teal-700 animate-pulse-soft"
-                            : "bg-orange-50 text-orange-600"
-                      }`}
-                    >
-                      {stepCompletion[step.index] ? "Completo" : expandedSection === step.index ? "En curso" : "Pendiente"}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs leading-5 text-slate-600">{step.description}</p>
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-
-        <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                Avance del constructor
-              </p>
-              <p className="mt-1 text-sm text-slate-700">
-                {completedSteps} de 4 pasos completos. El constructor te lleva al inicio del bloque activo.
-              </p>
-            </div>
-            <p className="text-sm font-semibold text-slate-900">{completionPercent}%</p>
-          </div>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-500 transition-all"
-              style={{ width: `${completionPercent}%` }}
-            />
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700">
-            {builderScope === "bank"
-              ? isEditingBankStation
-                ? "Modo: editando banco"
-                : "Modo: creando banco"
-              : isUsingBankStation
-                ? "Modo: desde banco hacia ECOE"
-              : isEditing
-                ? "Modo: editando ECOE"
-                : "Modo: nueva estación del ECOE"}
-          </span>
-          {builderScope === "bank" ? (
-            <span className="rounded-full bg-white px-3 py-1 text-xs text-slate-600">
-              Estación reutilizable para futuros ECOE
+              {stepCompletion[step.index] ? "✓" : step.index}
             </span>
-          ) : null}
+            {step.title}
+          </button>
+        ))}
+      </div>
+
+      {/* Capacidades: los switches que definen qué necesita la estación. */}
+      <section className="mb-6 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <p className="text-sm font-semibold text-slate-900">¿Qué necesita esta estación?</p>
+          <p className="text-xs text-slate-500">
+            La plantilla del paso Evaluación solo precarga estos switches; aquí mandan ellos.
+          </p>
+        </div>
+        <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+          {capabilityConfig.map((capability) => {
+            const checked = capabilities[capability.key];
+            return (
+              <label
+                key={capability.key}
+                className={`flex cursor-pointer flex-col gap-1 rounded-2xl border px-3 py-2.5 transition ${
+                  checked
+                    ? "border-[var(--color-primary)] bg-white shadow-sm"
+                    : "border-slate-200 bg-white/70 hover:border-slate-300"
+                }`}
+              >
+                <span className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(event) =>
+                      setCapabilities((current) => ({
+                        ...current,
+                        [capability.key]: event.target.checked,
+                      }))
+                    }
+                    className="size-4 shrink-0 accent-[var(--color-primary)]"
+                  />
+                  {capability.label}
+                </span>
+                <span className="text-xs leading-5 text-slate-500">{capability.requirement}</span>
+              </label>
+            );
+          })}
         </div>
       </section>
 
       <form
-        className="space-y-6"
+        id="station-builder-form"
+        className="space-y-4"
         onSubmit={async (event) => {
           event.preventDefault();
           setMessage(null);
@@ -776,7 +825,7 @@ export default function StationBuilderPage() {
               if (newInstrumentId) bankPayload.assessment_tool_id = newInstrumentId;
 
               if (
-                templateUsesStudentForm &&
+                capabilities.requiresStudentForm &&
                 !bankPayload.student_form_definition.questions.length
               ) {
                 throw new Error(
@@ -815,7 +864,7 @@ export default function StationBuilderPage() {
             if (newInstrumentId) payload.assessment_tool_id = newInstrumentId;
 
             if (
-              templateUsesStudentForm &&
+              capabilities.requiresStudentForm &&
               !payload.student_form_definition.questions.length
             ) {
               throw new Error(
@@ -857,6 +906,7 @@ export default function StationBuilderPage() {
           scaffold={{
             expandedSection,
             stepCompleted: stepCompletion[1],
+            pendingHint: stepPendingHints[1],
             openSection,
             sectionRef: (node) => { sectionRefs.current[1] = node; },
           }}
@@ -878,12 +928,14 @@ export default function StationBuilderPage() {
           scaffold={{
             expandedSection,
             stepCompleted: stepCompletion[2],
+            pendingHint: stepPendingHints[2],
             openSection,
             sectionRef: (node) => { sectionRefs.current[2] = node; },
           }}
+          capabilities={capabilities}
           templates={templates}
           selectedTemplateId={selectedTemplateId}
-          setSelectedTemplateId={setSelectedTemplateId}
+          setSelectedTemplateId={applyTemplatePreset}
           selectedTemplate={selectedTemplate}
           assessmentMode={assessmentMode}
           setAssessmentMode={setAssessmentMode}
@@ -902,28 +954,31 @@ export default function StationBuilderPage() {
           setSelectedPatientId={setSelectedPatientId}
           patients={patients}
           maxScore={form.max_score}
+          studentFormPointsTotal={studentFormPointsTotal}
           updateField={updateField}
           onContinue={() => openSection(3)}
-        />
-
-        {templateUsesStudentForm ? (
-          <StudentFormSection
-            studentQuestions={studentQuestions}
-            updateStudentQuestion={updateStudentQuestion}
-            addStudentQuestion={addStudentQuestion}
-            removeStudentQuestion={removeStudentQuestion}
-            isEditing={isEditing}
-            onSaveStudentForm={handleSaveStudentForm}
-          />
-        ) : null}
+        >
+          {capabilities.requiresStudentForm ? (
+            <StudentFormSection
+              studentQuestions={studentQuestions}
+              updateStudentQuestion={updateStudentQuestion}
+              addStudentQuestion={addStudentQuestion}
+              removeStudentQuestion={removeStudentQuestion}
+              isEditing={isEditing}
+              onSaveStudentForm={handleSaveStudentForm}
+            />
+          ) : null}
+        </InstrumentStep>
 
         <InstructionsStep
           scaffold={{
             expandedSection,
             stepCompleted: stepCompletion[3],
+            pendingHint: stepPendingHints[3],
             openSection,
             sectionRef: (node) => { sectionRefs.current[3] = node; },
           }}
+          requiresEvaluator={capabilities.requiresEvaluator}
           renderTextField={renderTextField}
           onContinue={() => openSection(4)}
         />
@@ -932,9 +987,11 @@ export default function StationBuilderPage() {
           scaffold={{
             expandedSection,
             stepCompleted: stepCompletion[4],
+            pendingHint: stepPendingHints[4],
             openSection,
             sectionRef: (node) => { sectionRefs.current[4] = node; },
           }}
+          usesMultimedia={capabilities.usesMultimedia}
           renderTextField={renderTextField}
           isEditing={isEditing}
           builderScope={builderScope}

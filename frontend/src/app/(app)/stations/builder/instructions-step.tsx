@@ -4,10 +4,12 @@ import { BuilderSection, type StepScaffoldProps } from "./shared";
 
 export function InstructionsStep({
   scaffold,
+  requiresEvaluator,
   renderTextField,
   onContinue,
 }: {
   scaffold: StepScaffoldProps;
+  requiresEvaluator: boolean;
   renderTextField: (key: "pre_entry_instruction" | "student_station_instruction" | "evaluator_instruction") => React.ReactNode;
   onContinue: () => void;
 }) {
@@ -18,21 +20,34 @@ export function InstructionsStep({
       subtitle="Define lo que guiará al estudiante y al evaluador durante la ejecución real, sin mezclarlo con configuraciones generales del ECOE."
       expanded={scaffold.expandedSection === 3}
       completed={scaffold.stepCompleted}
+      pendingHint={scaffold.pendingHint}
       onToggle={() => scaffold.openSection(3)}
       sectionRef={scaffold.sectionRef}
     >
       <div className="grid gap-4 lg:grid-cols-2">
         {renderTextField("pre_entry_instruction")}
         {renderTextField("student_station_instruction")}
-        <div className="lg:col-span-2">{renderTextField("evaluator_instruction")}</div>
+        {requiresEvaluator ? (
+          <div className="lg:col-span-2">{renderTextField("evaluator_instruction")}</div>
+        ) : (
+          <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 lg:col-span-2">
+            Esta estación no lleva evaluador presencial, así que no necesita guía para el
+            evaluador.
+          </p>
+        )}
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 lg:col-span-2">
           Regla práctica:
           {` `}
-          `Instrucción previa de ingreso` es lo que orienta antes de entrar;
+          «Instrucción previa de ingreso» es lo que orienta antes de entrar;
           {` `}
-          `Instrucciones dentro de la estación` es la orden operativa principal del estudiante;
-          {` `}
-          `Guía para el evaluador` es lo que ordena la observación y el registro.
+          «Instrucciones dentro de la estación» es la orden operativa principal del estudiante
+          {requiresEvaluator ? (
+            <>
+              ;{` `}«Guía para el evaluador» es lo que ordena la observación y el registro.
+            </>
+          ) : (
+            "."
+          )}
         </div>
         <div className="lg:col-span-2 flex justify-end">
           <button

@@ -9,12 +9,14 @@ import {
   type FormKey,
   type InstrumentDraft,
   type InstrumentDraftItem,
+  type StationCapabilities,
   type StepScaffoldProps,
   type StudentQuestion,
 } from "./shared";
 
 export function InstrumentStep({
   scaffold,
+  capabilities,
   templates,
   selectedTemplateId,
   setSelectedTemplateId,
@@ -36,10 +38,13 @@ export function InstrumentStep({
   setSelectedPatientId,
   patients,
   maxScore,
+  studentFormPointsTotal,
   updateField,
   onContinue,
+  children,
 }: {
   scaffold: StepScaffoldProps;
+  capabilities: StationCapabilities;
   templates: Record<string, unknown>[] | null;
   selectedTemplateId: string;
   setSelectedTemplateId: (value: string) => void;
@@ -61,23 +66,26 @@ export function InstrumentStep({
   setSelectedPatientId: (value: string) => void;
   patients: Record<string, unknown>[] | null;
   maxScore: string;
+  studentFormPointsTotal: number;
   updateField: (key: FormKey, value: string) => void;
   onContinue: () => void;
+  children?: React.ReactNode;
 }) {
   return (
     <BuilderSection
       index={2}
-      title="Configuración académica"
-      subtitle="Aquí decides la plantilla, la pauta y los apoyos que activan el flujo real de la estación."
+      title="Evaluación y puntaje"
+      subtitle="Según los switches de arriba: pauta del evaluador, formulario del estudiante, paciente simulado y puntaje total."
       expanded={scaffold.expandedSection === 2}
       completed={scaffold.stepCompleted}
+      pendingHint={scaffold.pendingHint}
       onToggle={() => scaffold.openSection(2)}
       sectionRef={scaffold.sectionRef}
     >
       <div className="grid gap-4 lg:grid-cols-2">
         <FieldBlock
           label="Plantilla de referencia"
-          description="Usa una plantilla si quieres partir desde una estructura ya preparada."
+          description="Opcional: al elegirla, precarga los switches de capacidades con una configuración típica. Después puedes ajustarlos a mano."
         >
           <select
             value={selectedTemplateId}
@@ -90,27 +98,22 @@ export function InstrumentStep({
               </option>
             ))}
           </select>
-          <p className="text-xs leading-5 text-slate-500">
-            Aquí se define la modalidad operativa de la estación, por ejemplo, si usará
-            formulario del estudiante, apoyo multimedia, paciente simulado o una modalidad
-            híbrida.
-          </p>
           {selectedTemplate ? (
             <p className="text-xs leading-5 text-slate-600">
               Plantilla seleccionada: {String(selectedTemplate.name)} · categoría{" "}
               {String(selectedTemplate.category ?? "sin categoría")}
             </p>
           ) : null}
-          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs leading-6 text-slate-600">
-            Esta decisión afecta el flujo posterior. Por ejemplo:
-            {` `}
-            `Híbrida` combina evaluador, formulario y multimedia;
-            {` `}
-            `Formulario estudiante` activa preguntas para el estudiante;
-            {` `}
-            `Paciente simulado` espera un personaje asociado.
-          </div>
         </FieldBlock>
+        {!capabilities.requiresEvaluator ? (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700">
+            Esta estación <strong>no lleva evaluador presencial</strong>, así que no necesita
+            pauta de evaluación ni guía del evaluador.
+            {capabilities.requiresStudentForm
+              ? " El puntaje sale del formulario del estudiante, que se autocorrige con su clave."
+              : " Activa el formulario del estudiante si necesitas registrar y puntuar respuestas."}
+          </div>
+        ) : (
         <FieldBlock
           label="Instrumento de evaluación"
           description="Define aquí mismo la pauta que completará el evaluador o reutiliza una ya creada."
@@ -163,8 +166,8 @@ export function InstrumentStep({
                 </p>
                 <p className="text-xs leading-5 text-slate-500">
                   Si lo que necesitas es que el estudiante responda preguntas en pantalla, eso
-                  no se configura en esta pauta. Debes usar la plantilla adecuada y completar el
-                  formulario del estudiante en la sección correspondiente.
+                  no va en esta pauta: activa el switch «Formulario del estudiante» y completa
+                  las preguntas más abajo.
                 </p>
                 {instrumentMessage ? (
                   <p className="text-sm text-[var(--color-primary)]">{instrumentMessage}</p>
@@ -342,26 +345,30 @@ export function InstrumentStep({
             )}
           </div>
         </FieldBlock>
-        <FieldBlock
-          label="Paciente simulado asociado"
-          description="Vincula un personaje solo si la estación requiere interacción con paciente simulado."
-        >
-          <select
-            value={selectedPatientId}
-            onChange={(event) => setSelectedPatientId(event.target.value)}
+        )}
+        {children ? <div className="lg:col-span-2">{children}</div> : null}
+        {capabilities.usesSimulatedPatient ? (
+          <FieldBlock
+            label="Paciente simulado asociado"
+            description="Esta estación declara paciente simulado: necesita un personaje asociado."
           >
-            <option value="">No aplica para esta estación</option>
-            {(patients ?? []).map((patient) => (
-              <option key={String(patient.id)} value={String(patient.id)}>
-                {String(patient.character_name)}
-              </option>
-            ))}
-          </select>
-        </FieldBlock>
+            <select
+              value={selectedPatientId}
+              onChange={(event) => setSelectedPatientId(event.target.value)}
+            >
+              <option value="">Aún sin personaje asociado</option>
+              {(patients ?? []).map((patient) => (
+                <option key={String(patient.id)} value={String(patient.id)}>
+                  {String(patient.character_name)}
+                </option>
+              ))}
+            </select>
+          </FieldBlock>
+        ) : null}
         <FieldBlock
           label={fieldConfig.max_score.label}
           description={
-            assessmentMode === "create"
+            assessmentMode === "create" && capabilities.requiresEvaluator
               ? "Este puntaje se calcula automáticamente según la suma de los criterios de la pauta que estás creando."
               : fieldConfig.max_score.description
           }
@@ -370,20 +377,26 @@ export function InstrumentStep({
             placeholder={fieldConfig.max_score.placeholder}
             value={maxScore}
             onChange={(event) => updateField("max_score", event.target.value)}
-            readOnly={assessmentMode === "create"}
-            className={assessmentMode === "create" ? "bg-slate-100 text-slate-600" : ""}
+            readOnly={assessmentMode === "create" && capabilities.requiresEvaluator}
+            className={
+              assessmentMode === "create" && capabilities.requiresEvaluator
+                ? "bg-slate-100 text-slate-600"
+                : ""
+            }
           />
+          {!capabilities.requiresEvaluator &&
+          capabilities.requiresStudentForm &&
+          studentFormPointsTotal > 0 &&
+          Number(maxScore) !== studentFormPointsTotal ? (
+            <button
+              type="button"
+              className="btn-secondary px-3 py-1.5 text-xs"
+              onClick={() => updateField("max_score", String(studentFormPointsTotal))}
+            >
+              Usar la suma del formulario ({studentFormPointsTotal} pts)
+            </button>
+          ) : null}
         </FieldBlock>
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 lg:col-span-2">
-          {assessmentMode === "create"
-            ? `El puntaje total de la estación se calcula automáticamente desde la pauta que estás construyendo: ${maxScore} puntos.`
-            : "Si reutilizas una pauta existente, revisa que el puntaje total de la estación coincida con el instrumento seleccionado."}
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 lg:col-span-2">
-          Piensa este bloque como el puente entre el diseño docente y la ejecución real:
-          aquí defines qué verá el evaluador, si el estudiante responderá en pantalla y si la
-          estación dependerá de multimedia o paciente simulado.
-        </div>
         <div className="lg:col-span-2 flex justify-end">
           <button
             type="button"
@@ -491,23 +504,22 @@ export function StudentFormSection({
   onSaveStudentForm: () => Promise<void>;
 }) {
   return (
-    <section className="space-y-4 rounded-3xl border border-indigo-200 bg-indigo-50/70 p-5">
+    <section className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
       <div>
-        <h4 className="text-xl text-slate-900">Formulario que responderá el estudiante</h4>
-        <p className="mt-1 text-sm text-slate-700">
-          Esta mini ventana se activa porque la plantilla seleccionada requiere respuesta del
-          estudiante en interfaz. Define aquí las preguntas que verá dentro de la estación.
+        <h4 className="text-base font-semibold text-slate-900">
+          Formulario que responderá el estudiante
+        </h4>
+        <p className="mt-1 text-sm text-slate-600">
+          Activado por el switch «Formulario del estudiante». Lo que escribas aquí es
+          exactamente lo que verá el estudiante en pantalla: preguntas cortas, claras y sin
+          dobles interpretaciones. Con puntaje y clave, se autocorrige.
         </p>
-      </div>
-      <div className="rounded-2xl border border-indigo-200 bg-white/90 px-4 py-3 text-sm leading-6 text-slate-700">
-        Lo que escribas aquí es exactamente lo que luego aparecerá en la vista del
-        estudiante. Conviene usar preguntas cortas, claras y sin dobles interpretaciones.
       </div>
       <div className="space-y-4">
         {studentQuestions.map((question, index) => (
           <div
             key={`student-question-${index}`}
-            className="grid gap-4 rounded-2xl border border-indigo-200 bg-white/90 p-4 lg:grid-cols-[1.4fr_0.7fr_auto]"
+            className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 lg:grid-cols-[1.4fr_0.7fr_auto]"
           >
             <FieldBlock
               label={`Pregunta ${index + 1}`}

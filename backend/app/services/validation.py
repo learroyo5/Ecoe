@@ -97,15 +97,15 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
         if not station.name.strip():
             blockers.append("Falta nombre de la estación.")
         if not station.expected_outcomes.strip():
-            blockers.append("Faltan aprendizajes o desempenos esperados.")
+            blockers.append("Faltan aprendizajes o desempeños esperados.")
         if not station.student_activity.strip():
-            blockers.append("Falta actividad especifica del estudiante.")
+            blockers.append("Falta actividad específica del estudiante.")
         if not station.pre_entry_instruction.strip():
             blockers.append("Falta instrucción previa de ingreso.")
         if not station.student_station_instruction.strip():
             blockers.append("Faltan instrucciones dentro de la estación para el estudiante.")
         if station.requires_evaluator and not station.evaluator_instruction.strip():
-            blockers.append("Falta guia para el evaluador.")
+            blockers.append("Falta guía para el evaluador.")
         if station.requires_evaluator and station.id not in assigned_station_ids:
             blockers.append("No tiene evaluador principal asignado.")
         if station.requires_evaluator and not station.assessment_tool_id:
@@ -122,7 +122,7 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
             blockers.append("El puntaje máximo de la estación debe ser mayor que cero.")
 
         if not station.materials.strip():
-            warnings.append("No se han detallado materiales o recursos fisicos.")
+            warnings.append("No se han detallado materiales o recursos físicos.")
         if station.uses_multimedia and not station.multimedia_notes.strip():
             warnings.append("Hay multimedia cargada o declarada, pero faltan indicaciones operativas.")
         if not station.template_id:
