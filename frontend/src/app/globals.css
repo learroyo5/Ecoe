@@ -252,9 +252,9 @@ button {
 }
 
 .btn-primary {
-  @apply inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold text-white shadow-sm;
+  @apply inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold text-white;
   background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
-  box-shadow: 0 10px 20px rgba(27, 73, 101, 0.16);
+  box-shadow: 0 2px 6px rgba(27, 73, 101, 0.18);
 }
 
 .btn-primary:hover {
@@ -299,17 +299,13 @@ button {
 }
 
 .evaluation-table thead {
-  background: linear-gradient(135deg, var(--color-primary-dark), var(--color-primary));
-  color: var(--color-text-inverse);
+  background: var(--color-bg-soft);
+  color: var(--color-primary-dark);
+  border-bottom: 1px solid var(--color-border-strong);
 }
 
 .evaluation-table th {
-  @apply px-4 py-3 font-semibold;
-}
-
-/* Ensure header text is readable on hover (when bg changes to light gray) */
-.evaluation-table th:hover {
-  color: #1e293b;
+  @apply px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em];
 }
 
 .evaluation-table tbody tr {

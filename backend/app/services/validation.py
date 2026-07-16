@@ -18,6 +18,19 @@ from app.models.entities import (
 from app.models.enums import ECOEStatus, RoleCode, StationStatus
 from app.utils.helpers import normalize_email
 
+# Etiquetas legibles de los estados internos, para textos visibles al usuario.
+ECOE_STATUS_LABELS: dict[str, str] = {
+    ECOEStatus.borrador.value: "Borrador",
+    ECOEStatus.en_configuracion.value: "En configuración",
+    ECOEStatus.listo_para_pilotaje.value: "Listo para pilotaje",
+    ECOEStatus.en_pilotaje.value: "En pilotaje",
+    ECOEStatus.pilotaje_validado.value: "Pilotaje validado",
+    ECOEStatus.publicado.value: "Publicado",
+    ECOEStatus.en_ejecucion.value: "En ejecución",
+    ECOEStatus.cerrado.value: "Cerrado",
+    ECOEStatus.archivado.value: "Archivado",
+}
+
 # Re-export for backward compatibility
 __all__ = ["compute_ecoe_validation", "update_ecoe_status"]
 
@@ -82,21 +95,21 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
         media_count = media_counts.get(station.id, 0)
 
         if not station.name.strip():
-            blockers.append("Falta nombre de la estacion.")
+            blockers.append("Falta nombre de la estación.")
         if not station.expected_outcomes.strip():
             blockers.append("Faltan aprendizajes o desempenos esperados.")
         if not station.student_activity.strip():
             blockers.append("Falta actividad especifica del estudiante.")
         if not station.pre_entry_instruction.strip():
-            blockers.append("Falta instruccion previa de ingreso.")
+            blockers.append("Falta instrucción previa de ingreso.")
         if not station.student_station_instruction.strip():
-            blockers.append("Faltan instrucciones dentro de la estacion para el estudiante.")
+            blockers.append("Faltan instrucciones dentro de la estación para el estudiante.")
         if station.requires_evaluator and not station.evaluator_instruction.strip():
             blockers.append("Falta guia para el evaluador.")
         if station.requires_evaluator and station.id not in assigned_station_ids:
             blockers.append("No tiene evaluador principal asignado.")
         if station.requires_evaluator and not station.assessment_tool_id:
-            blockers.append("No tiene instrumento de evaluacion asignado.")
+            blockers.append("No tiene instrumento de evaluación asignado.")
         if station.requires_evaluator and assessment_tool and not assessment_tool.items:
             blockers.append("La pauta asignada no tiene criterios evaluables.")
         if station.requires_student_form and question_count == 0:
@@ -106,7 +119,7 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
         if station.uses_simulated_patient and not station.simulated_patient_id:
             blockers.append("Declara paciente simulado, pero no tiene personaje asociado.")
         if station.max_score <= 0:
-            blockers.append("El puntaje maximo de la estacion debe ser mayor que cero.")
+            blockers.append("El puntaje máximo de la estación debe ser mayor que cero.")
 
         if not station.materials.strip():
             warnings.append("No se han detallado materiales o recursos fisicos.")
@@ -222,16 +235,16 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
         "can_start_live": can_start_live,
         "warnings": [
             item for item in [
-                None if tools_ready else "Hay estaciones con evaluacion sin instrumento o con pauta incompleta.",
-                None if forms_ready else "Hay estaciones que requieren formulario del estudiante y aun no tienen preguntas guardadas.",
+                None if tools_ready else "Hay estaciones con evaluación sin instrumento o con pauta incompleta.",
+                None if forms_ready else "Hay estaciones que requieren formulario del estudiante y aún no tienen preguntas guardadas.",
                 None if multimedia_ready else "Hay estaciones multimedia sin archivos cargados.",
-                None if assignments_ready else "Hay estaciones con evaluador requerido, pero sin asignacion principal.",
+                None if assignments_ready else "Hay estaciones con evaluador requerido, pero sin asignación principal.",
                 None if not evaluators_without_account else (
-                    "Evaluadores asignados sin cuenta de usuario activa (no podran iniciar sesion): "
+                    "Evaluadores asignados sin cuenta de usuario activa (no podrán iniciar sesión): "
                     + ", ".join(evaluators_without_account)
                 ),
                 None if not unscored_form_stations else (
-                    "Estaciones con formulario sin puntaje definido (las respuestas no sumaran a Resultados): "
+                    "Estaciones con formulario sin puntaje definido (las respuestas no sumarán a Resultados): "
                     + ", ".join(str(number) for number in unscored_form_stations)
                 ),
             ] if item
@@ -243,8 +256,8 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
                 None if station_count > 0 else "No hay estaciones creadas.",
                 None if timer_ready else "Los tiempos oficiales del ECOE no son validos.",
                 None if all_stations_ready else "Hay estaciones con faltantes operativos que impiden pilotar o publicar.",
-                None if pilot_count > 0 else "Aun no se ha registrado ningun pilotaje.",
-                None if has_live_session > 0 else "No existe una sesion en vivo creada para la ejecucion real.",
+                None if pilot_count > 0 else "Aún no se ha registrado ningún pilotaje.",
+                None if has_live_session > 0 else "No existe una sesión en vivo creada para la ejecución real.",
             ] if item
         ],
         "pilot_checks": [
@@ -255,26 +268,26 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
             {"label": "Estaciones construidas", "ok": station_count > 0,
              "detail": f"Hay {station_count} estaciones creadas en este ECOE."},
             {"label": "Tiempos oficiales configurados", "ok": timer_ready,
-             "detail": f"{ecoe_event.station_time_minutes} min por estacion y {ecoe_event.transition_time_minutes} min de transicion."},
+             "detail": f"{ecoe_event.station_time_minutes} min por estación y {ecoe_event.transition_time_minutes} min de transición."},
             {"label": "Estaciones listas para pilotaje", "ok": all_stations_ready,
-             "detail": f"{complete_stations} de {station_count} estaciones cumplen el minimo operativo."},
+             "detail": f"{complete_stations} de {station_count} estaciones cumplen el mínimo operativo."},
         ],
         "publication_checks": [
             {"label": "Estructura operativa completa", "ok": all_stations_ready and metadata_ready and timer_ready,
-             "detail": f"{complete_stations} de {station_count} estaciones estan completas."},
+             "detail": f"{complete_stations} de {station_count} estaciones están completas."},
             {"label": "Instrumentos y formularios resueltos", "ok": tools_ready and forms_ready,
-             "detail": "Todas las estaciones con evaluador o formulario deben tener su configuracion guardada."},
+             "detail": "Todas las estaciones con evaluador o formulario deben tener su configuración guardada."},
             {"label": "Recursos y asignaciones resueltos", "ok": multimedia_ready and assignments_ready,
-             "detail": "Multimedia declarada y asignacion principal de evaluadores deben estar completos."},
+             "detail": "Multimedia declarada y asignación principal de evaluadores deben estar completos."},
             {"label": "Pilotajes registrados", "ok": pilot_count > 0,
              "detail": f"Se han registrado {pilot_count} pilotajes."},
         ],
         "live_checks": [
             {"label": "ECOE publicado", "ok": ecoe_event.status == ECOEStatus.publicado.value,
-             "detail": f"Estado actual: {ecoe_event.status}."},
-            {"label": "Publicacion valida", "ok": can_publish,
-             "detail": "No debe haber bloqueos estructurales pendientes antes de iniciar la ejecucion real."},
-            {"label": "Sesion en vivo creada", "ok": has_live_session > 0,
+             "detail": f"Estado actual: {ECOE_STATUS_LABELS.get(str(ecoe_event.status), ecoe_event.status)}."},
+            {"label": "Publicación válida", "ok": can_publish,
+             "detail": "No debe haber bloqueos estructurales pendientes antes de iniciar la ejecución real."},
+            {"label": "Sesión en vivo creada", "ok": has_live_session > 0,
              "detail": f"Sesiones en vivo registradas: {has_live_session}."},
             {"label": "Grupos configurados", "ok": ecoe_event.total_groups > 0,
              "detail": f"Grupos configurados: {ecoe_event.total_groups}."},
@@ -329,17 +342,17 @@ def update_ecoe_status(
     if target_status != current_status:
         if target_status not in ALLOWED_STATUS_TRANSITIONS.get(current_status, set()):
             raise ValueError(
-                f"Transicion de estado no permitida: {current_status} → {target_status}"
+                f"Transición de estado no permitida: {current_status} → {target_status}"
             )
         # Readiness gates guard the transition itself; staying in the same
         # state (full-form PUTs) must not re-run them, otherwise an event in
         # ejecucion could never be edited (can_start_live requires publicado).
         if target_status == ECOEStatus.listo_para_pilotaje.value and not validation["can_pilot"]:
-            raise ValueError("El ECOE aun no cumple condiciones para pilotaje")
+            raise ValueError("El ECOE aún no cumple condiciones para pilotaje")
         if target_status == ECOEStatus.publicado.value and not validation["can_publish"]:
-            raise ValueError("El ECOE aun no cumple condiciones para publicacion")
+            raise ValueError("El ECOE aún no cumple condiciones para publicación")
         if target_status == ECOEStatus.en_ejecucion.value and not validation["can_start_live"]:
-            raise ValueError("El ECOE aun no esta listo para ejecucion real")
+            raise ValueError("El ECOE aún no está listo para ejecución real")
 
     if target_status == ECOEStatus.publicado.value:
         live_session = db.scalar(

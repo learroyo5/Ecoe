@@ -25,9 +25,9 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </p>
       <h1 className="mt-3 text-2xl text-[var(--color-primary-dark)]">Proyecto ECOE Digital</h1>
       <p className="mt-2 text-sm leading-6 text-slate-600">
-        Plataforma academica para planificar, pilotar y ejecutar evaluacion clinica estructurada.
+        Plataforma académica para planificar, pilotar y ejecutar evaluación clínica estructurada.
       </p>
-      <nav className="mt-6 space-y-2">
+      <nav className="mt-6 space-y-1">
         {visibleItems.map(({ label, href }) => {
           const active = pathname === href;
           return (
@@ -35,10 +35,10 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               key={href}
               href={href}
               onClick={onNavigate}
-              className={`block rounded-2xl px-4 py-3 text-sm transition ${
+              className={`block rounded-2xl px-4 py-2.5 text-sm transition ${
                 active
                   ? "bg-[linear-gradient(135deg,var(--color-primary),var(--color-primary-dark))] font-semibold text-white shadow-sm"
-                  : "bg-white/70 text-slate-700 hover:bg-[var(--color-bg-soft)]"
+                  : "text-slate-700 hover:bg-[var(--color-bg-soft)]"
               }`}
             >
               {label}

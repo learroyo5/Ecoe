@@ -8,6 +8,7 @@ import { StatCard } from "@/components/stat-card";
 import { DataTable } from "@/components/data-table";
 import { DashboardSkeleton } from "@/components/skeleton";
 import { ErrorState } from "@/components/toast";
+import { ecoeStatusLabel, sessionStatusLabel, stationStatusLabel } from "@/lib/labels";
 import type { DashboardSummary } from "@/lib/types";
 
 export default function DashboardPage() {
@@ -24,7 +25,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div className="grid-auto">
-        <StatCard label="ECOE activo" value={data.active_ecoe.status} hint={data.active_ecoe.name} />
+        <StatCard label="ECOE activo" value={ecoeStatusLabel(data.active_ecoe.status)} hint={data.active_ecoe.name} />
         <StatCard label="Estudiantes" value={data.totals.students} hint="cargados y asignados" />
         <StatCard label="Estaciones" value={data.totals.stations} hint="incluye estaciones espejo" />
         <StatCard label="Envíos" value={data.totals.evaluations} hint="evaluaciones registradas" />
@@ -46,7 +47,7 @@ export default function DashboardPage() {
           </div>
           <div className="clinical-panel">
             <p className="text-sm text-slate-500">Sesión en vivo</p>
-            <p className="mt-2 text-2xl font-semibold">{data.live_panel.status}</p>
+            <p className="mt-2 text-2xl font-semibold">{sessionStatusLabel(data.live_panel.status)}</p>
             <p className="text-sm text-slate-600">
               Estación {data.live_panel.current_station_index} · {data.live_panel.remaining_seconds}s
             </p>
@@ -71,7 +72,7 @@ export default function DashboardPage() {
               label: "Estado",
               render: (row) => (
                 <span className="pill pill-ok">
-                  {String((row as { status?: string }).status ?? "")}
+                  {stationStatusLabel((row as { status?: string }).status)}
                 </span>
               ),
             },

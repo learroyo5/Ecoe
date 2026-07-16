@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { StatusNotice } from "@/components/forms";
 import { useECOE } from "@/lib/auth";
+import { roleLabel } from "@/lib/labels";
 
 export function AppShell({
   title,
@@ -50,14 +51,14 @@ export function AppShell({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--color-primary)]">
-                  Modo operativo de estacion
+                  Modo operativo de estación
                 </p>
                 <h2 className="mt-1 text-xl sm:mt-2 sm:text-2xl lg:text-3xl">{title}</h2>
                 <p className="mt-1 max-w-2xl text-sm text-slate-600 sm:mt-2">{description}</p>
               </div>
               <div className="clinical-panel px-4 py-3 text-sm">
                 <p className="font-semibold">{user?.full_name}</p>
-                <p className="text-slate-500">{user?.role}</p>
+                <p className="text-slate-500">{roleLabel(user?.role)}</p>
               </div>
             </div>
             <div className="grid gap-3 md:grid-cols-[1.4fr_0.6fr]">
@@ -73,7 +74,7 @@ export function AppShell({
                 </div>
                 <p className="text-sm text-slate-600">
                   {String(ecoeEvent?.course_name ?? "Curso sin definir")} ·{" "}
-                  {String(ecoeEvent?.school_name ?? "Unidad academica sin definir")}
+                  {String(ecoeEvent?.school_name ?? "Unidad académica sin definir")}
                 </p>
                 {(ecoeList?.length ?? 0) > 1 ? (
                   <label className="mt-2 flex items-center gap-2 text-sm">
@@ -95,8 +96,8 @@ export function AppShell({
                 ) : null}
               </div>
               <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-1">
-                <button className="btn-secondary" onClick={logout} aria-label="Cerrar sesion">
-                  Cerrar sesion
+                <button className="btn-secondary" onClick={logout} aria-label="Cerrar sesión">
+                  Cerrar sesión
                 </button>
               </div>
             </div>
@@ -161,15 +162,16 @@ export function AppShell({
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--color-primary)]">
                 Plataforma operativa
               </p>
-              <h2 className="mt-2 text-3xl">{title}</h2>
-              <p className="mt-2 max-w-3xl text-sm text-slate-600">{description}</p>
+              <h2 className="mt-1 text-2xl">{title}</h2>
             </div>
           </div>
-          <div className="clinical-panel p-4 text-sm">
-            <p className="font-semibold">{user?.full_name}</p>
-            <p className="text-slate-500">{user?.role}</p>
-            <button className="btn-secondary mt-3 w-full" onClick={logout} aria-label="Cerrar sesion">
-              Cerrar sesion
+          <div className="flex items-center gap-4 text-sm">
+            <div className="text-right">
+              <p className="font-semibold">{user?.full_name}</p>
+              <p className="text-slate-500">{roleLabel(user?.role)}</p>
+            </div>
+            <button className="btn-secondary" onClick={logout} aria-label="Cerrar sesión">
+              Cerrar sesión
             </button>
           </div>
         </header>
@@ -178,13 +180,13 @@ export function AppShell({
         <div className="clinical-panel p-4">
           <div className="flex flex-wrap items-end gap-4">
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">ECOE en edicion</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">ECOE en edición</p>
               <p className="mt-1 text-lg font-semibold text-slate-900 truncate">
                 {String(ecoeEvent?.name ?? "ECOE sin nombre visible")}
               </p>
               <p className="text-sm text-slate-600">
                 {String(ecoeEvent?.course_name ?? "Curso sin definir")} ·{" "}
-                {String(ecoeEvent?.school_name ?? "Unidad academica sin definir")}
+                {String(ecoeEvent?.school_name ?? "Unidad académica sin definir")}
               </p>
             </div>
             <label className="space-y-1 text-sm text-slate-700">
