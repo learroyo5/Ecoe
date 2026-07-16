@@ -88,12 +88,12 @@ def create_staff(
         )
     station_ids = normalize_station_ids(payload.station_ids)
     if normalized_role_code == RoleCode.evaluador.value and not station_ids:
-        raise HTTPException(status_code=400, detail="El evaluador debe tener una estacion principal asignada")
+        raise HTTPException(status_code=400, detail="El evaluador debe tener una estación principal asignada")
     if station_ids:
         from app.models.entities import Station
         station_obj = db.get(Station, station_ids[0])
         if not station_obj or station_obj.ecoe_event_id != payload.ecoe_event_id:
-            raise HTTPException(status_code=400, detail="La estacion asignada no pertenece a este ECOE")
+            raise HTTPException(status_code=400, detail="La estación asignada no pertenece a este ECOE")
     staff_data = payload.model_dump()
     staff_data["email"] = email
     staff_data["role_code"] = normalized_role_code
@@ -125,12 +125,12 @@ def update_staff(
     ensure_matching_operational_user(db, email=staff.email, expected_role=normalized_role_code)
     station_ids = normalize_station_ids(payload.station_ids)
     if normalized_role_code == RoleCode.evaluador.value and not station_ids:
-        raise HTTPException(status_code=400, detail="El evaluador debe tener una estacion principal asignada")
+        raise HTTPException(status_code=400, detail="El evaluador debe tener una estación principal asignada")
     if station_ids:
         from app.models.entities import Station
         station_obj = db.get(Station, station_ids[0])
         if not station_obj or station_obj.ecoe_event_id != staff.ecoe_event_id:
-            raise HTTPException(status_code=400, detail="La estacion asignada no pertenece a este ECOE")
+            raise HTTPException(status_code=400, detail="La estación asignada no pertenece a este ECOE")
     staff.role_code = normalized_role_code
     staff.station_ids = station_ids
     db.add(staff)

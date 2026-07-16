@@ -131,7 +131,7 @@ def get_live_panel(ecoe_event_id: int, db: Session = Depends(get_db), user=Depen
                         RoleCode.cronometrador.value)
     session = db.scalar(select(LiveSession).where(LiveSession.ecoe_event_id == ecoe_event_id).limit(1))
     if not session:
-        raise HTTPException(status_code=404, detail="Sesion en vivo no encontrada")
+        raise HTTPException(status_code=404, detail="Sesión en vivo no encontrada")
     return live_session_state(session)
 
 
@@ -183,7 +183,7 @@ def control_timer(
         session.current_station_index += 1
         session.phase_started_at = now
     else:
-        raise HTTPException(status_code=400, detail="Accion no soportada")
+        raise HTTPException(status_code=400, detail="Acción no soportada")
     db.add(session)
     db.commit()
     db.refresh(session)
@@ -221,10 +221,10 @@ async def upload_media(
         RoleCode.coeditor_docente.value,
     )
     if not station_id:
-        raise HTTPException(status_code=400, detail="El archivo debe asociarse a una estacion")
+        raise HTTPException(status_code=400, detail="El archivo debe asociarse a una estación")
     station = db.get(Station, station_id)
     if not station or station.ecoe_event_id != ecoe_event_id:
-        raise HTTPException(status_code=400, detail="La estacion no pertenece al ECOE indicado")
+        raise HTTPException(status_code=400, detail="La estación no pertenece al ECOE indicado")
     secure_name = safe_media_filename(file.filename)
     settings = get_settings()
     media_dir = Path(settings.storage_path) / "media"
@@ -261,7 +261,7 @@ async def upload_media(
 def list_media(station_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     station = db.get(Station, station_id)
     if not station:
-        raise HTTPException(status_code=404, detail="Estacion no encontrada")
+        raise HTTPException(status_code=404, detail="Estación no encontrada")
     ensure_event_access(
         db, user, station.ecoe_event_id,
         RoleCode.admin_ecoe.value,
@@ -366,7 +366,7 @@ def export_pdf(
     if station_id is not None:
         station = db.get(Station, station_id)
         if not station or station.ecoe_event_id != ecoe_event_id:
-            raise HTTPException(status_code=404, detail="Estacion no encontrada en este ECOE")
+            raise HTTPException(status_code=404, detail="Estación no encontrada en este ECOE")
     content = export_contingency_pdf(db, ecoe_event_id, station_id)
     return FastAPIResponse(
         content=content,
@@ -391,7 +391,7 @@ def create_incident(
     if payload.station_id is not None:
         station = db.get(Station, payload.station_id)
         if not station or station.ecoe_event_id != payload.ecoe_event_id:
-            raise HTTPException(status_code=400, detail="La estacion no pertenece al ECOE indicado")
+            raise HTTPException(status_code=400, detail="La estación no pertenece al ECOE indicado")
     incident = Incident(
         ecoe_event_id=payload.ecoe_event_id,
         station_id=payload.station_id,

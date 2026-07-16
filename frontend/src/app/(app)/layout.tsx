@@ -7,8 +7,8 @@ export default function ProtectedLayout({
 }) {
   return (
     <AppShell
-      title="Operacion academica del ECOE"
-      description="Gestiona planificacion, pilotaje, ejecucion, contingencia y resultados desde un mismo panel."
+      title="Operación académica del ECOE"
+      description="Gestiona planificación, pilotaje, ejecución, contingencia y resultados desde un mismo panel."
     >
       {children}
     </AppShell>

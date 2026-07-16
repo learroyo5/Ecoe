@@ -214,7 +214,7 @@ export default function LivePage() {
       await api.liveControl({ ecoe_event_id: eventId, action });
     } catch (err) {
       setControlMessage(
-        err instanceof Error ? err.message : "No se pudo enviar la accion al cronometro.",
+        err instanceof Error ? err.message : "No se pudo enviar la acción al cronómetro.",
       );
     }
   }, [eventId]);

@@ -24,9 +24,9 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     if not settings.secret_key:
         if settings.is_production:
-            raise RuntimeError("SECRET_KEY debe configurarse en produccion.")
+            raise RuntimeError("SECRET_KEY debe configurarse en producción.")
         warnings.warn(
-            "SECRET_KEY no configurado. El backend usara una clave vacia, "
+            "SECRET_KEY no configurado. El backend usará una clave vacía, "
             "lo que hace los tokens JWT inseguros. Configura SECRET_KEY en .env "
             "para entornos persistentes.",
             stacklevel=2,
@@ -37,12 +37,12 @@ async def lifespan(app: FastAPI):
         # Session auth is cookie-based without CSRF tokens: SameSite=none
         # would leave every mutating endpoint open to cross-site requests.
         raise RuntimeError(
-            "AUTH_COOKIE_SAMESITE=none no esta permitido en produccion sin proteccion CSRF."
+            "AUTH_COOKIE_SAMESITE=none no está permitido en producción sin protección CSRF."
         )
     if settings.is_production and "*" in {
         origin.strip() for origin in settings.cors_origins.split(",")
     }:
-        raise RuntimeError("CORS_ORIGINS no puede usar wildcard en produccion.")
+        raise RuntimeError("CORS_ORIGINS no puede usar wildcard en producción.")
 
     try:
         from alembic.config import Config as AlembicConfig

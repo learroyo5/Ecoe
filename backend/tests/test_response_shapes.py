@@ -16,7 +16,7 @@ class TestStationResponseShape:
         response = auth_client.post("/api/stations", json={
             "ecoe_event_id": 1,
             "station_number": 1,
-            "name": "Estacion Shape Test",
+            "name": "Estación Shape Test",
             "station_type": "procedimental",
             "circuit_name": "Circuito A",
             "expected_outcomes": "Resultado esperado",

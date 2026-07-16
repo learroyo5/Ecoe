@@ -15,11 +15,11 @@ def authenticate_session_token(db: Session, session_token: str | None) -> User:
     if not session_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Sesion no autenticada",
+            detail="Sesión no autenticada",
         )
     claims = decode_token(session_token)
     if not claims or not claims.get("sub"):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalido")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
     user = db.scalar(select(User).where(User.email == claims["sub"]))
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no existe")
@@ -29,7 +29,7 @@ def authenticate_session_token(db: Session, session_token: str | None) -> User:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Cuenta no activada")
     if int(claims.get("ver", 0)) != int(user.token_version or 0):
         # Token issued before a deactivation/password change: revoked.
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesion revocada")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesión revocada")
     return user
 
 
@@ -79,7 +79,7 @@ def require_roles(*roles: str):
             return user
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tiene permisos para esta accion",
+            detail="No tiene permisos para esta acción",
         )
 
     return dependency
@@ -95,7 +95,7 @@ def require_global_roles(*roles: str):
         if user.role.code not in roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="No tiene permisos institucionales para esta accion",
+                detail="No tiene permisos institucionales para esta acción",
             )
         return user
 

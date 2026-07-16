@@ -59,14 +59,14 @@ export default function StationsPage() {
   };
 
   const handleDelete = async (stationId: number) => {
-    if (!window.confirm("Vas a eliminar esta estacion permanentemente. Esta accion no se puede deshacer. Continuar?")) return;
+    if (!window.confirm("Vas a eliminar esta estación permanentemente. Esta acción no se puede deshacer. ¿Continuar?")) return;
     setMessage(null);
     try {
       await api.deleteStation(stationId);
       setData((prev) => (prev ?? []).filter((s) => Number(s.id) !== stationId));
-      setMessage("Estacion borrada correctamente.");
+      setMessage("Estación borrada correctamente.");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "No se pudo eliminar la estacion");
+      setMessage(err instanceof Error ? err.message : "No se pudo eliminar la estación");
     }
   };
 

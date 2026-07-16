@@ -107,7 +107,7 @@ def apply_manual_scores(
     if not pending:
         raise HTTPException(
             status_code=400,
-            detail="Esta respuesta no tiene preguntas de correccion manual",
+            detail="Esta respuesta no tiene preguntas de corrección manual",
         )
     unknown = set(scores) - pending
     if unknown:
@@ -129,7 +129,7 @@ def apply_manual_scores(
         try:
             earned = float(value)
         except (TypeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail=f"Puntaje invalido para {key}") from exc
+            raise HTTPException(status_code=400, detail=f"Puntaje inválido para {key}") from exc
         if earned < 0 or earned > float(item["max"]):
             raise HTTPException(
                 status_code=400,

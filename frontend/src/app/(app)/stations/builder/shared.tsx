@@ -23,7 +23,7 @@ export function useNavigationGuard(hasUnsavedChanges: boolean) {
       const href = link.getAttribute("href") ?? "";
       // Only intercept internal navigation, not external links or file downloads
       if (href.startsWith("http") || href.startsWith("#") || href.startsWith("mailto:") || href.includes(".")) return;
-      if (!window.confirm("Tienes cambios sin guardar en la estacion. Salir sin guardar?")) {
+      if (!window.confirm("Tienes cambios sin guardar en la estación. ¿Salir sin guardar?")) {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();

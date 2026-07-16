@@ -39,9 +39,9 @@ export default function StudentsPage() {
                     <li>Descarga la plantilla Excel o CSV usando los botones de abajo.</li>
                     <li>Abre el archivo y completa una fila por cada estudiante.</li>
                     <li>Los unicos campos obligatorios son: <strong>nombre, apellidos, rut, correo</strong>.</li>
-                    <li>El <strong>Numero ECOE</strong> se asigna automaticamente; puedes dejarlo vacio.</li>
+                    <li>El <strong>Número ECOE</strong> se asigna automáticamente; puedes dejarlo vacío.</li>
                     <li>El <strong>correo</strong> es el email del estudiante (no necesita ser un usuario del sistema).</li>
-                    <li>Los estudiantes con <strong>RUT duplicado</strong> dentro del mismo ECOE seran omitidos.</li>
+                    <li>Los estudiantes con <strong>RUT duplicado</strong> dentro del mismo ECOE serán omitidos.</li>
                   </ol>
                 </div>
 
@@ -53,15 +53,15 @@ export default function StudentsPage() {
                         <tr className="border-b border-slate-100 text-left text-slate-500">
                           <th className="pb-1 pr-3 font-semibold">Columna</th>
                           <th className="pb-1 pr-3 font-semibold">Obligatorio</th>
-                          <th className="pb-1 font-semibold">Descripcion</th>
+                          <th className="pb-1 font-semibold">Descripción</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
-                        <tr><td className="py-1 pr-3 font-mono text-slate-700">nombre</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">Nombre del estudiante</td></tr>
-                        <tr><td className="py-1 pr-3 font-mono text-slate-700">apellidos</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">Apellidos completos</td></tr>
-                        <tr><td className="py-1 pr-3 font-mono text-slate-700">rut</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">RUT con guion y digito verificador (ej: 11111111-1)</td></tr>
-                        <tr><td className="py-1 pr-3 font-mono text-slate-700">correo</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">Correo electronico del estudiante</td></tr>
-                        <tr><td className="py-1 pr-3 font-mono text-slate-700">numero_ecoe</td><td className="py-1 pr-3 text-slate-400">No</td><td className="py-1 text-slate-500">Se asigna automaticamente de forma correlativa</td></tr>
+                        <tr><td className="py-1 pr-3 font-mono text-slate-700">nombre</td><td className="py-1 pr-3 text-emerald-600">Sí</td><td className="py-1 text-slate-500">Nombre del estudiante</td></tr>
+                        <tr><td className="py-1 pr-3 font-mono text-slate-700">apellidos</td><td className="py-1 pr-3 text-emerald-600">Sí</td><td className="py-1 text-slate-500">Apellidos completos</td></tr>
+                        <tr><td className="py-1 pr-3 font-mono text-slate-700">rut</td><td className="py-1 pr-3 text-emerald-600">Sí</td><td className="py-1 text-slate-500">RUT con guion y dígito verificador (ej: 11111111-1)</td></tr>
+                        <tr><td className="py-1 pr-3 font-mono text-slate-700">correo</td><td className="py-1 pr-3 text-emerald-600">Sí</td><td className="py-1 text-slate-500">Correo electrónico del estudiante</td></tr>
+                        <tr><td className="py-1 pr-3 font-mono text-slate-700">numero_ecoe</td><td className="py-1 pr-3 text-slate-400">No</td><td className="py-1 text-slate-500">Se asigna automáticamente de forma correlativa</td></tr>
                         <tr><td className="py-1 pr-3 font-mono text-slate-700">grupo</td><td className="py-1 pr-3 text-slate-400">No</td><td className="py-1 text-slate-500">Nombre del grupo (default: Grupo 1)</td></tr>
                         <tr><td className="py-1 pr-3 font-mono text-slate-700">circuito</td><td className="py-1 pr-3 text-slate-400">No</td><td className="py-1 text-slate-500">Nombre del circuito (default: Circuito A)</td></tr>
                       </tbody>
@@ -112,7 +112,7 @@ export default function StudentsPage() {
               const missing = response.skipped_missing_data ?? 0;
               const parts: string[] = [`${imported} estudiantes importados.`];
               if (dupes > 0) parts.push(`${dupes} omitidos por RUT duplicado.`);
-              if (missing > 0) parts.push(`${missing} omitidos por falta de datos (rut o correo vacio).`);
+              if (missing > 0) parts.push(`${missing} omitidos por falta de datos (rut o correo vacío).`);
               if (imported === 0 && (dupes > 0 || missing > 0)) {
                 parts.push("Verifica que las columnas del archivo se llamen exactamente: nombre, apellidos, rut, correo.");
               }
@@ -155,7 +155,7 @@ export default function StudentsPage() {
             className="btn-secondary"
             onClick={async () => {
               const confirmed = window.confirm(
-                "Se reasignara el Numero ECOE de todos los estudiantes en forma correlativa segun el orden de carga. ¿Quieres continuar?",
+                "Se reasignará el Número ECOE de todos los estudiantes en forma correlativa según el orden de carga. ¿Quieres continuar?",
               );
               if (!confirmed) {
                 setMessage("La reasignación de Número ECOE fue cancelada.");
@@ -225,7 +225,7 @@ export default function StudentsPage() {
               : "Limpiar duplicados por RUT"}
           </button>
           <p className="text-sm text-slate-600">
-            El sistema ahora asigna el Numero ECOE en forma correlativa para nuevas cargas y altas manuales.
+            El sistema ahora asigna el Número ECOE en forma correlativa para nuevas cargas y altas manuales.
           </p>
         </div>
         <StatusNotice message={message} />
@@ -321,7 +321,7 @@ export default function StudentsPage() {
                         className="btn-secondary"
                         onClick={async () => {
                           const confirmed = window.confirm(
-                            "Vas a borrar este estudiante de forma permanente. Esta accion no se puede deshacer. ¿Quieres continuar?",
+                            "Vas a borrar este estudiante de forma permanente. Esta acción no se puede deshacer. ¿Quieres continuar?",
                           );
                           if (!confirmed) {
                             setMessage("El borrado del estudiante fue cancelado.");

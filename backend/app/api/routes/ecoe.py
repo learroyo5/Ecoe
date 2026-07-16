@@ -137,7 +137,7 @@ def grant_ecoe_admin(
         raise HTTPException(status_code=404, detail="ECOE no encontrado")
     target = db.get(User, user_id)
     if not target or not target.is_active:
-        raise HTTPException(status_code=400, detail="El usuario no existe o esta inactivo")
+        raise HTTPException(status_code=400, detail="El usuario no existe o está inactivo")
     permission = db.scalar(
         select(ECOEPermission).where(
             ECOEPermission.ecoe_event_id == ecoe_event_id,
@@ -180,7 +180,7 @@ def revoke_ecoe_admin(
         )
     )
     if not permission:
-        raise HTTPException(status_code=404, detail="Asignacion de administrador no encontrada")
+        raise HTTPException(status_code=404, detail="Asignación de administrador no encontrada")
     permission_id = permission.id
     db.delete(permission)
     db.add(AuditLog(

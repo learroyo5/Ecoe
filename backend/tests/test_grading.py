@@ -18,7 +18,7 @@ SCORED_FORM = {
     "questions": [
         {
             "type": "single_choice",
-            "label": "Diagnostico mas probable",
+            "label": "Diagnóstico más probable",
             "options": ["SCA", "TEP", "RGE"],
             "points": 4,
             "correct_option": "SCA",

@@ -61,7 +61,7 @@ export default function EvaluatorsPage() {
   return (
     <div className="space-y-6">
       {/* Team composition summary */}
-      <SectionCard title="Composicion del equipo" subtitle="Roles requeridos y estado actual de asignacion.">
+      <SectionCard title="Composición del equipo" subtitle="Roles requeridos y estado actual de asignación.">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[
             { role: "coeditor_docente", label: "Coeditor", min: 1, max: Infinity },
@@ -98,7 +98,7 @@ export default function EvaluatorsPage() {
           })}
         </div>
         <p className="mt-3 text-xs text-slate-500">
-          El rol Admin se asigna automaticamente al crear el ECOE y no aparece en esta lista.
+          El rol Admin se asigna automáticamente al crear el ECOE y no aparece en esta lista.
           Evaluadores: {roleCounts["evaluador"] ?? 0} asignados. Sin limite maximo.
         </p>
       </SectionCard>
@@ -132,14 +132,14 @@ export default function EvaluatorsPage() {
                         <tr className="border-b border-slate-100 text-left text-slate-500">
                           <th className="pb-1 pr-3 font-semibold">Columna</th>
                           <th className="pb-1 pr-3 font-semibold">Obligatorio</th>
-                          <th className="pb-1 font-semibold">Descripcion</th>
+                          <th className="pb-1 font-semibold">Descripción</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
-                        <tr><td className="py-1 pr-3 font-mono text-slate-700">nombre</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">Nombre de la persona</td></tr>
-                        <tr><td className="py-1 pr-3 font-mono text-slate-700">apellidos</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">Apellidos completos</td></tr>
-                        <tr><td className="py-1 pr-3 font-mono text-slate-700">correo</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">Correo de una cuenta institucional activa</td></tr>
-                        <tr><td className="py-1 pr-3 font-mono text-slate-700">rol</td><td className="py-1 pr-3 text-emerald-600">Si</td><td className="py-1 text-slate-500">evaluador | coeditor_docente | coordinador_operativo | cronometrador</td></tr>
+                        <tr><td className="py-1 pr-3 font-mono text-slate-700">nombre</td><td className="py-1 pr-3 text-emerald-600">Sí</td><td className="py-1 text-slate-500">Nombre de la persona</td></tr>
+                        <tr><td className="py-1 pr-3 font-mono text-slate-700">apellidos</td><td className="py-1 pr-3 text-emerald-600">Sí</td><td className="py-1 text-slate-500">Apellidos completos</td></tr>
+                        <tr><td className="py-1 pr-3 font-mono text-slate-700">correo</td><td className="py-1 pr-3 text-emerald-600">Sí</td><td className="py-1 text-slate-500">Correo de una cuenta institucional activa</td></tr>
+                        <tr><td className="py-1 pr-3 font-mono text-slate-700">rol</td><td className="py-1 pr-3 text-emerald-600">Sí</td><td className="py-1 text-slate-500">evaluador | coeditor_docente | coordinador_operativo | cronometrador</td></tr>
                       </tbody>
                     </table>
                   </div>

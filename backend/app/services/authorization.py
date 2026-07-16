@@ -36,7 +36,7 @@ def validate_staff_role_code(role_code: str) -> str:
     normalized_role = str(role_code or "").strip().lower()
     if normalized_role not in ALLOWED_STAFF_ASSIGNMENT_ROLE_CODES:
         allowed = ", ".join(sorted(ALLOWED_STAFF_ASSIGNMENT_ROLE_CODES))
-        raise HTTPException(status_code=400, detail=f"Rol '{role_code}' no es valido para asignar al equipo. Roles permitidos: {allowed}")
+        raise HTTPException(status_code=400, detail=f"Rol '{role_code}' no es válido para asignar al equipo. Roles permitidos: {allowed}")
     return normalized_role
 
 
@@ -110,7 +110,7 @@ def ensure_event_access(db: Session, user: User, ecoe_event_id: int, *allowed_ro
         )
         raise HTTPException(
             status_code=403,
-            detail="No tienes permisos para esta accion en este ECOE",
+            detail="No tienes permisos para esta acción en este ECOE",
         )
     return event_roles
 
@@ -172,12 +172,12 @@ def ensure_matching_operational_user(
     if not user:
         raise HTTPException(
             status_code=400,
-            detail=f"No se encontro un usuario con el correo '{email}'. Debes crearlo primero en la seccion Usuarios.",
+            detail=f"No se encontró un usuario con el correo '{email}'. Debes crearlo primero en la sección Usuarios.",
         )
     if not user.is_active:
         raise HTTPException(
             status_code=400,
-            detail=f"La cuenta de {user.full_name} ({email}) esta inactiva. Reactivala en la seccion Usuarios.",
+            detail=f"La cuenta de {user.full_name} ({email}) está inactiva. Reactívala en la sección Usuarios.",
         )
     return user
 
@@ -206,5 +206,5 @@ def ensure_staff_assignment_can_be_managed(actor_event_roles: set[str], current_
         return
     raise HTTPException(
         status_code=403,
-        detail="Solo un administrador del ECOE puede modificar esa asignacion",
+        detail="Solo un administrador del ECOE puede modificar esa asignación",
     )

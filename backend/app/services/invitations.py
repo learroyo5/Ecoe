@@ -34,11 +34,11 @@ def _validated_assignment(db: Session, payload: EventMemberInvite) -> tuple[str,
     role_code = validate_staff_role_code(payload.role_code)
     station_ids = normalize_station_ids(payload.station_ids)
     if role_code == RoleCode.evaluador.value and not station_ids:
-        raise HTTPException(status_code=400, detail="El evaluador debe tener una estacion principal asignada")
+        raise HTTPException(status_code=400, detail="El evaluador debe tener una estación principal asignada")
     if station_ids:
         station = db.get(Station, station_ids[0])
         if not station or station.ecoe_event_id != payload.ecoe_event_id:
-            raise HTTPException(status_code=400, detail="La estacion no pertenece al ECOE indicado")
+            raise HTTPException(status_code=400, detail="La estación no pertenece al ECOE indicado")
     return role_code, station_ids
 
 
@@ -75,7 +75,7 @@ def assign_or_invite_member(
     if account and account.account_status == "suspended":
         raise HTTPException(
             status_code=400,
-            detail="La cuenta esta suspendida institucionalmente; contacta al administrador global",
+            detail="La cuenta está suspendida institucionalmente; contacta al administrador global",
         )
 
     if not account:
@@ -103,7 +103,7 @@ def assign_or_invite_member(
         )
     )
     if assignment and account.account_status == "active":
-        raise HTTPException(status_code=400, detail="La persona ya esta asignada a este ECOE")
+        raise HTTPException(status_code=400, detail="La persona ya está asignada a este ECOE")
     if not assignment:
         assignment = StaffAssignment(
             ecoe_event_id=payload.ecoe_event_id,
@@ -197,10 +197,10 @@ def activate_invitation(db: Session, token: str, password: str) -> None:
     )
     now = utcnow_naive()
     if not invitation or invitation.accepted_at is not None or invitation.expires_at <= now:
-        raise HTTPException(status_code=400, detail="La invitacion no es valida o ya expiro")
+        raise HTTPException(status_code=400, detail="La invitación no es válida o ya expiró")
     account = db.get(User, invitation.user_id)
     if not account or account.account_status != "pending":
-        raise HTTPException(status_code=400, detail="La invitacion no es valida o ya fue utilizada")
+        raise HTTPException(status_code=400, detail="La invitación no es válida o ya fue utilizada")
 
     account.hashed_password = get_password_hash(password)
     account.is_active = True

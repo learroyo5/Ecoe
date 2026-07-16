@@ -165,7 +165,7 @@ def update_station_bank(
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     bank_station = db.get(StationBank, bank_station_id)
     if not bank_station:
-        raise HTTPException(status_code=404, detail="Estacion de banco no encontrada")
+        raise HTTPException(status_code=404, detail="Estación de banco no encontrada")
     for field, value in payload.model_dump().items():
         setattr(bank_station, field, value)
     db.add(bank_station)
@@ -186,7 +186,7 @@ def update_station_bank_status(
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     bank_station = db.get(StationBank, bank_station_id)
     if not bank_station:
-        raise HTTPException(status_code=404, detail="Estacion de banco no encontrada")
+        raise HTTPException(status_code=404, detail="Estación de banco no encontrada")
     bank_station.status = payload.status
     db.add(bank_station)
     db.commit()
@@ -239,13 +239,13 @@ def update_station(
 ):
     station = db.get(Station, station_id)
     if not station:
-        raise HTTPException(status_code=404, detail="Estacion no encontrada")
+        raise HTTPException(status_code=404, detail="Estación no encontrada")
     ensure_event_access(db, user, station.ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     if payload.ecoe_event_id != station.ecoe_event_id:
         raise HTTPException(
             status_code=400,
-            detail="Una estacion no puede trasladarse a otro ECOE mediante una actualizacion",
+            detail="Una estación no puede trasladarse a otro ECOE mediante una actualización",
         )
     ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
     if not ecoe_event:
@@ -274,7 +274,7 @@ def delete_station(
 ):
     station = db.get(Station, station_id)
     if not station:
-        raise HTTPException(status_code=404, detail="Estacion no encontrada")
+        raise HTTPException(status_code=404, detail="Estación no encontrada")
     ensure_event_access(db, user, station.ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     db.delete(station)
@@ -300,7 +300,7 @@ def create_pilotage(
     validation = compute_ecoe_validation(db, ecoe_event)
     if not validation["can_pilot"]:
         raise HTTPException(status_code=400,
-                            detail="El ECOE aun no cumple condiciones minimas para pilotaje.")
+                            detail="El ECOE aún no cumple condiciones mínimas para pilotaje.")
     scope = payload.scope.strip().lower()
     if scope not in {"estacion", "circuito_completo"}:
         raise HTTPException(status_code=400, detail="Alcance de pilotaje no permitido.")
@@ -310,16 +310,16 @@ def create_pilotage(
     if scope == "estacion":
         if len(payload.station_ids) != 1:
             raise HTTPException(status_code=400,
-                                detail="Para pilotar una estacion debes seleccionar exactamente una estacion.")
+                                detail="Para pilotar una estación debes seleccionar exactamente una estación.")
         station_id = int(payload.station_ids[0])
         if station_id not in event_station_ids:
-            raise HTTPException(status_code=400, detail="La estacion seleccionada no pertenece a este ECOE.")
+            raise HTTPException(status_code=400, detail="La estación seleccionada no pertenece a este ECOE.")
         station_issue = next(
             (issue for issue in validation["station_issues"] if int(issue["station_id"]) == station_id), None
         )
         if not station_issue or not station_issue["ready_for_pilot"]:
             raise HTTPException(status_code=400,
-                                detail="La estacion seleccionada aun no esta lista para pilotaje individual.")
+                                detail="La estación seleccionada aún no está lista para pilotaje individual.")
         station_ids = [station_id]
     else:
         has_station_pilot = db.scalar(
@@ -331,7 +331,7 @@ def create_pilotage(
         )
         if not has_station_pilot:
             raise HTTPException(status_code=400,
-                                detail="No puedes pilotear el circuito completo sin haber realizado antes al menos un pilotaje individual de estacion.")
+                                detail="No puedes pilotear el circuito completo sin haber realizado antes al menos un pilotaje individual de estación.")
         station_ids = list(event_station_ids)
     pilot_run = PilotRun(
         ecoe_event_id=payload.ecoe_event_id,

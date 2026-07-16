@@ -73,7 +73,7 @@ def authenticate_kiosk_token(db: Session, token: str | None) -> StationKioskSess
     if not session or session.revoked_at is not None or session.expires_at <= now:
         raise HTTPException(
             status_code=401,
-            detail="El token del kiosco no es valido o expiro; solicita uno nuevo a coordinacion",
+            detail="El token del kiosco no es válido o expiró; solicita uno nuevo a coordinación",
         )
     return session
 

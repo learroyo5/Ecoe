@@ -49,7 +49,7 @@ export default function PilotagePage() {
             id: String(stationId),
             label: station
               ? `${String(station.station_number)} - ${String(station.name)}`
-              : `Estacion ${String(issue.station_number)}`,
+              : `Estación ${String(issue.station_number)}`,
           };
         })
         .filter((option) => option.id),

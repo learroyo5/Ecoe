@@ -120,11 +120,11 @@ export default function UsersPage() {
       setEventAdmins(await api.eventAdmins(eventId));
       setMessage(
         assigned
-          ? `Se retiro a ${u.full_name} como administrador del ECOE activo.`
+          ? `Se retiró a ${u.full_name} como administrador del ECOE activo.`
           : `${u.full_name} ahora administra el ECOE activo.`,
       );
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "No se pudo cambiar la administracion del ECOE.");
+      setMessage(err instanceof Error ? err.message : "No se pudo cambiar la administración del ECOE.");
     }
   };
 

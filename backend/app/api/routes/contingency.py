@@ -46,7 +46,7 @@ def _validated_contingency_target(
     session_mode = ensure_submission_stage(ecoe_event)
     station = db.get(Station, station_id)
     if not station or station.ecoe_event_id != ecoe_event_id:
-        raise HTTPException(status_code=400, detail="La estacion no pertenece al ECOE indicado")
+        raise HTTPException(status_code=400, detail="La estación no pertenece al ECOE indicado")
     student = db.get(Student, student_id)
     if not student or student.ecoe_event_id != ecoe_event_id:
         raise HTTPException(status_code=400, detail="El estudiante no pertenece al ECOE indicado")
@@ -55,7 +55,7 @@ def _validated_contingency_target(
         raise HTTPException(
             status_code=400,
             detail=(
-                "No existe ningun check-in del estudiante en esta estacion; la contingencia "
+                "No existe ningún check-in del estudiante en esta estación; la contingencia "
                 "requiere que el ingreso haya sido confirmado en algun momento"
             ),
         )
@@ -83,13 +83,13 @@ def submit_evaluator_record_by_contingency(
     if existing_record:
         raise HTTPException(
             status_code=400,
-            detail="Ya existe una evaluacion registrada para este estudiante en esta estacion",
+            detail="Ya existe una evaluación registrada para este estudiante en esta estación",
         )
     authoritative_max = resolve_station_max_score(db, station)
     if authoritative_max <= 0:
         raise HTTPException(
             status_code=400,
-            detail="La estacion no tiene un puntaje maximo valido configurado",
+            detail="La estación no tiene un puntaje máximo válido configurado",
         )
     if payload.score_obtained < 0 or payload.score_obtained > authoritative_max:
         raise HTTPException(
@@ -137,7 +137,7 @@ def submit_student_response_by_contingency(
     if existing_response:
         raise HTTPException(
             status_code=400,
-            detail="Ya existe una respuesta registrada para este estudiante en esta estacion",
+            detail="Ya existe una respuesta registrada para este estudiante en esta estación",
         )
     response = StudentResponse(
         **payload.model_dump(exclude={"checkin_id", "mode", "by_contingency"}),

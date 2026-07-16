@@ -12,7 +12,7 @@ def _station(event_id: int, number: int, circuit: str, *, evaluator: bool, form:
     return Station(
         ecoe_event_id=event_id,
         station_number=number,
-        name=f"Estacion {number}",
+        name=f"Estación {number}",
         station_type="procedimental",
         circuit_name=circuit,
         station_time_minutes=8,

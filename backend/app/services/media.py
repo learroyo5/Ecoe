@@ -52,7 +52,7 @@ def validate_media_type(content: bytes, suffix: str, _declared_content_type: str
     if not any(content.startswith(sig) for sig in signatures):
         raise HTTPException(
             status_code=400,
-            detail=f"El contenido del archivo no coincide con la extension {suffix}",
+            detail=f"El contenido del archivo no coincide con la extensión {suffix}",
         )
 
 
@@ -168,10 +168,10 @@ def get_media_asset_for_user(
     if not asset:
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
     if not asset.station_id:
-        raise HTTPException(status_code=403, detail="Archivo sin estacion asociada")
+        raise HTTPException(status_code=403, detail="Archivo sin estación asociada")
     station = db.get(Station, asset.station_id)
     if not station:
-        raise HTTPException(status_code=404, detail="Estacion no encontrada")
+        raise HTTPException(status_code=404, detail="Estación no encontrada")
     if not can_user_access_station_media(db, user, station, asset.target_viewer, writable=writable):
         raise HTTPException(status_code=403, detail="No tienes permisos para acceder a este archivo")
     return asset

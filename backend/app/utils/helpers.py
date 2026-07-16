@@ -105,7 +105,7 @@ def ensure_checkin_within_time(
     if utcnow_naive() > deadline + timedelta(seconds=grace_seconds):
         raise HTTPException(
             status_code=400,
-            detail="El tiempo de la estacion ya expiro; el envio no puede aceptarse.",
+            detail="El tiempo de la estación ya expiró; el envío no puede aceptarse.",
         )
 
 
@@ -169,7 +169,7 @@ def ensure_submission_stage(ecoe_event) -> str:
     raise HTTPException(
         status_code=409,
         detail=(
-            "Los registros operativos solo se aceptan con el ECOE en pilotaje o en ejecucion real "
+            "Los registros operativos solo se aceptan con el ECOE en pilotaje o en ejecución real "
             f"(estado actual: {status})."
         ),
     )

@@ -34,7 +34,7 @@ def _validated_seed_password(password: str, email: str) -> str | None:
     """Never create an account whose password is empty or trivially weak."""
     if len(password or "") < MIN_SEED_PASSWORD_LENGTH:
         warnings.warn(
-            f"Seed omitido para {email}: la contraseña configurada esta vacia o "
+            f"Seed omitido para {email}: la contraseña configurada está vacía o "
             f"tiene menos de {MIN_SEED_PASSWORD_LENGTH} caracteres. "
             "Define la variable correspondiente en .env.",
             stacklevel=3,
@@ -74,8 +74,8 @@ def seed_data(db: Session) -> None:
         ("coeditor@ecoe.cl", "Dr. Pablo Rojas", settings.coeditor_password, RoleCode.coeditor_docente.value),
         ("eval1@ecoe.cl", "Enf. Camila Soto", settings.evaluator_password, RoleCode.evaluador.value),
         ("student1@ecoe.cl", "Estudiante 1 Demo", settings.student_password, RoleCode.estudiante.value),
-        ("coord@ecoe.cl", "Coordinacion ECOE", settings.coordinator_password, RoleCode.coordinador_operativo.value),
-        ("timer@ecoe.cl", "Cronometro Central", settings.timer_password, RoleCode.cronometrador.value),
+        ("coord@ecoe.cl", "Coordinación ECOE", settings.coordinator_password, RoleCode.coordinador_operativo.value),
+        ("timer@ecoe.cl", "Cronómetro Central", settings.timer_password, RoleCode.cronometrador.value),
     ]
     users = []
     for email, full_name, raw_password, role_code in user_defs:
@@ -143,25 +143,25 @@ def seed_data(db: Session) -> None:
         StationTemplate(
             name="Procedimental",
             category="procedimental",
-            description="Plantilla para tecnica o procedimiento clinico",
+            description="Plantilla para técnica o procedimiento clínico",
             default_configuration={"requires_evaluator": True, "requires_student_form": False},
         ),
         StationTemplate(
             name="Paciente simulado",
             category="paciente_simulado",
-            description="Guion clinico con actor o paciente simulado",
+            description="Guion clínico con actor o paciente simulado",
             default_configuration={"uses_simulated_patient": True},
         ),
         StationTemplate(
             name="Formulario estudiante",
             category="formulario_estudiante",
-            description="Estacion cognitiva con buzon digital",
+            description="Estación cognitiva con buzón digital",
             default_configuration={"requires_student_form": True},
         ),
         StationTemplate(
             name="Multimedia",
             category="multimedia",
-            description="Estacion con video, audio, imagen o PDF",
+            description="Estación con video, audio, imagen o PDF",
             default_configuration={"uses_multimedia": True},
         ),
         StationTemplate(
@@ -185,16 +185,16 @@ def seed_data(db: Session) -> None:
     db.add_all(
         [
             AssessmentItem(tool_id=tool.id, label="Lavado de manos", score_per_item=2, order_index=1),
-            AssessmentItem(tool_id=tool.id, label="Presentacion al paciente", score_per_item=2, order_index=2),
+            AssessmentItem(tool_id=tool.id, label="Presentación al paciente", score_per_item=2, order_index=2),
             AssessmentItem(tool_id=tool.id, label="Tecnica correcta", score_per_item=8, order_index=3),
-            AssessmentItem(tool_id=tool.id, label="Interpretacion final", score_per_item=8, order_index=4),
+            AssessmentItem(tool_id=tool.id, label="Interpretación final", score_per_item=8, order_index=4),
         ]
     )
 
     simulated_patient = SimulatedPatient(
         character_name="Juan Perez, 54 anos",
         summary_profile="Paciente con dolor toracico intermitente.",
-        base_story="Consulta en urgencias por dolor opresivo al esfuerzo desde hace 2 dias.",
+        base_story="Consulta en urgencias por dolor opresivo al esfuerzo desde hace 2 días.",
         key_answers="Dolor 7/10, irradia a brazo izquierdo, antecedente HTA.",
         emotional_tone="Ansioso y preocupado",
         special_instructions="Responder solo si el estudiante pregunta dirigidamente.",
@@ -204,10 +204,10 @@ def seed_data(db: Session) -> None:
 
     station_defs = [
         ("Ingreso y anamnesis", "paciente_simulado", True, False, False),
-        ("Interpretacion ECG", "multimedia", True, True, True),
+        ("Interpretación ECG", "multimedia", True, True, True),
         ("Examen cardiovascular", "procedimental", True, False, False),
-        ("Plan diagnostico", "formulario_estudiante", False, True, False),
-        ("Consejeria y cierre", "hibrida", True, True, False),
+        ("Plan diagnóstico", "formulario_estudiante", False, True, False),
+        ("Consejería y cierre", "hibrida", True, True, False),
     ]
     for idx, (name, station_type, requires_eval, requires_form, multimedia) in enumerate(
         station_defs, start=1
@@ -224,9 +224,9 @@ def seed_data(db: Session) -> None:
                 circuit_name="Circuito A" if idx <= 3 else "Circuito B",
                 station_time_minutes=8,
                 transition_time_minutes=2,
-                expected_outcomes="Demostrar desempeno clinico seguro y estructurado.",
-                student_activity="Resolver la tarea clinica segun instrucciones de la estacion.",
-                pre_entry_instruction="Lea el caso y prepare su abordaje clinico.",
+                expected_outcomes="Demostrar desempeño clínico seguro y estructurado.",
+                student_activity="Resolver la tarea clínica según instrucciones de la estación.",
+                pre_entry_instruction="Lea el caso y prepare su abordaje clínico.",
                 evaluator_instruction="Observe, puntue y registre observaciones relevantes.",
                 requires_evaluator=requires_eval,
                 requires_student_form=requires_form,
@@ -243,7 +243,7 @@ def seed_data(db: Session) -> None:
                     "questions": [
                         {
                             "type": "single_choice",
-                            "label": "Diagnostico mas probable",
+                            "label": "Diagnóstico más probable",
                             "options": ["SCA", "TEP", "RGE"],
                         }
                     ]
@@ -305,7 +305,7 @@ def seed_data(db: Session) -> None:
         ),
         StaffAssignment(
             ecoe_event_id=ecoe.id,
-            name="Cronometro",
+            name="Cronómetro",
             last_name="Central",
             email="timer@ecoe.cl",
             role_code=RoleCode.cronometrador.value,

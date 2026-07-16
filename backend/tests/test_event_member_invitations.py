@@ -34,7 +34,7 @@ def station_payload(event_id: int) -> dict:
     return {
         "ecoe_event_id": event_id,
         "station_number": 1,
-        "name": "Estacion de invitacion",
+        "name": "Estación de invitación",
         "station_type": "procedimental",
         "circuit_name": "Circuito A",
         "expected_outcomes": "Resultado",
@@ -84,7 +84,7 @@ def invite_payload(event_id: int, station_id: int, email: str, role: str = "eval
 
 
 def test_event_admin_invites_activates_and_reuses_one_identity(client, db_factory):
-    event_id, station_id = create_event_and_station(client, "Invitacion principal")
+    event_id, station_id = create_event_and_station(client, "Invitación principal")
     admin_credentials = create_delegated_admin(client, event_id, "principal")
     invited_email = f"invitee-{secrets.token_hex(6)}@example.edu"
 
@@ -143,7 +143,7 @@ def test_event_admin_invites_activates_and_reuses_one_identity(client, db_factor
     assert roles == [RoleCode.evaluador.value]
     assert client.get("/api/auth/me").json()["role"] == RoleCode.miembro.value
 
-    second_event_id, _ = create_event_and_station(client, "Reutilizacion de identidad")
+    second_event_id, _ = create_event_and_station(client, "Reutilización de identidad")
     second_admin = create_delegated_admin(client, second_event_id, "secundario")
     login(client, second_admin)
     assigned = client.post(
@@ -211,7 +211,7 @@ def test_suspended_account_cannot_be_reactivated_by_event_admin(client):
 
 
 def test_expired_invitation_is_rejected(client, db_factory):
-    event_id, station_id = create_event_and_station(client, "Invitacion expirada")
+    event_id, station_id = create_event_and_station(client, "Invitación expirada")
     credentials = create_delegated_admin(client, event_id, "expired")
     invited_email = f"expired-{secrets.token_hex(5)}@example.edu"
     login(client, credentials)

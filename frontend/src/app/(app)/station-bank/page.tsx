@@ -11,7 +11,7 @@ import { DataTable } from "@/components/data-table";
 import { SectionCard } from "@/components/section-card";
 
 const bankStatusOptions = [
-  { value: "en_diseno", label: "En diseno" },
+  { value: "en_diseno", label: "En diseño" },
   { value: "piloteada", label: "Piloteada" },
   { value: "aprobada", label: "Aprobada" },
   { value: "archivada", label: "Archivada" },
@@ -52,12 +52,12 @@ export default function StationBankPage() {
     <div className="space-y-6">
       <SectionCard
         title="Banco de estaciones"
-        subtitle="Aqui viven las estaciones reutilizables del hospital o de la institucion para estandarizar y escalar disenos docentes."
+        subtitle="Aquí viven las estaciones reutilizables del hospital o de la institución para estandarizar y escalar diseños docentes."
       >
         <div className="flex flex-wrap gap-3">
           {canEditContent ? (
             <Link href="/stations/builder?scope=bank" className="btn-primary">
-              Crear estacion de banco
+              Crear estación de banco
             </Link>
           ) : null}
           <Link href="/stations" className="btn-secondary">
@@ -68,7 +68,7 @@ export default function StationBankPage() {
 
       <SectionCard
         title="Estaciones reutilizables"
-        subtitle="Una estacion puede quedar en diseno, piloteada, aprobada o archivada segun su nivel de madurez."
+        subtitle="Una estación puede quedar en diseño, piloteada, aprobada o archivada según su nivel de madurez."
       >
         {loading ? (
           <p>Cargando banco de estaciones...</p>

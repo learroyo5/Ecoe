@@ -252,7 +252,7 @@ export function InstrumentStep({
                     }
                     className="size-4 accent-[var(--color-primary)] shrink-0"
                   />
-                  <span>Permitir observacion libre adicional para el evaluador</span>
+                  <span>Permitir observación libre adicional para el evaluador</span>
                 </label>
 
                 <div className="space-y-3">
@@ -601,8 +601,8 @@ export function StudentFormSection({
           </button>
           <p className="text-sm text-slate-600">
             {isEditing
-              ? "Este formulario queda guardado dentro de la estacion y se usara despues en la interfaz del estudiante."
-              : "Guarda primero la estacion con el boton principal de abajo. Luego podras editar el formulario aqui."}
+              ? "Este formulario queda guardado dentro de la estación y se usará después en la interfaz del estudiante."
+              : "Guarda primero la estación con el botón principal de abajo. Luego podrás editar el formulario aquí."}
           </p>
         </div>
       </div>

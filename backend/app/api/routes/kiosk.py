@@ -59,7 +59,7 @@ def issue_station_kiosk_token(
 ):
     station = db.get(Station, station_id)
     if not station:
-        raise HTTPException(status_code=404, detail="Estacion no encontrada")
+        raise HTTPException(status_code=404, detail="Estación no encontrada")
     ensure_event_access(db, user, station.ecoe_event_id, *KIOSK_MANAGER_ROLES)
     result = issue_kiosk_token(db, station, issued_by_email=user.email)
     db.add(AuditLog(
@@ -81,7 +81,7 @@ def revoke_station_kiosk_token(
 ):
     station = db.get(Station, station_id)
     if not station:
-        raise HTTPException(status_code=404, detail="Estacion no encontrada")
+        raise HTTPException(status_code=404, detail="Estación no encontrada")
     ensure_event_access(db, user, station.ecoe_event_id, *KIOSK_MANAGER_ROLES)
     now = utcnow_naive()
     revoked = 0
@@ -194,7 +194,7 @@ def kiosk_submit(
     # check-in row, so nothing can be submitted on someone else's behalf).
     checkin = db.get(StationCheckIn, payload.checkin_id)
     if not checkin or checkin.station_id != kiosk.station_id:
-        raise HTTPException(status_code=400, detail="El check-in no corresponde a esta estacion")
+        raise HTTPException(status_code=400, detail="El check-in no corresponde a esta estación")
     ensure_checkin_within_time(checkin, station)
     existing_response = db.scalar(
         select(StudentResponse).where(
@@ -207,7 +207,7 @@ def kiosk_submit(
     if existing_response:
         raise HTTPException(
             status_code=400,
-            detail="La respuesta de esta estacion ya fue enviada y no puede reemplazarse",
+            detail="La respuesta de esta estación ya fue enviada y no puede reemplazarse",
         )
     response = StudentResponse(
         ecoe_event_id=kiosk.ecoe_event_id,
@@ -261,7 +261,7 @@ def kiosk_media_file(
     if active_checkin is None:
         raise HTTPException(
             status_code=403,
-            detail="La multimedia solo esta disponible con un estudiante confirmado en la estacion",
+            detail="La multimedia solo está disponible con un estudiante confirmado en la estación",
         )
     if not Path(asset.file_path).exists():
         raise HTTPException(status_code=404, detail="Archivo no encontrado")

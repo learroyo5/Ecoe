@@ -32,7 +32,7 @@ def _login_buckets(request: Request, email: str | None) -> list[tuple[str, int]]
 def _rate_limit_error() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        detail="Demasiados intentos de inicio de sesion. Intenta de nuevo en unos minutos.",
+        detail="Demasiados intentos de inicio de sesión. Intenta de nuevo en unos minutos.",
     )
 
 

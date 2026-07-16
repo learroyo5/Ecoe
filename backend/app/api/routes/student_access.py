@@ -56,7 +56,7 @@ def student_access_context(
                             detail="No existe un estudiante activo asociado a tu cuenta en este ECOE")
     if payload.ecoe_number and normalize_ecoe_lookup(student.ecoe_number) != normalize_ecoe_lookup(payload.ecoe_number):
         raise HTTPException(status_code=403,
-                            detail="El Numero ECOE ingresado no corresponde a tu cuenta para este evento")
+                            detail="El Número ECOE ingresado no corresponde a tu cuenta para este evento")
 
     checkin = db.scalar(
         select(StationCheckIn)
@@ -68,7 +68,7 @@ def student_access_context(
         .order_by(StationCheckIn.confirmed_at.desc(), StationCheckIn.id.desc())
     )
     if not checkin:
-        raise HTTPException(status_code=400, detail="Tu ingreso aun no ha sido confirmado por el evaluador")
+        raise HTTPException(status_code=400, detail="Tu ingreso aún no ha sido confirmado por el evaluador")
 
     station = db.get(Station, checkin.station_id)
     student_media_assets = db.scalars(
@@ -139,11 +139,11 @@ def submit_student_response(
     if not checkin:
         raise HTTPException(
             status_code=400,
-            detail="La respuesta solo puede enviarse despues de que el evaluador confirme tu ingreso a la estacion",
+            detail="La respuesta solo puede enviarse después de que el evaluador confirme tu ingreso a la estación",
         )
     station = db.get(Station, payload.station_id)
     if not station or station.ecoe_event_id != payload.ecoe_event_id:
-        raise HTTPException(status_code=400, detail="La estacion no pertenece al ECOE indicado")
+        raise HTTPException(status_code=400, detail="La estación no pertenece al ECOE indicado")
     ensure_checkin_within_time(checkin, station)
     # Duplicates are scoped by mode: a pilotaje response must not block the
     # same student/station during the real execution.
@@ -157,7 +157,7 @@ def submit_student_response(
     )
     if existing_response:
         raise HTTPException(status_code=400,
-                            detail="La respuesta de esta estacion ya fue enviada y no puede reemplazarse")
+                            detail="La respuesta de esta estación ya fue enviada y no puede reemplazarse")
     response = StudentResponse(
         **payload.model_dump(exclude={"checkin_id", "mode", "by_contingency"}),
         mode=session_mode,

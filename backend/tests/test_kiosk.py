@@ -186,7 +186,7 @@ class TestKioskSubmit:
             response = client.post(
                 "/api/kiosk/submit",
                 headers=_kiosk_headers(token),
-                json={"checkin_id": closed_checkin_id, "answers": {"q1": "tarde pero valido"}},
+                json={"checkin_id": closed_checkin_id, "answers": {"q1": "tarde pero válido"}},
             )
             assert response.status_code == 200, response.text
             with TestingSessionLocal() as db:
@@ -207,7 +207,7 @@ class TestKioskSubmit:
                 json={"checkin_id": expired_checkin_id, "answers": {}},
             )
             assert expired.status_code == 400
-            assert "expiro" in expired.json()["detail"]
+            assert "expiró" in expired.json()["detail"]
 
             _set_event_status(1, ECOEStatus.publicado.value)
             fresh_checkin_id = _create_checkin(station_id=4, student_id=8)

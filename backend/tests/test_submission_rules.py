@@ -52,7 +52,7 @@ class TestEvaluatorSubmissionRules:
             json=evaluator_payload(1, 2, checkin_id),
         )
         assert response.status_code == 400
-        assert "expiro" in response.json()["detail"]
+        assert "expiró" in response.json()["detail"]
 
     def test_score_above_authoritative_max_rejected(self, auth_client):
         checkin_id = _create_checkin(station_id=1, student_id=3)
@@ -110,7 +110,7 @@ class TestStudentSubmissionRules:
             "answers": {"q1": "SCA"},
         })
         assert response.status_code == 400
-        assert "expiro" in response.json()["detail"]
+        assert "expiró" in response.json()["detail"]
 
     def test_student_submit_within_window_succeeds_once(self, client):
         _create_checkin(station_id=2, student_id=1)

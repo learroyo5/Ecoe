@@ -21,14 +21,14 @@ export default function SimulatedPatientPage() {
 
   return (
     <div className="space-y-6">
-      <SectionCard title="Gestor de paciente simulado" subtitle="Construye personajes y guiones reutilizables para estaciones con interaccion clinica.">
+      <SectionCard title="Gestor de paciente simulado" subtitle="Construye personajes y guiones reutilizables para estaciones con interacción clínica.">
         {canEditContent ? <QuickForm
           fields={[
             { name: "character_name", label: "Nombre personaje" },
             { name: "summary_profile", label: "Perfil resumido" },
             { name: "base_story", label: "Historia base" },
             { name: "key_answers", label: "Respuestas clave" },
-            { name: "emotional_tone", label: "Actitud / emocion" },
+            { name: "emotional_tone", label: "Actitud / emoción" },
             { name: "special_instructions", label: "Instrucciones especiales" },
           ]}
           onSubmit={async (values) => {
@@ -37,7 +37,7 @@ export default function SimulatedPatientPage() {
           }}
         /> : <p className="text-sm text-slate-600">Tu rol permite consultar el banco, pero no modificarlo.</p>}
       </SectionCard>
-      <SectionCard title="Banco de personajes" subtitle="Repositorio docente para asignar personajes simulados segun tipo de estacion.">
+      <SectionCard title="Banco de personajes" subtitle="Repositorio docente para asignar personajes simulados según tipo de estación.">
         {loading ? (
           <p>Cargando pacientes simulados...</p>
         ) : error ? (

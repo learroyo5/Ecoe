@@ -85,7 +85,7 @@ def create_account(db_factory, email: str, role_code: str, password: str) -> Use
 
 
 def test_only_global_admin_manages_users_and_delegates_event_admin(client):
-    event_id = create_event(client, "Delegacion institucional")
+    event_id = create_event(client, "Delegación institucional")
     password = secrets.token_urlsafe(24)
     created = client.post("/api/users", json={
         "email": "delegated-admin@example.edu",
@@ -223,7 +223,7 @@ def test_coordinator_cannot_delegate_content_or_coordinator_roles(client):
 
 def test_content_library_and_incident_station_are_scoped_to_event(client):
     target_event_id = create_event(client, "Contenido aislado")
-    foreign_station_id = create_station(client, target_event_id, "Estacion ajena")
+    foreign_station_id = create_station(client, target_event_id, "Estación ajena")
 
     login(client, COEDITOR)
     assert client.get(f"/api/templates?ecoe_event_id={target_event_id}").status_code == 403

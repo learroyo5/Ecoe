@@ -174,7 +174,7 @@ class TestStageGate:
                 json=_evaluator_payload(1, 8, checkin_id),
             )
             assert response.status_code == 409
-            assert "pilotaje o en ejecucion" in response.json()["detail"]
+            assert "pilotaje o en ejecución" in response.json()["detail"]
         finally:
             _set_event_status(1, original_status)
 

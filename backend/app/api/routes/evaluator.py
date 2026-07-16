@@ -144,7 +144,7 @@ def confirm_station_checkin(
     ensure_submission_stage(ecoe_event)
     station = db.get(Station, payload.station_id)
     if not station or station.ecoe_event_id != payload.ecoe_event_id:
-        raise HTTPException(status_code=404, detail="Estacion no encontrada")
+        raise HTTPException(status_code=404, detail="Estación no encontrada")
 
     if not event_roles & {
         RoleCode.admin_ecoe.value,
@@ -163,11 +163,11 @@ def confirm_station_checkin(
             db.commit()
             db.refresh(assignment)
         if not assignment or payload.station_id not in assigned_station_ids:
-            raise HTTPException(status_code=403, detail="No tienes esa estacion asignada")
+            raise HTTPException(status_code=403, detail="No tienes esa estación asignada")
 
     student = find_student_by_ecoe_number(db, payload.ecoe_event_id, payload.ecoe_number, active_only=True)
     if not student:
-        raise HTTPException(status_code=404, detail="No existe un estudiante activo con ese Numero ECOE")
+        raise HTTPException(status_code=404, detail="No existe un estudiante activo con ese Número ECOE")
 
     existing_station_checkins = db.scalars(
         select(StationCheckIn).where(
@@ -245,11 +245,11 @@ def submit_evaluator_record(
     if not checkin:
         raise HTTPException(
             status_code=400,
-            detail="La evaluacion solo puede guardarse para un estudiante previamente confirmado en esta estacion",
+            detail="La evaluación solo puede guardarse para un estudiante previamente confirmado en esta estación",
         )
     station = db.get(Station, payload.station_id)
     if not station or station.ecoe_event_id != payload.ecoe_event_id:
-        raise HTTPException(status_code=400, detail="La estacion no pertenece al ECOE indicado")
+        raise HTTPException(status_code=400, detail="La estación no pertenece al ECOE indicado")
     # The evaluator records after the student leaves, so the window also
     # includes the transition time.
     ensure_checkin_within_time(
@@ -270,7 +270,7 @@ def submit_evaluator_record(
         if not evaluator_assignment or payload.station_id not in assigned_station_ids:
             raise HTTPException(
                 status_code=403,
-                detail="No puedes enviar evaluaciones para una estacion no asignada a tu cuenta",
+                detail="No puedes enviar evaluaciones para una estación no asignada a tu cuenta",
             )
     # Duplicates are scoped by mode: a record saved during the pilotaje must
     # not block the same student/station during the real execution.
@@ -285,7 +285,7 @@ def submit_evaluator_record(
     if existing_record:
         raise HTTPException(
             status_code=400,
-            detail="La evaluacion de esta estacion ya fue enviada y no puede modificarse durante el ECOE",
+            detail="La evaluación de esta estación ya fue enviada y no puede modificarse durante el ECOE",
         )
     # Never trust client-supplied scoring metadata: the max score comes from
     # the station's assessment tool and the mode from the ECOE state.
@@ -293,7 +293,7 @@ def submit_evaluator_record(
     if authoritative_max <= 0:
         raise HTTPException(
             status_code=400,
-            detail="La estacion no tiene un puntaje maximo valido configurado",
+            detail="La estación no tiene un puntaje máximo válido configurado",
         )
     if payload.score_obtained < 0 or payload.score_obtained > authoritative_max:
         raise HTTPException(

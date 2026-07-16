@@ -25,7 +25,7 @@ async def parse_tabular_file(file: UploadFile) -> list[dict]:
     if len(content) > MAX_IMPORT_FILE_BYTES:
         raise HTTPException(
             status_code=400,
-            detail=f"El archivo de importacion excede el maximo de {MAX_IMPORT_FILE_BYTES // (1024 * 1024)} MB",
+            detail=f"El archivo de importación excede el máximo de {MAX_IMPORT_FILE_BYTES // (1024 * 1024)} MB",
         )
     try:
         if (file.filename or "").lower().endswith(".csv"):
@@ -35,12 +35,12 @@ async def parse_tabular_file(file: UploadFile) -> list[dict]:
     except Exception as exc:
         raise HTTPException(
             status_code=400,
-            detail="No se pudo leer el archivo. Verifica que sea un CSV o Excel valido.",
+            detail="No se pudo leer el archivo. Verifica que sea un CSV o Excel válido.",
         ) from exc
     if len(df) > MAX_IMPORT_ROWS:
         raise HTTPException(
             status_code=400,
-            detail=f"El archivo tiene {len(df)} filas; el maximo permitido es {MAX_IMPORT_ROWS}",
+            detail=f"El archivo tiene {len(df)} filas; el máximo permitido es {MAX_IMPORT_ROWS}",
         )
     df.columns = [normalize_header(column) for column in df.columns]
     return df.fillna("").to_dict(orient="records")

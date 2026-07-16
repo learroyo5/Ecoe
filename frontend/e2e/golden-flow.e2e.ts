@@ -27,7 +27,7 @@ async function login(page: Page, credentials: { email: string; password: string 
   await page.goto("/login");
   await page.locator('input[type="email"]').fill(credentials.email);
   await page.locator('input[type="password"]').fill(credentials.password);
-  await page.getByRole("button", { name: "Iniciar sesion" }).click();
+  await page.getByRole("button", { name: "Iniciar sesión" }).click();
   await page.waitForURL((url) => !url.pathname.startsWith("/login"));
 }
 
@@ -95,7 +95,7 @@ test.describe.serial("flujo dorado", () => {
     await gotoHydrated(page, "/student");
     await page.getByPlaceholder("Ejemplo: 008").fill("E001");
     await page.getByRole("button", { name: "Verificar mi ingreso" }).click();
-    await expect(page.getByText("Interpretacion ECG")).toBeVisible();
+    await expect(page.getByText("Interpretación ECG")).toBeVisible();
 
     await page.locator("select").last().selectOption("SCA");
     await page.getByRole("button", { name: "Enviar respuesta final" }).click();
@@ -109,7 +109,7 @@ test.describe.serial("flujo dorado", () => {
     await gotoHydrated(page, "/stations");
 
     // Emitir token de kiosco para la estación sin evaluador (Plan diagnostico).
-    const stationRow = page.locator("div.rounded-2xl", { hasText: "Plan diagnostico" }).first();
+    const stationRow = page.locator("div.rounded-2xl", { hasText: "Plan diagnóstico" }).first();
     page.once("dialog", (dialog) => dialog.accept());
     await stationRow.getByRole("button", { name: "Modo kiosco" }).click();
     const kioskUrl = (await page.locator("p.font-mono").textContent())?.trim();

@@ -32,11 +32,11 @@ export default function LoginPage() {
       <div className="grid w-full max-w-6xl gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <section className="panel-card overflow-hidden p-8">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--color-primary)]">
-            DRNOTUS · Red academica clinica
+            DRNOTUS · Red académica clínica
           </p>
-          <h1 className="mt-4 text-5xl">Gestion integral para ECOE y OSCE</h1>
+          <h1 className="mt-4 text-5xl">Gestión integral para ECOE y OSCE</h1>
           <p className="mt-4 max-w-2xl text-lg text-slate-600">
-            Disena estaciones, pilota circuitos, ejecuta evaluaciones en vivo y consolida
+            Diseña estaciones, pilota circuitos, ejecuta evaluaciones en vivo y consolida
             resultados con una sola plataforma.
           </p>
           <div className="mt-8 grid gap-4 md:grid-cols-3">
@@ -48,7 +48,7 @@ export default function LoginPage() {
             <div className="clinical-panel">
               <p className="text-sm uppercase tracking-[0.16em] text-slate-500">Modo dual</p>
               <p className="mt-3 text-3xl font-semibold">Pilotaje</p>
-              <p className="mt-2 text-sm text-slate-600">separado estrictamente de ejecucion real</p>
+              <p className="mt-2 text-sm text-slate-600">separado estrictamente de ejecución real</p>
             </div>
             <div className="clinical-panel">
               <p className="text-sm uppercase tracking-[0.16em] text-slate-500">Operativo</p>
@@ -62,7 +62,7 @@ export default function LoginPage() {
           <p className="pill pill-ok">Acceso protegido</p>
           <h2 className="mt-4 text-3xl">Ingresar</h2>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Utiliza tu correo institucional y tu contrasena para entrar al entorno operativo de ECOE.
+            Utiliza tu correo institucional y tu contraseña para entrar al entorno operativo de ECOE.
           </p>
           <form
             className="mt-6 space-y-4"
@@ -72,7 +72,7 @@ export default function LoginPage() {
               try {
                 await login(email, password);
               } catch (err) {
-                setError(err instanceof Error ? err.message : "No se pudo iniciar sesion.");
+                setError(err instanceof Error ? err.message : "No se pudo iniciar sesión.");
               }
             }}
           >
@@ -88,7 +88,7 @@ export default function LoginPage() {
               />
             </label>
             <label className="space-y-2">
-              <span className="text-sm font-semibold">Contrasena</span>
+              <span className="text-sm font-semibold">Contraseña</span>
               <input
                 type="password"
                 name="password"
@@ -98,7 +98,7 @@ export default function LoginPage() {
                 onChange={(event) => setPassword(event.target.value)}
               />
             </label>
-            <button className="btn-primary w-full text-base">Iniciar sesion</button>
+            <button className="btn-primary w-full text-base">Iniciar sesión</button>
             {error ? (
               <p role="alert" className="text-sm text-[var(--color-error)]">{error}</p>
             ) : null}

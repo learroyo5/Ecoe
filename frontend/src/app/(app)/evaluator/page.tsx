@@ -291,7 +291,7 @@ export default function EvaluatorPage() {
             >
               <label className="space-y-2">
                 <span className="text-sm font-semibold text-slate-700">
-                  Numero ECOE del estudiante
+                  Número ECOE del estudiante
                 </span>
                 <input
                   value={ecoeNumber}
@@ -305,7 +305,7 @@ export default function EvaluatorPage() {
             </form>
           ) : (
             <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              Tu usuario no tiene una estacion asignada en este ECOE.
+              Tu usuario no tiene una estación asignada en este ECOE.
             </p>
           )}
 
@@ -447,7 +447,7 @@ export default function EvaluatorPage() {
                 </div>
               ) : (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  Esta estacion aun no tiene una pauta de evaluacion visible para el evaluador.
+                  Esta estación aún no tiene una pauta de evaluación visible para el evaluador.
                 </div>
               )}
               <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
@@ -462,7 +462,7 @@ export default function EvaluatorPage() {
                 />
               </label>
               <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
-                <span className="text-sm font-semibold">Puntaje maximo de la estacion</span>
+                <span className="text-sm font-semibold">Puntaje máximo de la estación</span>
                 <input
                   value={String(assessmentTool?.max_score ?? maxScore)}
                   readOnly

@@ -280,7 +280,7 @@ def build_traceability_report(
             "timestamp": pilot_run.created_at.isoformat(),
             "type": "pilotaje", "label": pilot_run.name,
             "detail": f"Pilotaje {pilot_run.scope.replace('_', ' ')} registrado.",
-            "actor": "Coordinacion ECOE", "mode": "pilotaje",
+            "actor": "Coordinación ECOE", "mode": "pilotaje",
         })
     for checkin in checkins:
         student = students_by_id.get(checkin.student_id)
@@ -290,7 +290,7 @@ def build_traceability_report(
         activity_log.append({
             "timestamp": checkin.confirmed_at.isoformat(), "type": "checkin",
             "label": "Ingreso confirmado",
-            "detail": f"{student.ecoe_number} - {student.name} {student.last_name} en estacion {station.station_number}: {station.name}.",
+            "detail": f"{student.ecoe_number} - {student.name} {student.last_name} en estación {station.station_number}: {station.name}.",
             "actor": checkin.evaluator_name, "mode": "ejecucion",
         })
     for record in evaluator_records:
@@ -300,8 +300,8 @@ def build_traceability_report(
             continue
         activity_log.append({
             "timestamp": record.created_at.isoformat(), "type": "evaluacion",
-            "label": "Evaluacion enviada",
-            "detail": f"{student.ecoe_number} - {student.name} {student.last_name} evaluado en estacion {station.station_number}: {station.name}.",
+            "label": "Evaluación enviada",
+            "detail": f"{student.ecoe_number} - {student.name} {student.last_name} evaluado en estación {station.station_number}: {station.name}.",
             "actor": record.evaluator_name, "mode": record.mode,
         })
     for response in student_responses:
@@ -312,7 +312,7 @@ def build_traceability_report(
         activity_log.append({
             "timestamp": response.submitted_at.isoformat(), "type": "respuesta_estudiante",
             "label": "Respuesta del estudiante",
-            "detail": f"{student.ecoe_number} - {student.name} {student.last_name} respondio en estacion {station.station_number}: {station.name}.",
+            "detail": f"{student.ecoe_number} - {student.name} {student.last_name} respondió en estación {station.station_number}: {station.name}.",
             "actor": f"{student.name} {student.last_name}", "mode": response.mode,
         })
     activity_log.sort(key=lambda item: item["timestamp"], reverse=True)
@@ -355,9 +355,9 @@ def export_contingency_pdf(db: Session, ecoe_event_id: int, station_id: int | No
     text.textLine(f"ECOE: {ecoe_event.name}")
     if station_id:
         station = db.get(Station, station_id)
-        text.textLine(f"Estacion: {station.station_number} - {station.name}")
-        text.textLine(f"Instruccion estudiante: {station.pre_entry_instruction}")
-        text.textLine(f"Instruccion evaluador: {station.evaluator_instruction}")
+        text.textLine(f"Estación: {station.station_number} - {station.name}")
+        text.textLine(f"Instrucción estudiante: {station.pre_entry_instruction}")
+        text.textLine(f"Instrucción evaluador: {station.evaluator_instruction}")
         text.textLine(f"Materiales: {station.materials}")
     else:
         stations = db.scalars(select(Station).where(Station.ecoe_event_id == ecoe_event_id)).all()
