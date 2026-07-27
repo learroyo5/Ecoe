@@ -1,64 +1,18 @@
-"""Helper functions extracted from routes.py for reuse across route modules."""
+"""Generic normalization and business helpers shared across route modules.
 
-import uuid
-from pathlib import Path
+Authorization lives in app.services.authorization, media access control in
+app.services.media, and dict serializers in app.utils.serializers — this
+module keeps only helpers with no authorization/media concerns.
+"""
+
+from datetime import timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.entities import (
-    AssessmentItem,
-    AssessmentTool,
-    ECOEPermission,
-    ECOEEvent,
-    EvaluatorRecord,
-    MediaAsset,
-    StaffAssignment,
-    Station,
-    StationCheckIn,
-    Student,
-    StudentResponse,
-    User,
-)
-from app.models.enums import RoleCode
-
-# ── Media upload constants ──────────────────────────────────────────────
-
-ALLOWED_MEDIA_EXTENSIONS = {
-    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg",
-    ".mp3", ".wav", ".ogg", ".m4a",
-    ".mp4", ".webm", ".mov",
-    ".pdf", ".docx", ".pptx", ".xlsx",
-}
-MAX_MEDIA_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
-ALLOWED_VIEWERS = {"estudiante", "evaluador", "ambos"}
-
-_MAGIC_SIGNATURES: dict[str, list[bytes]] = {
-    ".jpg": [b"\xff\xd8\xff"],
-    ".jpeg": [b"\xff\xd8\xff"],
-    ".png": [b"\x89PNG\r\n\x1a\n"],
-    ".gif": [b"GIF87a", b"GIF89a"],
-    ".webp": [b"RIFF"],
-    ".pdf": [b"%PDF"],
-    ".mp3": [b"\xff\xfb", b"\xff\xf3", b"\xff\xf2", b"ID3"],
-    ".mp4": [b"\x00\x00\x00\x18ftypmp42", b"\x00\x00\x00\x1cftypmp42"],
-}
-
-# ── Role sets ───────────────────────────────────────────────────────────
-
-STAFF_SCOPED_ROLE_CODES = {
-    RoleCode.coeditor_docente.value,
-    RoleCode.coordinador_operativo.value,
-    RoleCode.evaluador.value,
-    RoleCode.cronometrador.value,
-}
-ADMIN_EVENT_ROLE_CODES = {
-    RoleCode.creador_ecoe.value,
-    RoleCode.coeditor_docente.value,
-    RoleCode.coordinador_operativo.value,
-}
-ALLOWED_STAFF_ASSIGNMENT_ROLE_CODES = STAFF_SCOPED_ROLE_CODES
+from app.models.entities import AssessmentTool, StaffAssignment, Station, StationCheckIn, Student
+from app.utils.clock import utcnow_naive  # noqa: F401 — re-exported for existing importers
 
 # ── Normalization helpers ───────────────────────────────────────────────
 
@@ -111,136 +65,114 @@ def ensure_primary_station_assignment(staff: StaffAssignment | None) -> tuple[li
     return normalized_station_ids, changed
 
 
-def validate_staff_role_code(role_code: str) -> str:
-    normalized_role = str(role_code or "").strip().lower()
-    if normalized_role not in ALLOWED_STAFF_ASSIGNMENT_ROLE_CODES:
-        raise HTTPException(status_code=400, detail="Rol operativo no permitido para este registro")
-    return normalized_role
+# ── Submission integrity helpers ────────────────────────────────────────
+
+# Tolerance for network latency / clock skew between client and server.
+SUBMISSION_GRACE_SECONDS = 30
 
 
-# ── Authorization helpers ───────────────────────────────────────────────
-
-def get_user_event_roles(db: Session, user: User, ecoe_event_id: int) -> set[str]:
-    roles: set[str] = set()
-    normalized_email = normalize_email(user.email)
-    user_role = str(user.role.code)
-
-    if user_role == RoleCode.creador_ecoe.value:
-        creator_permission = db.scalar(
-            select(ECOEPermission).where(
-                ECOEPermission.ecoe_event_id == ecoe_event_id,
-                ECOEPermission.user_id == user.id,
-                ECOEPermission.role_code == RoleCode.creador_ecoe.value,
-            )
-        )
-        if creator_permission:
-            roles.add(RoleCode.creador_ecoe.value)
-
-    if user_role in STAFF_SCOPED_ROLE_CODES:
-        staff_assignment = db.scalar(
-            select(StaffAssignment).where(
-                StaffAssignment.ecoe_event_id == ecoe_event_id,
-                StaffAssignment.email == normalized_email,
-                StaffAssignment.role_code == user_role,
-            )
-        )
-        if staff_assignment:
-            roles.add(user_role)
-
-    if user_role == RoleCode.estudiante.value:
-        student = db.scalar(
-            select(Student).where(
-                Student.ecoe_event_id == ecoe_event_id,
-                func.lower(Student.email) == normalized_email,
-                Student.is_active.is_(True),
-            )
-        )
-        if student:
-            roles.add(RoleCode.estudiante.value)
-
-    return roles
-
-
-def ensure_event_access(db: Session, user: User, ecoe_event_id: int, *allowed_roles: str) -> set[str]:
-    ecoe_event = db.get(ECOEEvent, ecoe_event_id)
-    if not ecoe_event:
-        raise HTTPException(status_code=404, detail="ECOE no encontrado")
-
-    event_roles = get_user_event_roles(db, user, ecoe_event_id)
-    if not event_roles:
-        raise HTTPException(
-            status_code=403,
-            detail="No tienes permisos para acceder a este ECOE",
-        )
-    if allowed_roles and not any(role in event_roles for role in allowed_roles):
-        raise HTTPException(
-            status_code=403,
-            detail="No tienes permisos para esta accion en este ECOE",
-        )
-    return event_roles
-
-
-def list_accessible_ecoe_events(db: Session, user: User) -> list[ECOEEvent]:
-    user_role = str(user.role.code)
-    normalized_email = normalize_email(user.email)
-
-    if user_role == RoleCode.creador_ecoe.value:
-        event_ids = db.scalars(
-            select(ECOEPermission.ecoe_event_id).where(
-                ECOEPermission.user_id == user.id,
-                ECOEPermission.role_code == RoleCode.creador_ecoe.value,
-            )
-        ).all()
-    elif user_role in STAFF_SCOPED_ROLE_CODES:
-        event_ids = db.scalars(
-            select(StaffAssignment.ecoe_event_id).where(
-                StaffAssignment.email == normalized_email,
-                StaffAssignment.role_code == user_role,
-            )
-        ).all()
-    elif user_role == RoleCode.estudiante.value:
-        event_ids = db.scalars(
-            select(Student.ecoe_event_id).where(
-                func.lower(Student.email) == normalized_email,
-                Student.is_active.is_(True),
-            )
-        ).all()
-    else:
-        event_ids = []
-
-    if not event_ids:
-        return []
-
-    return list(
-        db.scalars(
-            select(ECOEEvent)
-            .where(ECOEEvent.id.in_(event_ids))
-            .order_by(ECOEEvent.date.desc(), ECOEEvent.id.desc())
-        ).all()
-    )
-
-
-def ensure_matching_operational_user(
-    db: Session,
+def checkin_submission_deadline(
+    checkin: "StationCheckIn",
+    station: "Station",
     *,
-    email: str,
-    expected_role: str,
-) -> User:
-    normalized_email = normalize_email(email)
-    user = db.scalar(
-        select(User).where(func.lower(User.email) == normalized_email)
+    extra_minutes: float = 0.0,
+):
+    """Nominal end of the submission window (without the latency grace).
+
+    This is the deadline the UI should display and enforce; the server
+    accepts up to SUBMISSION_GRACE_SECONDS beyond it to absorb network
+    latency and clock skew.
+    """
+    return checkin.confirmed_at + timedelta(
+        minutes=float(station.station_time_minutes or 0) + float(extra_minutes),
     )
-    if not user or str(user.role.code) != expected_role:
+
+
+def ensure_checkin_within_time(
+    checkin: "StationCheckIn",
+    station: "Station",
+    *,
+    extra_minutes: float = 0.0,
+    grace_seconds: int = SUBMISSION_GRACE_SECONDS,
+) -> None:
+    """Reject submissions after the station time window has expired.
+
+    The window starts when the evaluator confirms the check-in. The client
+    also blocks the UI, but the server is the authority: client clocks can
+    be wrong or manipulated.
+    """
+    deadline = checkin_submission_deadline(checkin, station, extra_minutes=extra_minutes)
+    if utcnow_naive() > deadline + timedelta(seconds=grace_seconds):
         raise HTTPException(
             status_code=400,
-            detail=f"No existe una cuenta activa con rol {expected_role} para ese correo",
+            detail="El tiempo de la estación ya expiró; el envío no puede aceptarse.",
         )
-    if not user.is_active:
-        raise HTTPException(
-            status_code=400,
-            detail="La cuenta asociada a este correo se encuentra inactiva",
-        )
-    return user
+
+
+def resolve_station_max_score(db: Session, station: "Station") -> float:
+    """Authoritative max score for a station, never trusting the client.
+
+    Preference order: sum of the assessment tool items, the tool's declared
+    max score, then the station's own max score.
+    """
+    if station.assessment_tool_id:
+        tool = db.get(AssessmentTool, station.assessment_tool_id)
+        if tool:
+            items_total = sum(item.score_per_item for item in tool.items)
+            if items_total > 0:
+                return float(items_total)
+            if tool.max_score and tool.max_score > 0:
+                return float(tool.max_score)
+    return float(station.max_score or 0)
+
+
+LIVE_RUNNING_STATUSES = {"running", "transition"}
+
+
+def compute_remaining_seconds(session) -> int:
+    """Authoritative remaining time of a LiveSession: server clock, not clients'."""
+    if session.status in LIVE_RUNNING_STATUSES and session.phase_started_at:
+        elapsed = (utcnow_naive() - session.phase_started_at).total_seconds()
+        return max(0, round(session.remaining_seconds - elapsed))
+    return session.remaining_seconds
+
+
+def resolve_session_mode(ecoe_event) -> str:
+    """Server-side session mode for READS: en_pilotaje maps to pilotaje.
+
+    Non-raising: use it to scope queries (duplicate checks, exists flags).
+    Writes must go through ensure_submission_stage instead, which rejects
+    every state outside en_pilotaje / en_ejecucion.
+    """
+    from app.models.enums import ECOEStatus, SessionMode
+
+    if str(ecoe_event.status) == ECOEStatus.en_pilotaje.value:
+        return SessionMode.pilotaje.value
+    return SessionMode.ejecucion.value
+
+
+def ensure_submission_stage(ecoe_event) -> str:
+    """Authoritative mode for WRITES (check-ins and submissions).
+
+    Operational records are only accepted while the ECOE is formally in
+    pilotaje or in real execution; anything recorded outside those states
+    would contaminate results (e.g. a rehearsal while "publicado" would be
+    stored as ejecucion). Returns the mode to record with.
+    """
+    from app.models.enums import ECOEStatus, SessionMode
+
+    status = str(ecoe_event.status)
+    if status == ECOEStatus.en_pilotaje.value:
+        return SessionMode.pilotaje.value
+    if status == ECOEStatus.en_ejecucion.value:
+        return SessionMode.ejecucion.value
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            "Los registros operativos solo se aceptan con el ECOE en pilotaje o en ejecución real "
+            f"(estado actual: {status})."
+        ),
+    )
 
 
 # ── Check-in / lookup helpers ───────────────────────────────────────────
@@ -263,6 +195,29 @@ def get_active_checkin(
     return db.scalar(statement.order_by(StationCheckIn.confirmed_at.desc(), StationCheckIn.id.desc()))
 
 
+def get_latest_checkin_any_status(
+    db: Session,
+    ecoe_event_id: int,
+    station_id: int,
+    student_id: int,
+) -> StationCheckIn | None:
+    """Latest check-in for the tuple regardless of status.
+
+    Contingency submissions arrive after the rotation moved on: the original
+    check-in is usually already "cerrado" (or its window expired), so the
+    active-only lookup would reject exactly the cases contingency exists for.
+    """
+    return db.scalar(
+        select(StationCheckIn)
+        .where(
+            StationCheckIn.ecoe_event_id == ecoe_event_id,
+            StationCheckIn.station_id == station_id,
+            StationCheckIn.student_id == student_id,
+        )
+        .order_by(StationCheckIn.confirmed_at.desc(), StationCheckIn.id.desc())
+    )
+
+
 def find_student_by_ecoe_number(
     db: Session,
     ecoe_event_id: int,
@@ -278,82 +233,13 @@ def find_student_by_ecoe_number(
     if active_only:
         statement = statement.where(Student.is_active.is_(True))
 
-    students = db.scalars(statement.order_by(Student.id.asc())).all()
-    for student in students:
-        if normalize_ecoe_lookup(student.ecoe_number) == lookup:
-            return student
-    return None
-
-
-# ── Serialization helpers ───────────────────────────────────────────────
-
-def serialize_assessment_tool(db: Session, tool_id: int | None) -> dict | None:
-    if not tool_id:
-        return None
-    tool = db.get(AssessmentTool, tool_id)
-    if not tool:
-        return None
-    items = db.scalars(
-        select(AssessmentItem)
-        .where(AssessmentItem.tool_id == tool.id)
-        .order_by(AssessmentItem.order_index.asc(), AssessmentItem.id.asc())
-    ).all()
-    return {
-        "id": tool.id,
-        "name": tool.name,
-        "tool_type": tool.tool_type,
-        "max_score": tool.max_score,
-        "free_observation": tool.free_observation,
-        "items": [
-            {
-                "id": item.id,
-                "label": item.label,
-                "score_per_item": item.score_per_item,
-                "order_index": item.order_index,
-            }
-            for item in items
-        ],
-    }
-
-
-def serialize_media_asset(asset: MediaAsset) -> dict:
-    return {
-        "id": asset.id,
-        "filename": asset.filename,
-        "original_name": asset.original_name,
-        "content_type": asset.content_type,
-        "target_viewer": asset.target_viewer,
-        "station_id": asset.station_id,
-        "file_url": f"/api/media/file/{asset.id}",
-    }
-
-
-# ── Media helpers ───────────────────────────────────────────────────────
-
-def validate_media_type(content: bytes, suffix: str, _declared_content_type: str) -> None:
-    """Check that the file's magic bytes are consistent with its extension."""
-    signatures = _MAGIC_SIGNATURES.get(suffix)
-    if signatures is None:
-        return
-    if not any(content.startswith(sig) for sig in signatures):
-        raise HTTPException(
-            status_code=400,
-            detail=f"El contenido del archivo no coincide con la extension {suffix}",
+    raw = str(ecoe_number or "").strip()
+    if raw.isdigit():
+        # Numeric lookups match regardless of zero padding: "7" == "007".
+        statement = statement.where(
+            func.ltrim(Student.ecoe_number, "0") == lookup
         )
+    else:
+        statement = statement.where(func.lower(Student.ecoe_number) == lookup)
 
-
-def safe_media_filename(original_name: str | None) -> str:
-    raw = str(original_name or "archivo").strip()
-    safe_base = Path(raw).name
-    if not safe_base:
-        safe_base = "archivo"
-    safe_base = "".join(char for char in safe_base if char.isprintable() and char not in ("\x00",))
-    if not safe_base:
-        safe_base = "archivo"
-    suffix = Path(safe_base).suffix.lower()
-    if suffix not in ALLOWED_MEDIA_EXTENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Tipo de archivo no permitido. Extensiones aceptadas: {', '.join(sorted(ALLOWED_MEDIA_EXTENSIONS))}",
-        )
-    return f"{uuid.uuid4().hex}_{safe_base}"
+    return db.scalar(statement.order_by(Student.id.asc()).limit(1))

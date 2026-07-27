@@ -7,7 +7,8 @@ from app.db.session import get_db
 from app.schemas.common import LoginRequest, Token
 from app.core.config import get_settings
 from app.services.auth import issue_login_token
-from app.services.dependencies import get_current_user, rate_limit_login
+from app.services.dependencies import get_current_user
+from app.services.rate_limit import clear_login_account_rate_limit, enforce_login_rate_limit
 
 router = APIRouter()
 settings = get_settings()
@@ -19,9 +20,10 @@ def login(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
-    _rate_limit: None = Depends(rate_limit_login),
 ):
+    enforce_login_rate_limit(db, request, payload.email)
     auth_payload, auth_token = issue_login_token(db, payload.email, payload.password)
+    clear_login_account_rate_limit(db, payload.email)
     forwarded_proto = request.headers.get("x-forwarded-proto", request.url.scheme)
     secure_cookie = forwarded_proto == "https"
     response.set_cookie(

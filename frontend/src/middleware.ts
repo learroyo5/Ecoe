@@ -1,11 +1,36 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { jwtVerify } from "jose";
 
-const AUTH_COOKIE_NAME = "ecoe_session";
+import { defaultRouteForRole } from "@/lib/routes";
 
-const PUBLIC_PATHS = ["/login"];
+const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME ?? "ecoe_session";
+const JWT_ISSUER = process.env.JWT_ISSUER ?? "ecoe-backend";
+const JWT_AUDIENCE = process.env.JWT_AUDIENCE ?? "ecoe-web";
+// SECRET_KEY llega por env server-side (compartida con el backend, HS256).
+// Nunca se expone al navegador: el middleware corre en el servidor.
+const SECRET_KEY = process.env.SECRET_KEY ?? "";
 
-export function middleware(request: NextRequest) {
+const PUBLIC_PATHS = ["/login", "/activate", "/kiosk"];
+
+async function verifySession(token: string): Promise<{ role: string } | null> {
+  if (!SECRET_KEY) {
+    // Sin clave configurada (dev sin .env): degradar a "cookie presente".
+    return { role: "" };
+  }
+  try {
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(SECRET_KEY), {
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE,
+      algorithms: ["HS256"],
+    });
+    return { role: typeof payload.role === "string" ? payload.role : "" };
+  } catch {
+    return null;
+  }
+}
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow public paths
@@ -22,7 +47,6 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check for auth cookie
   const authCookie = request.cookies.get(AUTH_COOKIE_NAME);
   if (!authCookie?.value) {
     const loginUrl = new URL("/login", request.url);
@@ -30,9 +54,26 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Redirect "/" to dashboard
+  // Validate signature/expiry of the JWT, not just cookie presence.
+  const session = await verifySession(authCookie.value);
+  if (!session) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("redirect", pathname);
+    const response = NextResponse.redirect(loginUrl);
+    response.cookies.delete(AUTH_COOKIE_NAME);
+    return response;
+  }
+
+  // Redirect "/" to the role's home
   if (pathname === "/") {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return NextResponse.redirect(new URL(defaultRouteForRole(session.role), request.url));
+  }
+
+  // Institutional user management is the only globally gated screen. Other
+  // screens depend on the selected ECOE's effective roles and are enforced
+  // by the backend; the JWT only carries the account's global/default role.
+  if (pathname.startsWith("/users") && session.role !== "admin_global") {
+    return NextResponse.redirect(new URL(defaultRouteForRole(session.role), request.url));
   }
 
   return NextResponse.next();

@@ -34,7 +34,6 @@ class LiveTimerManager:
         for ws in disconnected:
             self.disconnect(ecoe_event_id, ws)
 
-    @property
     def connection_count(self, ecoe_event_id: int) -> int:
         return len(self._connections.get(ecoe_event_id, []))
 

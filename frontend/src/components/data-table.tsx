@@ -96,7 +96,11 @@ export function DataTable<T>({
           </div>
         ) : null}
         <p className="text-sm text-slate-500">
-          {search.trim() ? `${sorted.length} de ${items.length} resultados` : `${items.length} registros`}
+          {isPaginated
+            ? `${items.length} de ${pagination?.total ?? items.length} registros`
+            : search.trim()
+              ? `${sorted.length} de ${items.length} resultados`
+              : `${items.length} registros`}
         </p>
       </div>
 
@@ -112,7 +116,7 @@ export function DataTable<T>({
                   return (
                     <th
                       key={col.key}
-                      className={canSort ? "cursor-pointer select-none hover:bg-slate-100" : ""}
+                      className={canSort ? "cursor-pointer select-none hover:bg-slate-100 hover:text-slate-800" : ""}
                       onClick={() => canSort && handleSort(col.key)}
                     >
                       <span className="inline-flex items-center gap-1">

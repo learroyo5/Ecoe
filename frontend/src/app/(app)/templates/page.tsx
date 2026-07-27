@@ -39,32 +39,53 @@ function FeatureToggle({
   onChange: (value: boolean) => void;
 }) {
   return (
-    <label className="flex gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-700">
+    <label
+      className={`flex cursor-pointer items-start gap-3 rounded-2xl border px-4 py-3 transition ${
+        checked
+          ? "border-[var(--color-primary)] bg-[var(--color-bg-soft)]"
+          : "border-slate-200 bg-white hover:border-slate-300"
+      }`}
+    >
       <input
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
-        className="mt-1"
+        className="sr-only"
       />
-      <span className="space-y-1">
-        <span className="block font-semibold text-slate-900">{label}</span>
-        <span className="block text-xs leading-5 text-slate-500">{description}</span>
+      <span
+        className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border-2 transition ${
+          checked
+            ? "border-[var(--color-primary)] bg-[var(--color-primary)]"
+            : "border-slate-300 bg-white"
+        }`}
+      >
+        {checked ? (
+          <svg className="size-3 text-white" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M2 6l3 3 5-6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ) : null}
       </span>
+      <div className="min-w-0 text-sm leading-5">
+        <p className="font-semibold text-slate-900">{label}</p>
+        <p className="text-xs text-slate-500">{description}</p>
+      </div>
     </label>
   );
 }
 
 export default function TemplatesPage() {
-  const { token } = useECOE();
+  const { authenticated, eventId, eventRoles, user } = useECOE();
+  const canEditContent = user?.role === "admin_global"
+    || eventRoles.some((role) => role === "admin_ecoe" || role === "coeditor_docente");
   const { data, loading, error, setData } = useApi(
-    () => api.templates(token!) as Promise<Record<string, unknown>[]>,
-    [token],
+    () => api.templates(eventId) as Promise<Record<string, unknown>[]>,
+    [authenticated, eventId],
   );
   const [values, setValues] = useState(defaultValues);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  const refresh = async () => setData((await api.templates(token!)) as Record<string, unknown>[]);
+  const refresh = async () => setData((await api.templates(eventId)) as Record<string, unknown>[]);
   const selectedCategoryLabel =
     categoryOptions.find((option) => option.value === values.category)?.label ?? values.category;
   const activeFeatures = useMemo(() => {
@@ -90,14 +111,19 @@ export default function TemplatesPage() {
         title="Banco de plantillas"
         subtitle="Define estructuras base reutilizables para orientar el flujo real de cada tipo de estación."
       >
+        {!canEditContent ? (
+          <p className="mb-4 text-sm text-slate-600">Tu rol permite consultar plantillas, pero no modificarlas.</p>
+        ) : null}
         <form
-          className="space-y-5"
+          className={`space-y-5 ${canEditContent ? "" : "pointer-events-none opacity-60"}`}
           onSubmit={async (event) => {
             event.preventDefault();
+            if (!canEditContent) return;
             setSaving(true);
             setMessage(null);
             try {
               await api.createTemplate(
+                eventId,
                 {
                   name: values.name,
                   category: values.category,
@@ -110,7 +136,6 @@ export default function TemplatesPage() {
                     source: "manual",
                   },
                 },
-                token!,
               );
               await refresh();
               setValues(defaultValues);
@@ -169,7 +194,7 @@ export default function TemplatesPage() {
                 formulario del estudiante, multimedia o paciente simulado.
               </p>
             </div>
-            <div className="grid gap-3 lg:grid-cols-2">
+            <div className="space-y-3">
               <FeatureToggle
                 checked={values.requires_evaluator}
                 label="Requiere evaluador"
@@ -214,7 +239,7 @@ export default function TemplatesPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <button className="btn-primary" disabled={saving}>
+            <button className="btn-primary" disabled={saving || !canEditContent}>
               {saving ? "Guardando..." : "Guardar plantilla"}
             </button>
             <span className="text-sm text-slate-600">

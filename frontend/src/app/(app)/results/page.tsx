@@ -2,6 +2,7 @@
 
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
+import { modeLabel } from "@/lib/labels";
 import { useApi } from "@/hooks/use-api";
 import { DataTable } from "@/components/data-table";
 import { SectionCard } from "@/components/section-card";
@@ -21,17 +22,17 @@ function formatTimestamp(value: unknown) {
 }
 
 export default function ResultsPage() {
-  const { token, eventId } = useECOE();
+  const { authenticated, eventId } = useECOE();
   const { data, loading, error } = useApi(
     () =>
-      api.results(eventId, token!) as Promise<{
+      api.results(eventId) as Promise<{
         results: Record<string, unknown>[];
         summary: Record<string, unknown>;
         student_traceability: Record<string, unknown>[];
         station_traceability: Record<string, unknown>[];
         activity_log: Record<string, unknown>[];
       }>,
-    [eventId, token],
+    [eventId, authenticated],
   );
   const summary = (data?.summary as Record<string, unknown> | undefined) ?? {};
   const studentTraceability = (data?.student_traceability as Record<string, unknown>[] | undefined) ?? [];
@@ -206,7 +207,7 @@ export default function ResultsPage() {
                 </div>
                 <p className="mt-2 text-sm text-[var(--color-text-secondary)]">{String(item.detail ?? "")}</p>
                 <p className="mt-1 text-xs text-[var(--color-text-muted)]">
-                  {String(item.actor ?? "Sistema")} · modo {String(item.mode ?? "ejecución")}
+                  {String(item.actor ?? "Sistema")} · modo {modeLabel(item.mode ?? "ejecucion")}
                 </p>
               </div>
             ))}

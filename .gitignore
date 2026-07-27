@@ -5,7 +5,12 @@ __pycache__/
 *.pyc
 backend/ecoe.db
 backend/.env
+/.env
 backend/storage
 frontend/.next
 frontend/node_modules
 datos_proyecto/credenciales_locales.md
+backups/
+backend/.env.bak*
+frontend/test-results/
+frontend/playwright-report/

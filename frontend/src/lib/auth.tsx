@@ -3,17 +3,21 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
+import { defaultRouteForRole } from "@/lib/routes";
 import type { DashboardSummary, ECOEEvent, UserSession } from "@/lib/types";
 
 type ECOEContextValue = {
   ecoeList: ECOEEvent[];
   ecoeEvent: ECOEEvent | null;
   dashboard: DashboardSummary | null;
-  token: string | null;
+  authenticated: boolean;
   user: UserSession | null;
+  eventRoles: string[];
   ready: boolean;
   eventId: number;
   loading: boolean;
+  /** Last failure loading the ECOE list/dashboard, surfaced by AppShell. */
+  loadError: string | null;
   setEventId: (value: number) => void;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
@@ -22,20 +26,16 @@ type ECOEContextValue = {
 
 const ECOEContext = createContext<ECOEContextValue | null>(null);
 
-function defaultRouteForRole(role: string) {
-  if (role === "evaluador") return "/evaluator";
-  if (role === "estudiante") return "/student";
-  return "/dashboard";
-}
-
 export function ECOEProvider({ children }: { children: React.ReactNode }) {
-  const [token, setToken] = useState<string | null>(null);
+  const [authenticated, setAuthenticated] = useState(false);
   const [user, setUser] = useState<UserSession | null>(null);
+  const [eventRoles, setEventRoles] = useState<string[]>([]);
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [ecoeList, setECOEList] = useState<ECOEEvent[]>([]);
   const [ecoeEvent, setECOEEvent] = useState<ECOEEvent | null>(null);
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [eventId, setEventIdState] = useState<number>(() => {
     if (typeof window === "undefined") return 1;
@@ -50,37 +50,53 @@ export function ECOEProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const loadECOEList = useCallback(async () => {
-    if (!token) return;
+    if (!authenticated) return;
     try {
-      const list = await api.listECOE(token);
+      const list = await api.listECOE();
       setECOEList(list);
+      // Do NOT clear loadError here: loadECOEData runs right after this in
+      // refreshECOE, and clearing on this call's success would hide a
+      // failure from loadECOEList once loadECOEData succeeds. Both callers
+      // share one error slot, cleared once at the top of refreshECOE.
       const exists = list.some((e) => e.id === eventId);
       if (!exists && list.length > 0) {
         setEventId(list[0].id);
       }
-    } catch {
-      // Silently fail — auth will handle redirect
+    } catch (err) {
+      setLoadError(
+        err instanceof Error
+          ? `No se pudo cargar la lista de ECOE: ${err.message}`
+          : "No se pudo cargar la lista de ECOE.",
+      );
     }
-  }, [token, eventId, setEventId]);
+  }, [authenticated, eventId, setEventId]);
 
   const loadECOEData = useCallback(async () => {
-    if (!token || !eventId) return;
+    if (!authenticated || !eventId) return;
     setLoading(true);
     try {
-      const [event, dash] = await Promise.all([
-        api.ecoe(eventId, token),
-        api.dashboard(eventId, token).catch(() => null),
+      const [event, dash, roleContext] = await Promise.all([
+        api.ecoe(eventId),
+        api.dashboard(eventId).catch(() => null),
+        api.eventRoles(eventId),
       ]);
       setECOEEvent(event);
+      setEventRoles(roleContext.roles);
       if (dash) setDashboard(dash);
-    } catch {
-      // Silently fail
+      // Not cleared here either — see the comment in loadECOEList above.
+    } catch (err) {
+      setLoadError(
+        err instanceof Error
+          ? `No se pudo cargar el ECOE activo: ${err.message}`
+          : "No se pudo cargar el ECOE activo.",
+      );
     } finally {
       setLoading(false);
     }
-  }, [token, eventId]);
+  }, [authenticated, eventId]);
 
   const refreshECOE = useCallback(async () => {
+    setLoadError(null);
     await loadECOEList();
     await loadECOEData();
   }, [loadECOEList, loadECOEData]);
@@ -91,29 +107,29 @@ export function ECOEProvider({ children }: { children: React.ReactNode }) {
     api.me()
       .then((response) => {
         if (!active) return;
-        setToken("cookie-session");
+        setAuthenticated(true);
         setUser(response as UserSession);
         setReady(true);
       })
       .catch(() => {
         if (!active) return;
-        setToken(null);
+        setAuthenticated(false);
         setUser(null);
         setReady(true);
       });
     return () => { active = false; };
   }, []);
 
-  // Load ECOE data when token/eventId changes
+  // Load ECOE data when auth/eventId changes
   useEffect(() => {
-    if (!ready || !token) return;
+    if (!ready || !authenticated) return;
     void refreshECOE();
-  }, [ready, token, eventId, refreshECOE]);
+  }, [ready, authenticated, eventId, refreshECOE]);
 
   const login = useCallback(async (email: string, password: string) => {
     const response = await api.login(email, password);
     const authUser = { id: response.user.id, email: response.user.email, full_name: response.user.full_name, role: response.user.role };
-    setToken("cookie-session");
+    setAuthenticated(true);
     setUser(authUser);
     setReady(true);
     if (typeof window !== "undefined") {
@@ -129,10 +145,11 @@ export function ECOEProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // Even if the API fails, clear local state and redirect
     }
-    setToken(null);
+    setAuthenticated(false);
     setUser(null);
     setECOEList([]);
     setECOEEvent(null);
+    setEventRoles([]);
     setDashboard(null);
     setReady(true);
     if (typeof window !== "undefined") {
@@ -142,10 +159,10 @@ export function ECOEProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(
     () => ({
-      ecoeList, ecoeEvent, dashboard, token, user, ready, eventId, loading,
+      ecoeList, ecoeEvent, dashboard, authenticated, user, eventRoles, ready, eventId, loading, loadError,
       setEventId, login, logout, refreshECOE,
     }),
-    [ecoeList, ecoeEvent, dashboard, token, user, ready, eventId, loading, setEventId, login, logout, refreshECOE],
+    [ecoeList, ecoeEvent, dashboard, authenticated, user, eventRoles, ready, eventId, loading, loadError, setEventId, login, logout, refreshECOE],
   );
 
   return <ECOEContext.Provider value={value}>{children}</ECOEContext.Provider>;

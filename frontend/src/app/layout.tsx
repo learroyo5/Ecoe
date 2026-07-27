@@ -16,7 +16,7 @@ const body = Source_Sans_3({
 
 export const metadata: Metadata = {
   title: "Proyecto ECOE Digital",
-  description: "Plataforma de planificacion y ejecucion de ECOE/OSCE",
+  description: "Plataforma de planificación y ejecución de ECOE/OSCE",
 };
 
 export default function RootLayout({

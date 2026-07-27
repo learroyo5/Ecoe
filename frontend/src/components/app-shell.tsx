@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { Sidebar } from "@/components/sidebar";
+import { StatusNotice } from "@/components/forms";
 import { useECOE } from "@/lib/auth";
+import { roleLabel } from "@/lib/labels";
 
 export function AppShell({
   title,
@@ -15,16 +17,30 @@ export function AppShell({
   description: string;
   children: React.ReactNode;
 }) {
-  const { user, token, ready, logout, eventId, setEventId, ecoeList, ecoeEvent } = useECOE();
+  const { user, eventRoles, authenticated, ready, logout, eventId, setEventId, ecoeList, ecoeEvent, loadError } = useECOE();
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
-  if (!ready || !token) return null;
+  const hasManagerRole = eventRoles.some((role) =>
+    ["admin_ecoe", "coeditor_docente", "coordinador_operativo"].includes(role),
+  );
+  const effectiveOperatorRole = !hasManagerRole
+    ? eventRoles.find((role) => role === "evaluador" || role === "estudiante" || role === "cronometrador")
+    : undefined;
 
-  const isStationOperator = user?.role === "evaluador" || user?.role === "estudiante";
+  useEffect(() => {
+    if (!ready || !authenticated || !effectiveOperatorRole || pathname !== "/dashboard") return;
+    if (effectiveOperatorRole === "evaluador") router.replace("/evaluator");
+    if (effectiveOperatorRole === "estudiante") router.replace("/student");
+    if (effectiveOperatorRole === "cronometrador") router.replace("/live");
+  }, [authenticated, effectiveOperatorRole, pathname, ready, router]);
+
+  if (!ready || !authenticated) return null;
+
+  const isStationOperator = effectiveOperatorRole === "evaluador" || effectiveOperatorRole === "estudiante";
 
   // ── Evaluator / Student layout ──────────────────────────────────────
   if (isStationOperator) {
@@ -35,34 +51,58 @@ export function AppShell({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--color-primary)]">
-                  Modo operativo de estacion
+                  Modo operativo de estación
                 </p>
                 <h2 className="mt-1 text-xl sm:mt-2 sm:text-2xl lg:text-3xl">{title}</h2>
                 <p className="mt-1 max-w-2xl text-sm text-slate-600 sm:mt-2">{description}</p>
               </div>
               <div className="clinical-panel px-4 py-3 text-sm">
                 <p className="font-semibold">{user?.full_name}</p>
-                <p className="text-slate-500">{user?.role}</p>
+                <p className="text-slate-500">{roleLabel(user?.role)}</p>
               </div>
             </div>
             <div className="grid gap-3 md:grid-cols-[1.4fr_0.6fr]">
               <div className="clinical-panel p-3 sm:p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">ECOE activo</p>
-                <p className="mt-1 text-base font-semibold text-slate-900 sm:mt-2 sm:text-lg">
-                  {String(ecoeEvent?.name ?? "ECOE sin nombre visible")}
-                </p>
+                <div className="mt-1 flex items-center gap-2">
+                  <p className="text-base font-semibold text-slate-900 sm:text-lg truncate">
+                    {String(ecoeEvent?.name ?? "ECOE sin nombre visible")}
+                  </p>
+                  {ecoeEvent?.status === "en_ejecucion" ? (
+                    <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">EN VIVO</span>
+                  ) : null}
+                </div>
                 <p className="text-sm text-slate-600">
                   {String(ecoeEvent?.course_name ?? "Curso sin definir")} ·{" "}
-                  {String(ecoeEvent?.school_name ?? "Unidad academica sin definir")}
+                  {String(ecoeEvent?.school_name ?? "Unidad académica sin definir")}
                 </p>
+                {(ecoeList?.length ?? 0) > 1 ? (
+                  <label className="mt-2 flex items-center gap-2 text-sm">
+                    <span className="text-slate-500">Cambiar:</span>
+                    <select
+                      value={String(eventId)}
+                      disabled={ecoeEvent?.status === "en_ejecucion"}
+                      onChange={(e) => setEventId(Number(e.target.value))}
+                      className="text-sm"
+                      title={ecoeEvent?.status === "en_ejecucion" ? "No puedes cambiar de ECOE durante la ejecución en vivo" : "Seleccionar ECOE"}
+                    >
+                      {(ecoeList ?? []).map((ecoe: Record<string, unknown>) => (
+                        <option key={String(ecoe.id)} value={String(ecoe.id)}>
+                          {String(ecoe.name)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
               </div>
               <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-1">
-                <button className="btn-secondary" onClick={logout} aria-label="Cerrar sesion">
-                  Cerrar sesion
+                <button className="btn-secondary" onClick={logout} aria-label="Cerrar sesión">
+                  Cerrar sesión
                 </button>
               </div>
             </div>
           </header>
+          <StatusNotice message={loadError} />
           {children}
         </main>
       </div>
@@ -122,15 +162,16 @@ export function AppShell({
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--color-primary)]">
                 Plataforma operativa
               </p>
-              <h2 className="mt-2 text-3xl">{title}</h2>
-              <p className="mt-2 max-w-3xl text-sm text-slate-600">{description}</p>
+              <h2 className="mt-1 text-2xl">{title}</h2>
             </div>
           </div>
-          <div className="clinical-panel p-4 text-sm">
-            <p className="font-semibold">{user?.full_name}</p>
-            <p className="text-slate-500">{user?.role}</p>
-            <button className="btn-secondary mt-3 w-full" onClick={logout} aria-label="Cerrar sesion">
-              Cerrar sesion
+          <div className="flex items-center gap-4 text-sm">
+            <div className="text-right">
+              <p className="font-semibold">{user?.full_name}</p>
+              <p className="text-slate-500">{roleLabel(user?.role)}</p>
+            </div>
+            <button className="btn-secondary" onClick={logout} aria-label="Cerrar sesión">
+              Cerrar sesión
             </button>
           </div>
         </header>
@@ -139,13 +180,13 @@ export function AppShell({
         <div className="clinical-panel p-4">
           <div className="flex flex-wrap items-end gap-4">
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">ECOE en edicion</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">ECOE en edición</p>
               <p className="mt-1 text-lg font-semibold text-slate-900 truncate">
                 {String(ecoeEvent?.name ?? "ECOE sin nombre visible")}
               </p>
               <p className="text-sm text-slate-600">
                 {String(ecoeEvent?.course_name ?? "Curso sin definir")} ·{" "}
-                {String(ecoeEvent?.school_name ?? "Unidad academica sin definir")}
+                {String(ecoeEvent?.school_name ?? "Unidad académica sin definir")}
               </p>
             </div>
             <label className="space-y-1 text-sm text-slate-700">
@@ -165,6 +206,7 @@ export function AppShell({
           </div>
         </div>
 
+        <StatusNotice message={loadError} />
         {children}
       </main>
     </div>

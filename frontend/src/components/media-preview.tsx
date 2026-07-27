@@ -5,10 +5,9 @@ import type { MediaAsset } from "@/lib/types";
 
 type Props = {
   asset: MediaAsset;
-  token: string;
 };
 
-export function MediaPreview({ asset, token }: Props) {
+export function MediaPreview({ asset }: Props) {
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -96,14 +95,14 @@ export function MediaPreview({ asset, token }: Props) {
   );
 }
 
-export function MediaGrid({ assets, token }: { assets: MediaAsset[]; token: string }) {
+export function MediaGrid({ assets }: { assets: MediaAsset[] }) {
   if (!assets.length) {
     return <p className="text-sm text-slate-400">Sin recursos multimedia para esta estación.</p>;
   }
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       {assets.map((asset) => (
-        <MediaPreview key={asset.id} asset={asset} token={token} />
+        <MediaPreview key={asset.id} asset={asset} />
       ))}
     </div>
   );

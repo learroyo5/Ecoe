@@ -7,23 +7,22 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.entities import Student
 from app.models.enums import RoleCode
-from app.schemas.common import StudentCreate, StudentStatusUpdate
+from app.schemas.common import Page, StudentCreate, StudentRead, StudentStatusUpdate
 from app.services.dependencies import get_current_user, require_roles
 from app.utils.files import parse_tabular_file
+from app.services.authorization import ensure_event_access
 from app.utils.helpers import (
-    ensure_event_access,
-    ensure_matching_operational_user,
-    next_student_ecoe_number,
-    normalize_rut,
-    normalize_email,
     normalize_ecoe_lookup,
+    normalize_email,
+    normalize_rut,
+    next_student_ecoe_number,
 )
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginate_query
 
 router = APIRouter()
 
 
-@router.get("/students/{ecoe_event_id}")
+@router.get("/students/{ecoe_event_id}", response_model=Page[StudentRead])
 def list_students(
     ecoe_event_id: int,
     page: int = Query(default=1, ge=1),
@@ -32,7 +31,7 @@ def list_students(
     user=Depends(get_current_user),
 ):
     ensure_event_access(db, user, ecoe_event_id,
-                        RoleCode.creador_ecoe.value,
+                        RoleCode.admin_ecoe.value,
                         RoleCode.coeditor_docente.value,
                         RoleCode.coordinador_operativo.value)
     stmt = (
@@ -43,25 +42,25 @@ def list_students(
     return paginate_query(db, stmt, page=page, page_size=page_size)
 
 
-@router.post("/students")
+@router.post("/students", response_model=StudentRead)
 def create_student(
     payload: StudentCreate,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente", "coordinador_operativo")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente", "coordinador_operativo")),
 ):
     ensure_event_access(db, user, payload.ecoe_event_id,
-                        RoleCode.creador_ecoe.value,
+                        RoleCode.admin_ecoe.value,
                         RoleCode.coeditor_docente.value,
                         RoleCode.coordinador_operativo.value)
     rut = normalize_rut(payload.rut)
     email = normalize_email(payload.email)
-    ensure_matching_operational_user(db, email=email, expected_role=RoleCode.estudiante.value)
     existing = db.scalar(
         select(Student).where(Student.ecoe_event_id == payload.ecoe_event_id, Student.rut == rut)
     )
     if existing:
         raise HTTPException(status_code=400, detail="Ya existe un estudiante con ese RUT en este ECOE")
-    student = Student(**payload.model_dump(), rut=rut, email=email,
+    student = Student(**payload.model_dump(exclude={"rut", "email", "ecoe_number"}),
+                      rut=rut, email=email,
                       ecoe_number=next_student_ecoe_number(db, payload.ecoe_event_id))
     db.add(student)
     db.commit()
@@ -69,18 +68,18 @@ def create_student(
     return student
 
 
-@router.patch("/students/{student_id}/status")
+@router.patch("/students/{student_id}/status", response_model=StudentRead)
 def update_student_status(
     student_id: int,
     payload: StudentStatusUpdate,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente", "coordinador_operativo")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente", "coordinador_operativo")),
 ):
     student = db.get(Student, student_id)
     if not student:
         raise HTTPException(status_code=404, detail="Estudiante no encontrado")
     ensure_event_access(db, user, student.ecoe_event_id,
-                        RoleCode.creador_ecoe.value,
+                        RoleCode.admin_ecoe.value,
                         RoleCode.coeditor_docente.value,
                         RoleCode.coordinador_operativo.value)
     student.is_active = payload.is_active
@@ -94,13 +93,13 @@ def update_student_status(
 def delete_student(
     student_id: int,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
     student = db.get(Student, student_id)
     if not student:
         raise HTTPException(status_code=404, detail="Estudiante no encontrado")
     ensure_event_access(db, user, student.ecoe_event_id,
-                        RoleCode.creador_ecoe.value, RoleCode.coeditor_docente.value)
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     db.delete(student)
     db.commit()
     return {"deleted": True}
@@ -110,10 +109,10 @@ def delete_student(
 def deduplicate_students_by_rut(
     ecoe_event_id: int,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
     ensure_event_access(db, user, ecoe_event_id,
-                        RoleCode.creador_ecoe.value, RoleCode.coeditor_docente.value)
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     students = db.scalars(
         select(Student)
         .where(Student.ecoe_event_id == ecoe_event_id)
@@ -138,10 +137,10 @@ def deduplicate_students_by_rut(
 def renumber_students(
     ecoe_event_id: int,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
     ensure_event_access(db, user, ecoe_event_id,
-                        RoleCode.creador_ecoe.value, RoleCode.coeditor_docente.value)
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     students = db.scalars(
         select(Student)
         .where(Student.ecoe_event_id == ecoe_event_id)
@@ -162,13 +161,33 @@ async def import_students(
     ecoe_event_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    user=Depends(require_roles("creador_ecoe", "coeditor_docente")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
     ensure_event_access(db, user, ecoe_event_id,
-                        RoleCode.creador_ecoe.value, RoleCode.coeditor_docente.value)
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     rows = await parse_tabular_file(file)
+
+    # Check that required columns exist
+    detected_columns = list(rows[0].keys()) if rows else []
+    expected = {"rut", "correo"}
+    # Accept both Spanish and English column names
+    col_rut = "rut" if "rut" in detected_columns else None
+    col_email = "correo" if "correo" in detected_columns else ("email" if "email" in detected_columns else None)
+
+    if not col_rut or not col_email:
+        return {
+            "imported": 0,
+            "skipped": 0,
+            "skipped_rut_duplicate": 0,
+            "skipped_missing_data": 0,
+            "error": True,
+            "detail": f"El archivo no tiene las columnas requeridas. Columnas detectadas: {detected_columns}. Se espera al menos: rut, correo (o email).",
+            "detected_columns": detected_columns,
+        }
+
     imported: list = []
-    skipped = 0
+    skipped_rut_duplicate = 0
+    skipped_missing_data = 0
     next_number = next_student_ecoe_number(db, ecoe_event_id)
     next_numeric_value = int(next_number)
     next_width = len(next_number)
@@ -179,16 +198,12 @@ async def import_students(
     for row in rows:
         rut = normalize_rut(row.get("rut"))
         if not rut or rut in existing_ruts:
-            skipped += 1
+            skipped_missing_data += 1 if not rut else 0
+            skipped_rut_duplicate += 1 if rut else 0
             continue
         email = normalize_email(row.get("correo", row.get("email", "")))
         if not email:
-            skipped += 1
-            continue
-        try:
-            ensure_matching_operational_user(db, email=email, expected_role=RoleCode.estudiante.value)
-        except HTTPException:
-            skipped += 1
+            skipped_missing_data += 1
             continue
         student = Student(
             ecoe_event_id=ecoe_event_id,
@@ -205,4 +220,10 @@ async def import_students(
         existing_ruts.add(rut)
         next_numeric_value += 1
     db.commit()
-    return {"imported": len(imported), "skipped": skipped}
+    total_skipped = skipped_rut_duplicate + skipped_missing_data
+    return {
+        "imported": len(imported),
+        "skipped": total_skipped,
+        "skipped_rut_duplicate": skipped_rut_duplicate,
+        "skipped_missing_data": skipped_missing_data,
+    }

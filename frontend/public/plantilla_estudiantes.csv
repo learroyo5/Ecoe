@@ -1,3 +1,6 @@
 nombre,apellidos,rut,correo,numero_ecoe,grupo,circuito
-Ana,Perez,11111111-1,ana.perez@ejemplo.cl,001,Grupo 1,Circuito A
-Bruno,Soto,22222222-2,bruno.soto@ejemplo.cl,002,Grupo 1,Circuito A
+Ana,Perez Gonzalez,11111111-1,ana.perez@ejemplo.cl,,Grupo 1,Circuito A
+Bruno,Soto Morales,22222222-2,bruno.soto@ejemplo.cl,,Grupo 1,Circuito A
+Camila,Rojas Vega,33333333-3,camila.rojas@ejemplo.cl,,Grupo 2,Circuito B
+Diego,Munoz Castillo,44444444-4,diego.munoz@ejemplo.cl,,Grupo 2,Circuito B
+Elena,Flores Rivas,55555555-5,elena.flores@ejemplo.cl,,Grupo 3,Circuito A

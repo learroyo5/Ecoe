@@ -8,34 +8,36 @@ import { QuickForm } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 
 export default function SimulatedPatientPage() {
-  const { token } = useECOE();
+  const { authenticated, eventId, eventRoles, user } = useECOE();
+  const canEditContent = user?.role === "admin_global"
+    || eventRoles.some((role) => role === "admin_ecoe" || role === "coeditor_docente");
   const { data, loading, error, setData } = useApi(
-    () => api.simulatedPatients(token!) as Promise<Record<string, unknown>[]>,
-    [token],
+    () => api.simulatedPatients(eventId) as Promise<Record<string, unknown>[]>,
+    [authenticated, eventId],
   );
 
   const refresh = async () =>
-    setData((await api.simulatedPatients(token!)) as Record<string, unknown>[]);
+    setData((await api.simulatedPatients(eventId)) as Record<string, unknown>[]);
 
   return (
     <div className="space-y-6">
-      <SectionCard title="Gestor de paciente simulado" subtitle="Construye personajes y guiones reutilizables para estaciones con interaccion clinica.">
-        <QuickForm
+      <SectionCard title="Gestor de paciente simulado" subtitle="Construye personajes y guiones reutilizables para estaciones con interacción clínica.">
+        {canEditContent ? <QuickForm
           fields={[
             { name: "character_name", label: "Nombre personaje" },
             { name: "summary_profile", label: "Perfil resumido" },
             { name: "base_story", label: "Historia base" },
             { name: "key_answers", label: "Respuestas clave" },
-            { name: "emotional_tone", label: "Actitud / emocion" },
+            { name: "emotional_tone", label: "Actitud / emoción" },
             { name: "special_instructions", label: "Instrucciones especiales" },
           ]}
           onSubmit={async (values) => {
-            await api.createSimulatedPatient(values, token!);
+            await api.createSimulatedPatient(eventId, values);
             await refresh();
           }}
-        />
+        /> : <p className="text-sm text-slate-600">Tu rol permite consultar el banco, pero no modificarlo.</p>}
       </SectionCard>
-      <SectionCard title="Banco de personajes" subtitle="Repositorio docente para asignar personajes simulados segun tipo de estacion.">
+      <SectionCard title="Banco de personajes" subtitle="Repositorio docente para asignar personajes simulados según tipo de estación.">
         {loading ? (
           <p>Cargando pacientes simulados...</p>
         ) : error ? (

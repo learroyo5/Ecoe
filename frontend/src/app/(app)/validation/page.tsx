@@ -58,10 +58,10 @@ function CheckList({
 }
 
 export default function ValidationPage() {
-  const { token, eventId } = useECOE();
+  const { authenticated, eventId } = useECOE();
   const { data, loading, error } = useApi(
-    () => api.validation(eventId, token!) as Promise<Record<string, unknown>>,
-    [eventId, token],
+    () => api.validation(eventId) as Promise<Record<string, unknown>>,
+    [eventId, authenticated],
   );
 
   const pilotChecks = ((data?.pilot_checks as ValidationCheck[] | undefined) ?? []);
@@ -74,8 +74,8 @@ export default function ValidationPage() {
   return (
     <div className="space-y-6">
       <SectionCard
-        title="Validacion previa"
-        subtitle="Chequeos estructurados antes de pilotar, publicar o iniciar la ejecucion real del ECOE."
+        title="Validación previa"
+        subtitle="Chequeos estructurados antes de pilotar, publicar o iniciar la ejecución real del ECOE."
       >
         <div className="mb-4 flex flex-wrap gap-3">
           <Link href="/stations" className="btn-secondary">
@@ -88,7 +88,7 @@ export default function ValidationPage() {
             Ir a publicación
           </Link>
         </div>
-        {loading ? <p>Validando configuracion...</p> : null}
+        {loading ? <p>Validando configuración...</p> : null}
         {error ? <p>{error}</p> : null}
         {data ? (
           <div className="grid gap-4 md:grid-cols-3">
@@ -106,7 +106,7 @@ export default function ValidationPage() {
             </div>
             <div className="clinical-panel">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                Para publicacion
+                Para publicación
               </p>
               <p
                 className={`mt-3 status-badge ${
@@ -118,7 +118,7 @@ export default function ValidationPage() {
             </div>
             <div className="clinical-panel">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                Para ejecucion real
+                Para ejecución real
               </p>
               <p
                 className={`mt-3 status-badge ${
@@ -135,7 +135,7 @@ export default function ValidationPage() {
       {blockers.length ? (
         <SectionCard
           title="Bloqueos detectados"
-          subtitle="Estos puntos impiden avanzar con seguridad hacia pilotaje, publicacion o ejecucion real."
+          subtitle="Estos puntos impiden avanzar con seguridad hacia pilotaje, publicación o ejecución real."
         >
           <div className="space-y-3">
             {blockers.map((blocker) => (
@@ -170,13 +170,13 @@ export default function ValidationPage() {
 
       <div className="grid gap-6 xl:grid-cols-3">
         <CheckList title="Checklist de pilotaje" checks={pilotChecks} />
-        <CheckList title="Checklist de publicacion" checks={publicationChecks} />
-        <CheckList title="Checklist de ejecucion real" checks={liveChecks} />
+        <CheckList title="Checklist de publicación" checks={publicationChecks} />
+        <CheckList title="Checklist de ejecución real" checks={liveChecks} />
       </div>
 
       <SectionCard
-        title="Revision por estacion"
-        subtitle="Aqui puedes ver exactamente que estacion ya esta lista y cual sigue con faltantes operativos."
+        title="Revisión por estación"
+        subtitle="Aquí puedes ver exactamente qué estación ya está lista y cuál sigue con faltantes operativos."
       >
         <div className="space-y-4">
           {stationIssues.map((issue) => (
@@ -187,7 +187,7 @@ export default function ValidationPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-lg font-semibold text-slate-900">
-                    Estacion {String(issue.station_number)} · {String(issue.station_name)}
+                    Estación {String(issue.station_number)} · {String(issue.station_name)}
                   </p>
                   <p className="text-sm text-slate-600">
                     {String(issue.circuit_name ?? "Sin circuito definido")}
@@ -229,7 +229,7 @@ export default function ValidationPage() {
                 </div>
               ) : (
                 <div className="mt-4 rounded-2xl border border-green-200 bg-[var(--color-success-soft)] px-4 py-3 text-sm text-green-900">
-                  Esta estacion cumple el minimo estructural para pilotaje y publicacion.
+                  Esta estación cumple el mínimo estructural para pilotaje y publicación.
                 </div>
               )}
 

@@ -1,11 +1,24 @@
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 
 class ORMBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+
+
+ItemT = TypeVar("ItemT")
+
+
+class Page(BaseModel, Generic[ItemT]):
+    """Shape returned by utils.pagination.paginate_query."""
+
+    items: list[ItemT]
+    total: int
+    page: int
+    page_size: int
+    pages: int
 
 
 class Token(BaseModel):
@@ -64,6 +77,12 @@ class ECOETimingUpdate(BaseModel):
     sync_existing_stations: bool = True
 
 
+class ECOEDuplicateOptions(BaseModel):
+    name: str = ""
+    new_date: date | None = None
+    copy_evaluators: bool = False
+
+
 class StudentBase(BaseModel):
     ecoe_event_id: int
     name: str
@@ -82,6 +101,8 @@ class StudentCreate(StudentBase):
 class StudentRead(StudentBase, ORMBase):
     id: int
     is_active: bool
+    created_at: datetime
+    updated_at: datetime
 
 
 class StudentStatusUpdate(BaseModel):
@@ -103,6 +124,8 @@ class StaffCreate(StaffBase):
 
 class StaffRead(StaffBase, ORMBase):
     id: int
+    created_at: datetime
+    updated_at: datetime
 
 
 class StaffUpdate(BaseModel):
@@ -110,7 +133,28 @@ class StaffUpdate(BaseModel):
     station_ids: list[int] = []
 
 
+class EventMemberInvite(BaseModel):
+    ecoe_event_id: int
+    name: str = Field(min_length=1, max_length=128)
+    last_name: str = Field(min_length=1, max_length=128)
+    email: EmailStr
+    role_code: str
+    station_ids: list[int] = []
+
+
+class InvitationActivation(BaseModel):
+    token: str = Field(min_length=32, max_length=256)
+    password: str = Field(min_length=12, max_length=128)
+
+
 class AssessmentItemInput(BaseModel):
+    label: str
+    score_per_item: float
+    order_index: int
+
+
+class AssessmentItemRead(ORMBase):
+    id: int
     label: str
     score_per_item: float
     order_index: int
@@ -130,7 +174,7 @@ class AssessmentToolRead(ORMBase):
     tool_type: str
     max_score: float
     free_observation: bool
-    items: list[AssessmentItemInput]
+    items: list[AssessmentItemRead]
 
 
 class StationTemplateCreate(BaseModel):
@@ -189,6 +233,10 @@ class StationCreate(BaseModel):
 
 class StationRead(StationCreate, ORMBase):
     id: int
+    # Server-computed from the parent ECOEEvent's timing, not client input
+    # (see create_station/update_station) — absent from StationCreate.
+    station_time_minutes: float
+    transition_time_minutes: float
 
 
 class StationBankBase(BaseModel):
@@ -236,6 +284,11 @@ class PilotRunCreate(BaseModel):
     name: str
     scope: str
     station_ids: list[int] = []
+    notes: str = ""
+
+
+class PilotRunNotesUpdate(BaseModel):
+    notes: str
 
 
 class TimerAction(BaseModel):
@@ -279,3 +332,105 @@ class StationCheckInCreate(BaseModel):
 class StudentAccessRequest(BaseModel):
     ecoe_event_id: int
     ecoe_number: str
+
+
+class KioskSubmit(BaseModel):
+    checkin_id: int
+    answers: dict[str, Any]
+
+
+class ManualGradeSubmit(BaseModel):
+    scores: dict[str, float]
+
+
+# ── Incidents ─────────────────────────────────────────────────────────
+
+class IncidentCreate(BaseModel):
+    ecoe_event_id: int
+    station_id: int | None = None
+    title: str
+    detail: str = ""
+    severity: str = "media"
+
+
+class IncidentResolve(BaseModel):
+    resolved: bool = True
+
+
+# ── User management ───────────────────────────────────────────────────
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    full_name: str
+    password: str
+    role_code: str
+
+
+class UserUpdate(BaseModel):
+    full_name: str | None = None
+    role_code: str | None = None
+    password: str = ""
+    is_active: bool | None = None
+
+
+class UserRead(ORMBase):
+    id: int
+    email: str
+    full_name: str
+    role_code: str = ""
+    is_active: bool
+    account_status: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def extract_role_code(cls, data: Any) -> Any:
+        if hasattr(data, "role") and data.role:
+            return {
+                "id": data.id,
+                "email": data.email,
+                "full_name": data.full_name,
+                "role_code": data.role.code,
+                "is_active": data.is_active,
+                "account_status": data.account_status,
+            }
+        return data
+
+
+# ── Pilotage ──────────────────────────────────────────────────────────
+
+class PilotRunRead(ORMBase):
+    id: int
+    ecoe_event_id: int
+    name: str
+    scope: str
+    notes: str
+    archived: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+# ── Incidents (read) ─────────────────────────────────────────────────
+
+class IncidentRead(ORMBase):
+    id: int
+    ecoe_event_id: int
+    station_id: int | None
+    title: str
+    detail: str
+    severity: str
+    resolved: bool
+    resolved_at: datetime | None
+    created_at: datetime
+
+
+# ── Media ─────────────────────────────────────────────────────────────
+
+class MediaAssetRead(ORMBase):
+    id: int
+    filename: str
+    original_name: str
+    content_type: str
+    target_viewer: str
+    station_id: int | None
+    created_at: datetime
+    # file_path (server disk path) intentionally excluded from responses.

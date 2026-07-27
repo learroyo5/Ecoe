@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.entities import (
     AuditLog,
+    ECOEEvent,
     EvaluatorRecord,
     StaffAssignment,
     Station,
@@ -17,14 +18,20 @@ from app.models.entities import (
 from app.models.enums import RoleCode
 from app.schemas.common import EvaluatorSubmission, StationCheckInCreate
 from app.services.dependencies import get_current_user, require_roles
+from app.services.authorization import ensure_event_access
 from app.utils.helpers import (
-    ensure_event_access,
+    checkin_submission_deadline,
+    ensure_checkin_within_time,
     ensure_primary_station_assignment,
+    ensure_submission_stage,
     find_student_by_ecoe_number,
     get_active_checkin,
     normalize_email,
-    serialize_assessment_tool,
+    resolve_session_mode,
+    resolve_station_max_score,
+    utcnow_naive,
 )
+from app.utils.serializers import serialize_assessment_tool
 
 router = APIRouter()
 
@@ -32,7 +39,7 @@ router = APIRouter()
 @router.get("/evaluator/context/{ecoe_event_id}")
 def evaluator_context(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     ensure_event_access(db, user, ecoe_event_id,
-                        RoleCode.creador_ecoe.value,
+                        RoleCode.admin_ecoe.value,
                         RoleCode.coordinador_operativo.value,
                         RoleCode.evaluador.value)
     assignment = db.scalar(
@@ -71,6 +78,10 @@ def evaluator_context(ecoe_event_id: int, db: Session = Depends(get_db), user=De
     student = db.get(Student, active_checkin.student_id) if active_checkin else None
     station = db.get(Station, active_checkin.station_id) if active_checkin else None
     assessment_tool = serialize_assessment_tool(db, station.assessment_tool_id if station else None)
+    ecoe_event = db.get(ECOEEvent, ecoe_event_id)
+    # Scoped by the current session mode: a submission recorded during the
+    # pilotaje must not mark the station as "already sent" for the real run.
+    current_mode = resolve_session_mode(ecoe_event)
     evaluator_submission_exists = False
     student_response_exists = False
     if active_checkin and student and station:
@@ -79,6 +90,7 @@ def evaluator_context(ecoe_event_id: int, db: Session = Depends(get_db), user=De
                 EvaluatorRecord.ecoe_event_id == ecoe_event_id,
                 EvaluatorRecord.station_id == active_checkin.station_id,
                 EvaluatorRecord.student_id == active_checkin.student_id,
+                EvaluatorRecord.mode == current_mode,
             )
         ) > 0
         student_response_exists = db.scalar(
@@ -86,6 +98,7 @@ def evaluator_context(ecoe_event_id: int, db: Session = Depends(get_db), user=De
                 StudentResponse.ecoe_event_id == ecoe_event_id,
                 StudentResponse.station_id == active_checkin.station_id,
                 StudentResponse.student_id == active_checkin.student_id,
+                StudentResponse.mode == current_mode,
             )
         ) > 0
 
@@ -105,9 +118,15 @@ def evaluator_context(ecoe_event_id: int, db: Session = Depends(get_db), user=De
             "evaluator_instruction": station.evaluator_instruction if station else "",
             "confirmed_at": active_checkin.confirmed_at.isoformat(),
             "station_time_minutes": station.station_time_minutes if station else 0,
+            "submission_deadline": checkin_submission_deadline(active_checkin, station).isoformat(),
+            "evaluator_deadline": checkin_submission_deadline(
+                active_checkin, station,
+                extra_minutes=float(station.transition_time_minutes or 0),
+            ).isoformat(),
             "evaluator_submission_exists": evaluator_submission_exists,
             "student_response_exists": student_response_exists,
         } if active_checkin and student and station else None,
+        "server_now": utcnow_naive().isoformat(),
     }
 
 
@@ -115,17 +134,22 @@ def evaluator_context(ecoe_event_id: int, db: Session = Depends(get_db), user=De
 def confirm_station_checkin(
     payload: StationCheckInCreate,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("evaluador", "coordinador_operativo", "creador_ecoe")),
+    user=Depends(require_roles("evaluador", "coordinador_operativo", "admin_ecoe")),
 ):
-    ensure_event_access(db, user, payload.ecoe_event_id,
-                        RoleCode.creador_ecoe.value,
+    event_roles = ensure_event_access(db, user, payload.ecoe_event_id,
+                        RoleCode.admin_ecoe.value,
                         RoleCode.coordinador_operativo.value,
                         RoleCode.evaluador.value)
+    ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
+    ensure_submission_stage(ecoe_event)
     station = db.get(Station, payload.station_id)
     if not station or station.ecoe_event_id != payload.ecoe_event_id:
-        raise HTTPException(status_code=404, detail="Estacion no encontrada")
+        raise HTTPException(status_code=404, detail="Estación no encontrada")
 
-    if user.role.code == "evaluador":
+    if not event_roles & {
+        RoleCode.admin_ecoe.value,
+        RoleCode.coordinador_operativo.value,
+    }:
         assignment = db.scalar(
             select(StaffAssignment).where(
                 StaffAssignment.ecoe_event_id == payload.ecoe_event_id,
@@ -139,11 +163,11 @@ def confirm_station_checkin(
             db.commit()
             db.refresh(assignment)
         if not assignment or payload.station_id not in assigned_station_ids:
-            raise HTTPException(status_code=403, detail="No tienes esa estacion asignada")
+            raise HTTPException(status_code=403, detail="No tienes esa estación asignada")
 
     student = find_student_by_ecoe_number(db, payload.ecoe_event_id, payload.ecoe_number, active_only=True)
     if not student:
-        raise HTTPException(status_code=404, detail="No existe un estudiante activo con ese Numero ECOE")
+        raise HTTPException(status_code=404, detail="No existe un estudiante activo con ese Número ECOE")
 
     existing_station_checkins = db.scalars(
         select(StationCheckIn).where(
@@ -193,6 +217,12 @@ def confirm_station_checkin(
         "assessment_tool": serialize_assessment_tool(db, station.assessment_tool_id),
         "station_time_minutes": station.station_time_minutes,
         "confirmed_at": checkin.confirmed_at.isoformat(),
+        "submission_deadline": checkin_submission_deadline(checkin, station).isoformat(),
+        "evaluator_deadline": checkin_submission_deadline(
+            checkin, station,
+            extra_minutes=float(station.transition_time_minutes or 0),
+        ).isoformat(),
+        "server_now": utcnow_naive().isoformat(),
         "evaluator_submission_exists": False,
         "student_response_exists": False,
     }
@@ -202,20 +232,33 @@ def confirm_station_checkin(
 def submit_evaluator_record(
     payload: EvaluatorSubmission,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("evaluador", "coordinador_operativo", "creador_ecoe")),
+    user=Depends(require_roles("evaluador", "coordinador_operativo", "admin_ecoe")),
 ):
-    ensure_event_access(db, user, payload.ecoe_event_id,
-                        RoleCode.creador_ecoe.value,
+    event_roles = ensure_event_access(db, user, payload.ecoe_event_id,
+                        RoleCode.admin_ecoe.value,
                         RoleCode.coordinador_operativo.value,
                         RoleCode.evaluador.value)
+    ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
+    session_mode = ensure_submission_stage(ecoe_event)
     checkin = get_active_checkin(db, payload.ecoe_event_id, payload.station_id,
                                  payload.student_id, payload.checkin_id)
     if not checkin:
         raise HTTPException(
             status_code=400,
-            detail="La evaluacion solo puede guardarse para un estudiante previamente confirmado en esta estacion",
+            detail="La evaluación solo puede guardarse para un estudiante previamente confirmado en esta estación",
         )
-    if user.role.code == RoleCode.evaluador.value:
+    station = db.get(Station, payload.station_id)
+    if not station or station.ecoe_event_id != payload.ecoe_event_id:
+        raise HTTPException(status_code=400, detail="La estación no pertenece al ECOE indicado")
+    # The evaluator records after the student leaves, so the window also
+    # includes the transition time.
+    ensure_checkin_within_time(
+        checkin, station, extra_minutes=float(station.transition_time_minutes or 0)
+    )
+    if not event_roles & {
+        RoleCode.admin_ecoe.value,
+        RoleCode.coordinador_operativo.value,
+    }:
         evaluator_assignment = db.scalar(
             select(StaffAssignment).where(
                 StaffAssignment.ecoe_event_id == payload.ecoe_event_id,
@@ -227,21 +270,42 @@ def submit_evaluator_record(
         if not evaluator_assignment or payload.station_id not in assigned_station_ids:
             raise HTTPException(
                 status_code=403,
-                detail="No puedes enviar evaluaciones para una estacion no asignada a tu cuenta",
+                detail="No puedes enviar evaluaciones para una estación no asignada a tu cuenta",
             )
+    # Duplicates are scoped by mode: a record saved during the pilotaje must
+    # not block the same student/station during the real execution.
     existing_record = db.scalar(
         select(EvaluatorRecord).where(
             EvaluatorRecord.ecoe_event_id == payload.ecoe_event_id,
             EvaluatorRecord.station_id == payload.station_id,
             EvaluatorRecord.student_id == payload.student_id,
+            EvaluatorRecord.mode == session_mode,
         )
     )
     if existing_record:
         raise HTTPException(
             status_code=400,
-            detail="La evaluacion de esta estacion ya fue enviada y no puede modificarse durante el ECOE",
+            detail="La evaluación de esta estación ya fue enviada y no puede modificarse durante el ECOE",
         )
-    record = EvaluatorRecord(**payload.model_dump(exclude={"checkin_id"}))
+    # Never trust client-supplied scoring metadata: the max score comes from
+    # the station's assessment tool and the mode from the ECOE state.
+    authoritative_max = resolve_station_max_score(db, station)
+    if authoritative_max <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="La estación no tiene un puntaje máximo válido configurado",
+        )
+    if payload.score_obtained < 0 or payload.score_obtained > authoritative_max:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El puntaje obtenido debe estar entre 0 y {authoritative_max}",
+        )
+    record = EvaluatorRecord(
+        **payload.model_dump(exclude={"checkin_id", "max_score", "mode", "by_contingency"}),
+        max_score=authoritative_max,
+        mode=session_mode,
+        by_contingency=False,
+    )
     db.add(record)
     db.flush()
     db.add(

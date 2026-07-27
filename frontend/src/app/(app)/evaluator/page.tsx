@@ -5,14 +5,16 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
+import { clockOffsetMs, parseServerUtc } from "@/lib/time";
 import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
+import { ConfirmDialog, TIMER_TONE_CLASSES, timerTone } from "@/components/confirm-dialog";
 
 export default function EvaluatorPage() {
-  const { token, eventId, user } = useECOE();
+  const { authenticated, eventId, user } = useECOE();
   const { data: context, setData: setContext } = useApi(
-    () => api.evaluatorContext(eventId, token!) as Promise<Record<string, unknown>>,
-    [eventId, token],
+    () => api.evaluatorContext(eventId) as Promise<Record<string, unknown>>,
+    [eventId, authenticated],
   );
   const [ecoeNumber, setEcoeNumber] = useState("");
   const [scoreObtained, setScoreObtained] = useState("0");
@@ -21,6 +23,7 @@ export default function EvaluatorPage() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [confirmingStudent, setConfirmingStudent] = useState(false);
   const [submittingEvaluation, setSubmittingEvaluation] = useState(false);
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [itemScoreState, setItemScoreState] = useState<{
     checkinId: string;
     scores: Record<string, number>;
@@ -41,6 +44,17 @@ export default function EvaluatorPage() {
     Number(activeCheckin?.station_time_minutes ?? assignedStation?.station_time_minutes ?? 0) *
     60;
   const confirmedAt = String(activeCheckin?.confirmed_at ?? "");
+  // Deadline autoritativo del servidor para el REGISTRO del evaluador:
+  // incluye el tiempo de transición (el evaluador marca después de que el
+  // estudiante sale). Sin esto, la UI bloqueaba antes que el backend.
+  const evaluatorDeadline = String(activeCheckin?.evaluator_deadline ?? "");
+  const serverNow = String(context?.server_now ?? "");
+  // Offset reloj servidor - reloj local: el bloqueo por tiempo no depende
+  // del reloj del dispositivo (el backend igualmente re-valida al enviar).
+  const serverClockOffsetMs = useMemo(
+    () => (serverNow ? clockOffsetMs(serverNow) : 0),
+    [serverNow],
+  );
   const activeCheckinId = String(activeCheckin?.id ?? "");
   const assessmentTool = (activeCheckin?.assessment_tool ??
     assignedStation?.assessment_tool) as
@@ -88,15 +102,21 @@ export default function EvaluatorPage() {
     if (!activeCheckin) {
       return null;
     }
+    if (evaluatorDeadline) {
+      return Math.max(
+        0,
+        Math.floor((parseServerUtc(evaluatorDeadline) - (nowMs + serverClockOffsetMs)) / 1000),
+      );
+    }
     if (!confirmedAt || !timerDurationSeconds) {
       return timerDurationSeconds || null;
     }
     const elapsedSeconds = Math.max(
       0,
-      Math.floor((nowMs - new Date(confirmedAt).getTime()) / 1000),
+      Math.floor((nowMs + serverClockOffsetMs - parseServerUtc(confirmedAt)) / 1000),
     );
     return Math.max(timerDurationSeconds - elapsedSeconds, 0);
-  }, [activeCheckin, confirmedAt, nowMs, timerDurationSeconds]);
+  }, [activeCheckin, confirmedAt, evaluatorDeadline, nowMs, serverClockOffsetMs, timerDurationSeconds]);
 
   const timerLabel = useMemo(() => {
     if (remainingSeconds === null) {
@@ -106,6 +126,15 @@ export default function EvaluatorPage() {
     const seconds = remainingSeconds % 60;
     return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   }, [remainingSeconds]);
+
+  const timeExpired = remainingSeconds !== null && remainingSeconds <= 0 && Boolean(activeCheckin);
+  const windowTotalSeconds = useMemo(() => {
+    if (evaluatorDeadline && confirmedAt) {
+      return Math.max(0, Math.floor((parseServerUtc(evaluatorDeadline) - parseServerUtc(confirmedAt)) / 1000));
+    }
+    return timerDurationSeconds;
+  }, [confirmedAt, evaluatorDeadline, timerDurationSeconds]);
+  const tone = timeExpired ? "danger" : timerTone(remainingSeconds, windowTotalSeconds);
 
   const computedScore = useMemo(
     () => Object.values(itemScores).reduce((sum, value) => sum + Number(value || 0), 0),
@@ -120,6 +149,41 @@ export default function EvaluatorPage() {
         [itemKey]: value,
       },
     }));
+  };
+
+  const submitEvaluation = async () => {
+    if (!activeCheckin) return;
+    setMessage(null);
+    setSubmittingEvaluation(true);
+    try {
+      await api.submitEvaluator(
+        {
+          checkin_id: Number(activeCheckin.id),
+          ecoe_event_id: eventId,
+          station_id: stationId,
+          student_id: Number(activeCheckin.student_id),
+          evaluator_name: user?.full_name ?? "Evaluador",
+          score_obtained: assessmentItems.length ? computedScore : Number(scoreObtained),
+          max_score: Number(assessmentTool?.max_score ?? maxScore),
+          observation,
+          answers: {
+            tool_id: assessmentTool?.id ?? null,
+            tool_name: assessmentTool?.name ?? null,
+            tool_type: assessmentTool?.tool_type ?? null,
+            item_scores: itemScores,
+          },
+        },
+      );
+      setShowSubmitConfirm(false);
+      resetForNextStudent(
+        "Evaluación enviada correctamente. Ingresa el Número ECOE del siguiente estudiante.",
+      );
+    } catch (error) {
+      setShowSubmitConfirm(false);
+      setMessage(error instanceof Error ? error.message : "No se pudo guardar.");
+    } finally {
+      setSubmittingEvaluation(false);
+    }
   };
 
   const resetForNextStudent = (notice: string) => {
@@ -153,9 +217,13 @@ export default function EvaluatorPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
               Tiempo visible de la estación
             </p>
-            <p className="mt-2 text-3xl font-semibold text-slate-900">{timerLabel}</p>
+            <p className={`mt-2 text-3xl font-semibold tabular-nums ${TIMER_TONE_CLASSES[tone]}`}>
+              {timerLabel}
+            </p>
             <p className="mt-2 text-sm text-slate-600">
-              El evaluador visualiza el tiempo, pero el cierre de su evaluación sigue siendo manual.
+              {timeExpired
+                ? "El tiempo de registro ha terminado. Si necesitas ingresar esta evaluación, contacta a coordinación (registro por contingencia)."
+                : "Incluye el tiempo de transición: puedes terminar de registrar mientras el estudiante cambia de estación."}
             </p>
           </div>
 
@@ -173,10 +241,10 @@ export default function EvaluatorPage() {
                       station_id: stationId,
                       ecoe_number: ecoeNumber,
                     },
-                    token!,
                   )) as Record<string, unknown>;
                   setContext((current) => ({
                     ...(current ?? {}),
+                    server_now: checkin.server_now,
                     active_checkin: {
                       id: checkin.checkin_id,
                       station_id: checkin.station_id,
@@ -188,6 +256,8 @@ export default function EvaluatorPage() {
                       assessment_tool: checkin.assessment_tool,
                       station_time_minutes: checkin.station_time_minutes,
                       confirmed_at: checkin.confirmed_at,
+                      submission_deadline: checkin.submission_deadline,
+                      evaluator_deadline: checkin.evaluator_deadline,
                       evaluator_submission_exists: false,
                       student_response_exists: false,
                       status: "confirmado",
@@ -221,7 +291,7 @@ export default function EvaluatorPage() {
             >
               <label className="space-y-2">
                 <span className="text-sm font-semibold text-slate-700">
-                  Numero ECOE del estudiante
+                  Número ECOE del estudiante
                 </span>
                 <input
                   value={ecoeNumber}
@@ -235,7 +305,7 @@ export default function EvaluatorPage() {
             </form>
           ) : (
             <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              Tu usuario no tiene una estacion asignada en este ECOE.
+              Tu usuario no tiene una estación asignada en este ECOE.
             </p>
           )}
 
@@ -277,47 +347,16 @@ export default function EvaluatorPage() {
               Primero confirma al estudiante con su Número ECOE. Cuando envíes la evaluación, esta
               vista se limpiará para identificar al siguiente estudiante.
             </div>
+          ) : timeExpired ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 font-semibold">
+              ⏰ El tiempo de la estación ha terminado. La evaluación ya no puede enviarse.
+            </div>
           ) : (
             <form
               className="grid gap-4"
-              onSubmit={async (event) => {
+              onSubmit={(event) => {
                 event.preventDefault();
-                const confirmed = window.confirm(
-                  "Vas a enviar la evaluación final de esta estación. Luego no se podrá modificar durante el ECOE. ¿Quieres continuar?",
-                );
-                if (!confirmed) {
-                  return;
-                }
-                setMessage(null);
-                setSubmittingEvaluation(true);
-                try {
-                  await api.submitEvaluator(
-                    {
-                      checkin_id: Number(activeCheckin.id),
-                      ecoe_event_id: eventId,
-                      station_id: stationId,
-                      student_id: Number(activeCheckin.student_id),
-                      evaluator_name: user?.full_name ?? "Evaluador",
-                      score_obtained: assessmentItems.length ? computedScore : Number(scoreObtained),
-                      max_score: Number(assessmentTool?.max_score ?? maxScore),
-                      observation,
-                      answers: {
-                        tool_id: assessmentTool?.id ?? null,
-                        tool_name: assessmentTool?.name ?? null,
-                        tool_type: assessmentTool?.tool_type ?? null,
-                        item_scores: itemScores,
-                      },
-                    },
-                    token!,
-                  );
-                  resetForNextStudent(
-                    "Evaluación enviada correctamente. Ingresa el Número ECOE del siguiente estudiante.",
-                  );
-                } catch (error) {
-                  setMessage(error instanceof Error ? error.message : "No se pudo guardar.");
-                } finally {
-                  setSubmittingEvaluation(false);
-                }
+                setShowSubmitConfirm(true);
               }}
             >
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
@@ -356,7 +395,7 @@ export default function EvaluatorPage() {
                             {isChecklist ? (
                               <button
                                 type="button"
-                                disabled={submitted}
+                                disabled={submitted || timeExpired}
                                 className={`flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold transition md:w-auto ${
                                   Number(itemScores[itemKey] ?? 0) > 0
                                     ? "border-[var(--color-primary)] bg-[var(--color-bg-soft)] text-[var(--color-primary-dark)]"
@@ -388,7 +427,7 @@ export default function EvaluatorPage() {
                                 step="0.5"
                                 className="w-full md:w-28"
                                 value={String(itemScores[itemKey] ?? 0)}
-                                disabled={submitted}
+                                disabled={submitted || timeExpired}
                                 onChange={(event) =>
                                   updateItemScore(
                                     itemKey,
@@ -408,7 +447,7 @@ export default function EvaluatorPage() {
                 </div>
               ) : (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  Esta estacion aun no tiene una pauta de evaluacion visible para el evaluador.
+                  Esta estación aún no tiene una pauta de evaluación visible para el evaluador.
                 </div>
               )}
               <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
@@ -423,7 +462,7 @@ export default function EvaluatorPage() {
                 />
               </label>
               <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
-                <span className="text-sm font-semibold">Puntaje maximo de la estacion</span>
+                <span className="text-sm font-semibold">Puntaje máximo de la estación</span>
                 <input
                   value={String(assessmentTool?.max_score ?? maxScore)}
                   readOnly
@@ -435,20 +474,22 @@ export default function EvaluatorPage() {
                 <textarea
                   rows={5}
                   value={observation}
-                  disabled={submitted}
+                  disabled={submitted || timeExpired}
                   onChange={(event) => setObservation(event.target.value)}
                   placeholder="Comentario breve para retroalimentación o trazabilidad."
                 />
               </label>
               <button
                 className="btn-primary w-full text-base"
-                disabled={submitted || submittingEvaluation}
+                disabled={submitted || submittingEvaluation || timeExpired}
               >
                 {submitted
                   ? "Evaluación ya enviada"
-                  : submittingEvaluation
-                    ? "Guardando evaluación..."
-                    : "Guardar evaluación"}
+                  : timeExpired
+                    ? "Tiempo agotado"
+                    : submittingEvaluation
+                      ? "Guardando evaluación..."
+                      : "Guardar evaluación"}
               </button>
               {submitted ? (
                 <p className="text-sm text-amber-700">
@@ -460,6 +501,34 @@ export default function EvaluatorPage() {
         </section>
       </div>
       <StatusNotice message={message} className="mt-4" />
+      <ConfirmDialog
+        open={showSubmitConfirm}
+        title="Enviar evaluación final"
+        message="Una vez enviada, la evaluación queda cerrada y no puede modificarse durante el ECOE."
+        confirmLabel="Enviar evaluación"
+        severity="danger"
+        busy={submittingEvaluation}
+        onConfirm={submitEvaluation}
+        onCancel={() => setShowSubmitConfirm(false)}
+      >
+        {activeCheckin ? (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-800">
+            <p className="font-semibold">
+              {String(activeCheckin.student_ecoe_number)} · {String(activeCheckin.student_name)}
+            </p>
+            <p className="mt-2">
+              Puntaje a registrar:{" "}
+              <span className="font-semibold">
+                {assessmentItems.length ? computedScore : Number(scoreObtained)} /{" "}
+                {String(assessmentTool?.max_score ?? maxScore)} pts
+              </span>
+            </p>
+            {observation.trim() ? (
+              <p className="mt-2 text-slate-600">Observación: {observation.trim().slice(0, 120)}</p>
+            ) : null}
+          </div>
+        ) : null}
+      </ConfirmDialog>
     </SectionCard>
   );
 }

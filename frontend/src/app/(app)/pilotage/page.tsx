@@ -10,27 +10,29 @@ import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 
 export default function PilotagePage() {
-  const { token, eventId } = useECOE();
+  const { authenticated, eventId } = useECOE();
   const { data, loading, error, setData } = useApi(
-    () => api.pilotage(eventId, token!) as Promise<Record<string, unknown>[]>,
-    [eventId, token],
+    () => api.pilotage(eventId) as Promise<Record<string, unknown>[]>,
+    [eventId, authenticated],
   );
   const { data: stations } = useApi(
-    () => api.stations(eventId, token!) as Promise<Record<string, unknown>[]>,
-    [eventId, token],
+    () => api.stations(eventId) as Promise<Record<string, unknown>[]>,
+    [eventId, authenticated],
   );
   const { data: validation } = useApi(
-    () => api.validation(eventId, token!) as Promise<Record<string, unknown>>,
-    [eventId, token],
+    () => api.validation(eventId) as Promise<Record<string, unknown>>,
+    [eventId, authenticated],
   );
   const [selectedStationId, setSelectedStationId] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [creatingStationPilot, setCreatingStationPilot] = useState(false);
   const [creatingCircuitPilot, setCreatingCircuitPilot] = useState(false);
   const [processingArchiveId, setProcessingArchiveId] = useState<string | null>(null);
+  const [editingNotes, setEditingNotes] = useState<{ id: number; name: string; notes: string } | null>(null);
+  const [savingNotes, setSavingNotes] = useState(false);
 
   const refresh = async () =>
-    setData((await api.pilotage(eventId, token!)) as Record<string, unknown>[]);
+    setData((await api.pilotage(eventId)) as Record<string, unknown>[]);
 
   const readyStationIssues =
     ((validation?.station_issues as Record<string, unknown>[] | undefined) ?? []).filter((issue) =>
@@ -47,7 +49,7 @@ export default function PilotagePage() {
             id: String(stationId),
             label: station
               ? `${String(station.station_number)} - ${String(station.name)}`
-              : `Estacion ${String(issue.station_number)}`,
+              : `Estación ${String(issue.station_number)}`,
           };
         })
         .filter((option) => option.id),
@@ -115,7 +117,6 @@ export default function PilotagePage() {
                         ? [Number(effectiveSelectedStationId)]
                         : [],
                     },
-                    token!,
                   );
                   await refresh();
                   setMessage("Pilotaje individual creado correctamente.");
@@ -154,7 +155,6 @@ export default function PilotagePage() {
                       name: "Pilotaje de circuito",
                       scope: "circuito_completo",
                     },
-                    token!,
                   );
                   await refresh();
                   setMessage("Pilotaje de circuito completo creado correctamente.");
@@ -231,6 +231,29 @@ export default function PilotagePage() {
                 ),
               },
               {
+                key: "notes",
+                label: "Hallazgos",
+                render: (row) => {
+                  const notes = String((row as { notes?: string }).notes ?? "").trim();
+                  return (
+                    <button
+                      className="text-left text-xs font-semibold text-[var(--color-primary)] underline-offset-4 hover:underline"
+                      onClick={() =>
+                        setEditingNotes({
+                          id: Number(row.id),
+                          name: String(row.name ?? ""),
+                          notes,
+                        })
+                      }
+                    >
+                      {notes
+                        ? `${notes.slice(0, 60)}${notes.length > 60 ? "…" : ""}`
+                        : "Registrar hallazgos"}
+                    </button>
+                  );
+                },
+              },
+              {
                 key: "actions",
                 label: "Acción",
                 render: (row) => (
@@ -240,7 +263,7 @@ export default function PilotagePage() {
                       setProcessingArchiveId(String(row.id ?? ""));
                       setMessage(null);
                       try {
-                        await api.archivePilotage(Number(row.id), token!);
+                        await api.archivePilotage(Number(row.id));
                         await refresh();
                         setMessage("Pilotaje archivado correctamente.");
                       } catch (archiveError) {
@@ -267,6 +290,50 @@ export default function PilotagePage() {
           />
         )}
       </SectionCard>
+      {editingNotes ? (
+        <SectionCard
+          title={`Hallazgos del pilotaje: ${editingNotes.name}`}
+          subtitle="Registra tiempos reales, problemas detectados y ajustes acordados. Este texto queda asociado al pilotaje como insumo para la publicación."
+        >
+          <textarea
+            rows={6}
+            value={editingNotes.notes}
+            onChange={(event) =>
+              setEditingNotes((prev) => (prev ? { ...prev, notes: event.target.value } : prev))
+            }
+            placeholder="Ej.: La estación 2 necesitó 9 minutos reales; el audio del ECG no se escuchaba desde la puerta; se acordó reubicar el parlante."
+          />
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              className="btn-primary"
+              disabled={savingNotes}
+              onClick={async () => {
+                setMessage(null);
+                setSavingNotes(true);
+                try {
+                  await api.updatePilotageNotes(editingNotes.id, editingNotes.notes);
+                  await refresh();
+                  setEditingNotes(null);
+                  setMessage("Hallazgos guardados correctamente.");
+                } catch (notesError) {
+                  setMessage(
+                    notesError instanceof Error
+                      ? notesError.message
+                      : "No se pudieron guardar los hallazgos.",
+                  );
+                } finally {
+                  setSavingNotes(false);
+                }
+              }}
+            >
+              {savingNotes ? "Guardando..." : "Guardar hallazgos"}
+            </button>
+            <button className="btn-secondary" onClick={() => setEditingNotes(null)}>
+              Cancelar
+            </button>
+          </div>
+        </SectionCard>
+      ) : null}
     </div>
   );
 }

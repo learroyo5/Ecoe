@@ -1,85 +1,92 @@
 # Next Steps
 
-## Prioridad alta
+## Prioridad alta completada (v2)
 
-1. Completar CRUD real de ECOE
-- Formulario completo de datos generales.
-- Cambio de estado guiado desde UI.
-- Vista de detalle del ECOE activo.
+1. ~~Completar CRUD real de ECOE~~ ✅
+   - ~~Formulario completo de datos generales~~ → 3 secciones con validacion frontend
+   - ~~Cambio de estado guiado desde UI~~ → StatusTransitionBar con modales de confirmacion
+   - ~~Vista de detalle del ECOE activo~~ → `/ecoe/[id]` con 4 tabs
 
-2. Mejorar constructor de estaciones
-- Edicion de estaciones existentes.
-- Formularios por secciones con mejor UX.
-- Asociacion real de multimedia.
-- Asociacion real de instrumentos y paciente simulado.
+2. ~~Mejorar constructor de estaciones~~ ✅
+   - ~~Edicion de estaciones existentes~~ → builder soporta carga y actualizacion completa
+   - ~~Formularios por secciones con mejor UX~~ → constructor con 4 pasos guiados
+   - ~~Asociacion real de multimedia~~ → upload con preview inline (MediaPreview)
+   - ~~Asociacion real de instrumentos y paciente simulado~~ → selectores en el builder
 
-3. Mejorar flujo operativo en vivo
-- Sincronizacion real del cronometro entre clientes.
-- Confirmacion visual por estacion activa.
-- Mejora de panel de incidencias.
+3. ~~Mejorar flujo operativo en vivo~~ ✅
+   - ~~Sincronizacion real del cronometro entre clientes~~ → WebSocket con broadcast
+   - ~~Mejora de panel de incidencias~~ → creacion, resolucion, reapertura con WebSocket
 
-4. Robustecer evaluacion y respuestas
-- Render dinamico de instrumentos.
-- Render dinamico de formularios del estudiante.
-- Bloqueo por tiempo de manera efectiva.
+4. ~~Robustecer evaluacion y respuestas~~ ✅
+   - ~~Render dinamico de instrumentos~~ → checklist toggle + puntaje numerico
+   - ~~Render dinamico de formularios del estudiante~~ → 3 tipos de pregunta
+   - ~~Bloqueo por tiempo de manera efectiva~~ → timer rojo, campos deshabilitados al expirar
 
-5. Persistencia y mantenimiento
-- Agregar migraciones con Alembic.
-- Separar mejor seeds demo de datos reales.
-- Agregar pruebas backend basicas.
+5. ~~Persistencia y mantenimiento~~ ✅
+   - ~~Agregar migraciones con Alembic~~ → configurado con autogenerate
+   - ~~Agregar pruebas backend basicas~~ → 23 tests pasando
 
-## Prioridad media
+---
 
-1. Multimedia
-- Upload con validacion por tipo.
-- Preview de imagen, audio, video y PDF.
-- Definir si ve estudiante o evaluador.
+## Completado en la estabilizacion pre-examen (julio 2026)
 
-2. Exportaciones
-- Mejorar formato de Excel consolidado.
-- PDF por estacion con formato imprimible real.
-- hojas manuales de contingencia mejor estructuradas.
+- ~~Aislar pilotaje de ejecucion (mode en duplicados y flags)~~ ✅
+- ~~Maquina de estados backend + gate de envios por etapa~~ ✅
+- ~~Deadlines autoritativos + registro por contingencia~~ ✅
+- ~~Cierre que consolida y congela~~ ✅
+- ~~Modo kiosco por estacion (tablets compartidas)~~ ✅
+- ~~Formularios del estudiante puntuables + pantalla Correccion~~ ✅
+- ~~Trazabilidad por circuito (modo espejo)~~ ✅
+- ~~Pilotaje con hallazgos~~ ✅
+- ~~Modales de confirmacion con resumen, semaforo de tiempo, indicador de borrador~~ ✅
+- ~~Reconexion WS con indicador + vista proyector en panel en vivo~~ ✅
+- ~~Filtros/buscadores en tablas de estudiantes y staff~~ ✅
+- ~~E2E Playwright del flujo dorado + checklist del dia D~~ ✅
 
-3. Seguridad operativa
-- Logout real del lado cliente.
-- expiracion de token mejor manejada.
-- endurecer controles de permisos por ruta y accion.
+## Prioridad actual
 
-4. UX/UI
-- mejorar version tablet en formularios largos.
-- reforzar feedback de guardado.
-- filtros y buscadores en tablas.
+1. Primera prueba funcional real
+   - Ensayo general con el equipo usando la app en `en_pilotaje` (guiarse por docs/OPERACION_DIA_EXAMEN.md).
+   - Retro post-ensayo y ajustes.
+
+2. Multimedia
+   - Mejorar preview de audio y video con controles avanzados.
+   - Definir si el material se muestra antes, durante o despues de la estacion.
+
+3. Exportaciones
+   - Mejorar formato de Excel consolidado con estadisticas por estacion.
+   - PDF por estacion con formato imprimible real (membrete, tabla de puntajes).
+
+4. Seguridad operativa
+   - Logout real del lado cliente (invalidar token).
+   - Expiracion de token mejor manejada (refresh token).
+   - Integrar envio transaccional de invitaciones y un flujo seguro de reemision; hoy el enlace se comparte manualmente.
+   - Ampliar auditoria y MFA para acciones institucionales sensibles.
+
+5. Testing
+   - Tests de frontend de componentes clave (kiosco, evaluador).
+   - Ampliar el e2e: pausa/contingencia y correccion manual en UI.
+
+## Prioridad media (antes "Prioridad baja")
+
+1. Audio del cronometro
+   - Reproducir sonido de aviso en transiciones de estacion.
+   - Sonido configurable por ECOE.
+
+2. Observabilidad
+   - Logs mas claros y estructurados.
+   - Auditoria expandida (quien hizo que, cuando, desde donde).
 
 ## Prioridad baja
 
-1. Observabilidad
-- logs mas claros
-- auditoria expandida
+1. Infraestructura
+   - Backups automatizados de PostgreSQL.
+   - Healthchecks y alertas mas visibles.
+   - Procedimiento simple de rotacion de credenciales.
 
-2. Infraestructura
-- backups de PostgreSQL
-- healthchecks y alertas mas visibles
-- procedimiento simple de rotacion de credenciales
-
-## Sugerencia de orden de trabajo
-
-### Iteracion 1
-
-- CRUD completo del ECOE
-- edicion de estaciones
-- mejor validacion previa
-
-### Iteracion 2
-
-- instrumentos dinamicos
-- formularios dinamicos del estudiante
-- multimedia utilizable
-
-### Iteracion 3
-
-- tiempo real del panel central
-- incidencias
-- mejoras de exportacion
+2. ACL avanzada
+   - Permisos por unidad academica/centro para bancos institucionales compartidos.
+   - Extender reglas por recurso mas alla de ECOE, estacion, audiencia y check-in ya implementados.
 
 ## Comandos utiles
 
@@ -108,10 +115,26 @@ Apagar:
 docker compose down
 ```
 
-## Nota para futuras sesiones de Codex
+Tests:
+
+```bash
+cd backend
+python3 -m pytest tests/test_api.py -v
+```
+
+Migraciones:
+
+```bash
+cd backend
+alembic upgrade head
+alembic revision --autogenerate -m "descripcion del cambio"
+```
+
+## Nota para futuras sesiones
 
 Al retomar en otro servidor, pedir:
 
 ```text
-Lee README.md, PROJECT_STATUS.md y NEXT_STEPS.md, revisa la estructura del repo y continuemos desde la prioridad alta.
+Lee README.md, PROJECT_STATUS.md y NEXT_STEPS.md, revisa la estructura del repo
+y continuemos desde la prioridad actual (multimedia, exportaciones, seguridad, UX).
 ```

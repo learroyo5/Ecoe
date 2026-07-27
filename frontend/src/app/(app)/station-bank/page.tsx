@@ -11,22 +11,24 @@ import { DataTable } from "@/components/data-table";
 import { SectionCard } from "@/components/section-card";
 
 const bankStatusOptions = [
-  { value: "en_diseno", label: "En diseno" },
+  { value: "en_diseno", label: "En diseño" },
   { value: "piloteada", label: "Piloteada" },
   { value: "aprobada", label: "Aprobada" },
   { value: "archivada", label: "Archivada" },
 ];
 
 export default function StationBankPage() {
-  const { token, user } = useECOE();
+  const { authenticated, eventId, eventRoles, user } = useECOE();
+  const canEditContent = user?.role === "admin_global"
+    || eventRoles.some((role) => role === "admin_ecoe" || role === "coeditor_docente");
   const router = useRouter();
   const { data: templates } = useApi(
-    () => api.templates(token!) as Promise<Record<string, unknown>[]>,
-    [token],
+    () => api.templates(eventId) as Promise<Record<string, unknown>[]>,
+    [authenticated, eventId],
   );
   const { data, loading, error, setData } = useApi(
-    () => api.stationBank(token!) as Promise<Record<string, unknown>[]>,
-    [token],
+    () => api.stationBank(eventId) as Promise<Record<string, unknown>[]>,
+    [authenticated, eventId],
   );
 
   useEffect(() => {
@@ -50,12 +52,14 @@ export default function StationBankPage() {
     <div className="space-y-6">
       <SectionCard
         title="Banco de estaciones"
-        subtitle="Aqui viven las estaciones reutilizables del hospital o de la institucion para estandarizar y escalar disenos docentes."
+        subtitle="Aquí viven las estaciones reutilizables del hospital o de la institución para estandarizar y escalar diseños docentes."
       >
         <div className="flex flex-wrap gap-3">
-          <Link href="/stations/builder?scope=bank" className="btn-primary">
-            Crear estacion de banco
-          </Link>
+          {canEditContent ? (
+            <Link href="/stations/builder?scope=bank" className="btn-primary">
+              Crear estación de banco
+            </Link>
+          ) : null}
           <Link href="/stations" className="btn-secondary">
             Volver a estaciones del ECOE
           </Link>
@@ -64,7 +68,7 @@ export default function StationBankPage() {
 
       <SectionCard
         title="Estaciones reutilizables"
-        subtitle="Una estacion puede quedar en diseno, piloteada, aprobada o archivada segun su nivel de madurez."
+        subtitle="Una estación puede quedar en diseño, piloteada, aprobada o archivada según su nivel de madurez."
       >
         {loading ? (
           <p>Cargando banco de estaciones...</p>
@@ -94,12 +98,13 @@ export default function StationBankPage() {
                   const currentRow = row as { id?: number; status?: string };
                   return (
                     <select
+                      disabled={!canEditContent}
                       value={String(currentRow.status ?? "en_diseno")}
                       onChange={async (event) => {
                         const updated = (await api.updateStationBankStatus(
+                          eventId,
                           Number(currentRow.id),
                           { status: event.target.value },
-                          token!,
                         )) as Record<string, unknown>;
                         setData((current) =>
                           (current ?? []).map((item) =>

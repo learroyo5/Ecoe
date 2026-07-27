@@ -4,9 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
+import { clockOffsetMs, parseServerUtc } from "@/lib/time";
 import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
-import { EmptyState } from "@/components/toast";
+import { ConfirmDialog, TIMER_TONE_CLASSES, timerTone } from "@/components/confirm-dialog";
 
 type StudentFormQuestion = {
   label: string;
@@ -26,7 +27,7 @@ type ResolvedMediaAsset = MediaAsset & {
 };
 
 export default function StudentPage() {
-  const { token, eventId } = useECOE();
+  const { authenticated, eventId } = useECOE();
   const [ecoeNumber, setEcoeNumber] = useState("");
   const [context, setContext] = useState<Record<string, unknown> | null>(null);
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
@@ -35,12 +36,24 @@ export default function StudentPage() {
   const [autoSubmitting, setAutoSubmitting] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [manualSubmitting, setManualSubmitting] = useState(false);
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
   const [resolvedMediaAssets, setResolvedMediaAssets] = useState<ResolvedMediaAsset[]>([]);
   const [expandedImage, setExpandedImage] = useState<ResolvedMediaAsset | null>(null);
   const autoSubmitAttemptedRef = useRef(false);
 
   const confirmedAt = String(context?.confirmed_at ?? "");
+  const serverNow = String(context?.server_now ?? "");
+  // Offset reloj servidor - local: el backend re-valida el tiempo al enviar.
+  const serverClockOffsetMs = useMemo(
+    () => (serverNow ? clockOffsetMs(serverNow) : 0),
+    [serverNow],
+  );
   const timerDurationSeconds = Number(context?.station_time_minutes ?? 0) * 60;
+  // Deadline autoritativo del servidor: la UI y el backend cierran la
+  // ventana en el mismo instante (el backend suma además una gracia breve
+  // para absorber latencia de red).
+  const submissionDeadline = String(context?.submission_deadline ?? "");
   const draftStorageKey = context ? `student-station-draft-${String(context.checkin_id)}` : "";
   const submitted = Boolean(context?.student_response_exists);
   const questions = useMemo(() => {
@@ -59,7 +72,7 @@ export default function StudentPage() {
     const objectUrls: string[] = [];
 
     const loadMediaAssets = async () => {
-      if (!mediaAssets.length || !token) {
+      if (!mediaAssets.length || !authenticated) {
         setResolvedMediaAssets([]);
         return;
       }
@@ -67,7 +80,7 @@ export default function StudentPage() {
       try {
         const nextAssets = await Promise.all(
           mediaAssets.map(async (asset) => {
-            const blob = await api.mediaFile(asset.id, token);
+            const blob = await api.mediaFile(asset.id);
             const objectUrl = URL.createObjectURL(blob);
             objectUrls.push(objectUrl);
             return { ...asset, objectUrl };
@@ -89,7 +102,7 @@ export default function StudentPage() {
       cancelled = true;
       objectUrls.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [mediaAssets, token]);
+  }, [mediaAssets, authenticated]);
 
   useEffect(() => {
     if (!expandedImage) {
@@ -111,6 +124,9 @@ export default function StudentPage() {
       return;
     }
     window.localStorage.setItem(draftStorageKey, JSON.stringify(answers));
+    if (Object.keys(answers).length > 0) {
+      setDraftSavedAt(new Date());
+    }
   }, [answers, draftStorageKey, submitted]);
 
   useEffect(() => {
@@ -128,15 +144,21 @@ export default function StudentPage() {
     if (!context) {
       return null;
     }
+    if (submissionDeadline) {
+      return Math.max(
+        0,
+        Math.floor((parseServerUtc(submissionDeadline) - (nowMs + serverClockOffsetMs)) / 1000),
+      );
+    }
     if (!confirmedAt || !timerDurationSeconds) {
       return timerDurationSeconds || null;
     }
     const elapsedSeconds = Math.max(
       0,
-      Math.floor((nowMs - new Date(confirmedAt).getTime()) / 1000),
+      Math.floor((nowMs + serverClockOffsetMs - parseServerUtc(confirmedAt)) / 1000),
     );
     return Math.max(timerDurationSeconds - elapsedSeconds, 0);
-  }, [confirmedAt, context, nowMs, timerDurationSeconds]);
+  }, [confirmedAt, context, nowMs, serverClockOffsetMs, submissionDeadline, timerDurationSeconds]);
 
   const timerLabel = useMemo(() => {
     if (remainingSeconds === null) {
@@ -172,7 +194,6 @@ export default function StudentPage() {
         answers,
         locked: true,
       },
-      token!,
     );
     if (currentDraftStorageKey && typeof window !== "undefined") {
       window.localStorage.removeItem(currentDraftStorageKey);
@@ -182,7 +203,7 @@ export default function StudentPage() {
         ? "Se acabó el tiempo de la estación. Tu respuesta fue enviada automáticamente."
         : "Respuesta enviada correctamente para tu estación confirmada.",
     );
-  }, [answers, context, draftStorageKey, eventId, resetToIdentification, submitted, token]);
+  }, [answers, context, draftStorageKey, eventId, resetToIdentification, submitted]);
 
   useEffect(() => {
     if (!context || submitted || autoSubmitting || remainingSeconds !== 0 || autoSubmitAttemptedRef.current) {
@@ -269,18 +290,9 @@ export default function StudentPage() {
     );
   };
 
-  if (!context) {
-    return (
-      <SectionCard title="Interfaz del estudiante" subtitle="Ingresa tu número ECOE para comenzar.">
-        <EmptyState
-          icon="🎓"
-          title="Bienvenido al ECOE"
-          description="Ingresa tu número ECOE asignado para ver las instrucciones de tu estación actual. El evaluador debe confirmar tu ingreso primero."
-        />
-      </SectionCard>
-    );
-  }
-
+  // Sin early-return cuando no hay contexto: el formulario de identificación
+  // (número ECOE) vive en el layout principal y debe estar SIEMPRE visible;
+  // un estado vacío sin ese formulario deja al estudiante sin forma de entrar.
   return (
     <SectionCard
       title="Interfaz del estudiante"
@@ -325,11 +337,18 @@ export default function StudentPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
               Tiempo visible de la estación
             </p>
-            <p className="mt-2 text-3xl font-semibold text-slate-900">{timerLabel}</p>
+            <p className={`mt-2 text-3xl font-semibold tabular-nums ${TIMER_TONE_CLASSES[timerTone(remainingSeconds, timerDurationSeconds)]}`}>
+              {timerLabel}
+            </p>
             <p className="mt-2 text-sm text-slate-600">
               Tus respuestas se guardan localmente mientras escribes y se enviarán automáticamente
               al terminar el tiempo si aún no las has enviado.
             </p>
+            {draftSavedAt && !submitted ? (
+              <p className="mt-1 text-xs font-semibold text-emerald-700">
+                ✓ Borrador guardado a las {draftSavedAt.toLocaleTimeString()}
+              </p>
+            ) : null}
           </div>
 
           <form
@@ -341,7 +360,6 @@ export default function StudentPage() {
               try {
                 const response = (await api.studentAccess(
                   { ecoe_event_id: eventId, ecoe_number: ecoeNumber },
-                  token!,
                 )) as Record<string, unknown>;
                 const nextDraftStorageKey = `student-station-draft-${String(response.checkin_id)}`;
                 let nextAnswers: Record<string, string | string[]> = {};
@@ -458,23 +476,9 @@ export default function StudentPage() {
               ) : null}
               <form
                 className="grid gap-4"
-                onSubmit={async (event) => {
+                onSubmit={(event) => {
                   event.preventDefault();
-                  const confirmed = window.confirm(
-                    "Vas a enviar tu respuesta final. Luego no podrás modificarla. ¿Quieres continuar?",
-                  );
-                  if (!confirmed) {
-                    return;
-                  }
-                  setMessage(null);
-                  setManualSubmitting(true);
-                  try {
-                    await submitResponse("manual");
-                  } catch (error) {
-                    setMessage(error instanceof Error ? error.message : "No se pudo enviar.");
-                  } finally {
-                    setManualSubmitting(false);
-                  }
+                  setShowSubmitConfirm(true);
                 }}
               >
                 {questions.length ? (
@@ -588,6 +592,28 @@ export default function StudentPage() {
         </section>
       </div>
       <StatusNotice message={message} className="mt-4" />
+      <ConfirmDialog
+        open={showSubmitConfirm}
+        title="Enviar respuesta final"
+        message="Una vez enviada no podrás modificarla. Verifica que respondiste todo lo que querías responder."
+        confirmLabel="Enviar respuesta"
+        severity="danger"
+        busy={manualSubmitting}
+        onConfirm={async () => {
+          setMessage(null);
+          setManualSubmitting(true);
+          try {
+            await submitResponse("manual");
+            setShowSubmitConfirm(false);
+          } catch (error) {
+            setShowSubmitConfirm(false);
+            setMessage(error instanceof Error ? error.message : "No se pudo enviar.");
+          } finally {
+            setManualSubmitting(false);
+          }
+        }}
+        onCancel={() => setShowSubmitConfirm(false)}
+      />
     </SectionCard>
   );
 }
