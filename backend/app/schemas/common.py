@@ -135,8 +135,10 @@ class StaffUpdate(BaseModel):
 
 class EventMemberInvite(BaseModel):
     ecoe_event_id: int
-    name: str = Field(min_length=1, max_length=128)
-    last_name: str = Field(min_length=1, max_length=128)
+    # Only needed when the email has no institutional account yet: an existing
+    # account owns its name, so the client is not asked to retype it.
+    name: str = Field(default="", max_length=128)
+    last_name: str = Field(default="", max_length=128)
     email: EmailStr
     role_code: str
     station_ids: list[int] = []

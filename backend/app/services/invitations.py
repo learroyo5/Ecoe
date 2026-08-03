@@ -100,6 +100,11 @@ def assign_or_invite_member(
         )
 
     if not account:
+        if not payload.name.strip() or not payload.last_name.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="No existe una cuenta con ese correo: indica nombre y apellidos para crearla",
+            )
         if not may_create_accounts:
             raise HTTPException(
                 status_code=403,

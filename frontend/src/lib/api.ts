@@ -40,7 +40,19 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     let detail = text || "No se pudo completar la solicitud";
     try {
       const parsed = JSON.parse(text);
-      if (parsed.detail) detail = parsed.detail;
+      if (typeof parsed.detail === "string") {
+        detail = parsed.detail;
+      } else if (Array.isArray(parsed.detail)) {
+        // FastAPI validation errors arrive as a list of objects; stringifying
+        // them directly renders "[object Object]".
+        const messages = parsed.detail
+          .map((item: { msg?: string; loc?: (string | number)[] }) => {
+            const field = (item.loc ?? []).filter((part) => part !== "body").join(".");
+            return field ? `${field}: ${item.msg ?? ""}` : item.msg ?? "";
+          })
+          .filter(Boolean);
+        if (messages.length > 0) detail = messages.join(" · ");
+      }
     } catch { /* not JSON, use raw text */ }
     throw new Error(detail);
   }

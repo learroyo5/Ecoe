@@ -365,3 +365,51 @@ def test_coeditor_cannot_mint_accounts_through_bulk_import(client, db_factory):
 
     with db_factory() as db:
         assert db.scalar(select(User).where(func.lower(User.email) == unknown_email)) is None
+
+
+def test_existing_account_is_assigned_without_retyping_the_name(client, db_factory):
+    """The form hides the name fields for known accounts, so they arrive empty."""
+    event_id, station_id = create_event_and_station(client, "Alta sin nombre")
+    credentials = create_delegated_admin(client, event_id, "sinnombre")
+    known_email = f"conocida-{secrets.token_hex(5)}@example.edu"
+
+    login(client, ADMIN)
+    created = client.post("/api/users", json={
+        "email": known_email,
+        "password": secrets.token_urlsafe(24),
+        "full_name": "Valeria Munoz",
+        "role_code": RoleCode.evaluador.value,
+    })
+    assert created.status_code == 200, created.text
+
+    login(client, credentials)
+    response = client.post("/api/event-members/invite", json={
+        "ecoe_event_id": event_id,
+        "email": known_email,
+        "role_code": RoleCode.evaluador.value,
+        "station_ids": [station_id],
+    })
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "assigned"
+
+    with db_factory() as db:
+        assignment = db.scalar(
+            select(StaffAssignment).where(StaffAssignment.email == known_email)
+        )
+        assert (assignment.name, assignment.last_name) == ("Valeria", "Munoz")
+
+
+def test_new_identity_without_name_is_rejected_with_a_readable_message(client):
+    event_id, station_id = create_event_and_station(client, "Alta incompleta")
+    credentials = create_delegated_admin(client, event_id, "incompleta")
+
+    login(client, credentials)
+    response = client.post("/api/event-members/invite", json={
+        "ecoe_event_id": event_id,
+        "email": f"nueva-{secrets.token_hex(5)}@example.edu",
+        "role_code": RoleCode.evaluador.value,
+        "station_ids": [station_id],
+    })
+    assert response.status_code == 400, response.text
+    assert isinstance(response.json()["detail"], str)
+    assert "nombre y apellidos" in response.json()["detail"]
