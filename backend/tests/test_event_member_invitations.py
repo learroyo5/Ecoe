@@ -5,11 +5,11 @@ from datetime import timedelta
 
 from sqlalchemy import func, select
 
-from app.models.entities import Role, User, UserInvitation
+from app.models.entities import Role, StaffAssignment, User, UserInvitation
 from app.models.enums import RoleCode
 from app.services.invitations import hash_invitation_token
 from app.utils.clock import utcnow_naive
-from conftest import ADMIN, login
+from conftest import ADMIN, COEDITOR, login
 
 
 def event_payload(name: str) -> dict:
@@ -235,3 +235,133 @@ def test_expired_invitation_is_rejected(client, db_factory):
         json={"token": token, "password": secrets.token_urlsafe(24)},
     )
     assert activation.status_code == 400
+
+
+def test_existing_account_name_wins_over_typed_name(client, db_factory):
+    """A typo in the staff form must not fork the identity of an existing account."""
+    event_id, station_id = create_event_and_station(client, "Identidad canónica")
+    credentials = create_delegated_admin(client, event_id, "canonica")
+    member_email = f"canonica-{secrets.token_hex(5)}@example.edu"
+
+    login(client, ADMIN)
+    created = client.post("/api/users", json={
+        "email": member_email,
+        "password": secrets.token_urlsafe(24),
+        "full_name": "Pablo Rojas",
+        "role_code": RoleCode.evaluador.value,
+    })
+    assert created.status_code == 200, created.text
+
+    login(client, credentials)
+    payload = invite_payload(event_id, station_id, member_email)
+    payload["name"] = "Pablo"
+    payload["last_name"] = "Roajs"  # typo
+    response = client.post("/api/event-members/invite", json=payload)
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "assigned"
+
+    with db_factory() as db:
+        assignment = db.scalar(
+            select(StaffAssignment).where(StaffAssignment.email == member_email)
+        )
+        assert f"{assignment.name} {assignment.last_name}".strip() == "Pablo Rojas"
+
+
+def _csv_upload(rows: list[str]) -> dict:
+    body = "nombre,apellidos,correo,rol\n" + "\n".join(rows) + "\n"
+    return {"file": ("equipo.csv", body.encode("utf-8"), "text/csv")}
+
+
+def test_bulk_import_invites_people_without_account(client, db_factory):
+    event_id, _ = create_event_and_station(client, "Import masivo")
+    credentials = create_delegated_admin(client, event_id, "masivo")
+    new_email = f"masivo-{secrets.token_hex(5)}@example.edu"
+
+    login(client, credentials)
+    response = client.post(
+        "/api/staff/import",
+        params={"ecoe_event_id": event_id},
+        files=_csv_upload([f"Nueva,Persona,{new_email},evaluador"]),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["imported"] == 1
+    assert body["skipped_no_account"] == 0
+    assert [item["email"] for item in body["invited"]] == [new_email]
+
+    with db_factory() as db:
+        account = db.scalar(select(User).where(func.lower(User.email) == new_email))
+        assert account is not None
+        assert account.account_status == "pending"
+
+
+def test_bulk_import_rejected_row_does_not_discard_valid_rows(client, db_factory):
+    """A skipped row must not roll back the people already staged in the import."""
+    event_id, _ = create_event_and_station(client, "Import parcial")
+    credentials = create_delegated_admin(client, event_id, "parcial")
+    good_email = f"ok-{secrets.token_hex(5)}@example.edu"
+
+    login(client, ADMIN)
+    suspended_email = f"susp-{secrets.token_hex(5)}@example.edu"
+    created = client.post("/api/users", json={
+        "email": suspended_email,
+        "password": secrets.token_urlsafe(24),
+        "full_name": "Suspendida Cuenta",
+        "role_code": RoleCode.evaluador.value,
+    })
+    assert created.status_code == 200, created.text
+    with db_factory() as db:
+        account = db.scalar(select(User).where(func.lower(User.email) == suspended_email))
+        account.account_status = "suspended"
+        db.add(account)
+        db.commit()
+
+    login(client, credentials)
+    response = client.post(
+        "/api/staff/import",
+        params={"ecoe_event_id": event_id},
+        files=_csv_upload([
+            f"Buena,Fila,{good_email},evaluador",
+            f"Suspendida,Cuenta,{suspended_email},evaluador",
+        ]),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["imported"] == 1
+
+    with db_factory() as db:
+        assignment = db.scalar(
+            select(StaffAssignment).where(StaffAssignment.email == good_email)
+        )
+        assert assignment is not None
+
+
+def test_coeditor_cannot_mint_accounts_through_bulk_import(client, db_factory):
+    """Creating institutional identities stays an admin_ecoe power."""
+    event_id, _ = create_event_and_station(client, "Import coeditor")
+    unknown_email = f"desconocido-{secrets.token_hex(5)}@example.edu"
+
+    login(client, ADMIN)
+    granted = client.post("/api/event-members/invite", json={
+        "ecoe_event_id": event_id,
+        "name": "Pablo",
+        "last_name": "Rojas",
+        "email": COEDITOR[0],
+        "role_code": RoleCode.coeditor_docente.value,
+        "station_ids": [],
+    })
+    assert granted.status_code == 200, granted.text
+
+    login(client, COEDITOR)
+    response = client.post(
+        "/api/staff/import",
+        params={"ecoe_event_id": event_id},
+        files=_csv_upload([f"Sin,Cuenta,{unknown_email},evaluador"]),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["imported"] == 0
+    assert body["skipped_no_account"] == 1
+    assert body["invited"] == []
+
+    with db_factory() as db:
+        assert db.scalar(select(User).where(func.lower(User.email) == unknown_email)) is None

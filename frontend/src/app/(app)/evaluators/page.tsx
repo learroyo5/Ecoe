@@ -44,6 +44,10 @@ export default function EvaluatorsPage() {
   const [assignmentDrafts, setAssignmentDrafts] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [lookupMessage, setLookupMessage] = useState<string | null>(null);
+  const [knownFullName, setKnownFullName] = useState<string | null>(null);
+  const [invitedLinks, setInvitedLinks] = useState<
+    { email: string; activation_path: string; expires_at: string }[]
+  >([]);
   const [activationLink, setActivationLink] = useState<string | null>(null);
   const [savingForm, setSavingForm] = useState(false);
   const [processingAction, setProcessingAction] = useState<string | null>(null);
@@ -118,7 +122,8 @@ export default function EvaluatorsPage() {
                     <li>Descarga la plantilla Excel o CSV usando los botones de abajo.</li>
                     <li>Abre el archivo y completa una fila por cada persona.</li>
                     <li>Los unicos campos obligatorios son: <strong>nombre, apellidos, correo, rol</strong>.</li>
-                    <li>Para importación masiva, el <strong>correo</strong> debe corresponder a una cuenta institucional activa.</li>
+                    <li>No hace falta crear las cuentas antes: si el correo no tiene cuenta, se genera una invitación de activación y el enlace aparece al terminar la importación.</li>
+                    <li>Los evaluadores quedan sin estación; se asigna después en la tabla de abajo.</li>
                     <li>Roles validos: <strong>evaluador</strong>, <strong>coeditor_docente</strong>, <strong>coordinador_operativo</strong>, <strong>cronometrador</strong>.</li>
                     <li>Guarda el archivo y arrastralo o seleccionalo en el campo de abajo.</li>
                   </ol>
@@ -172,16 +177,21 @@ export default function EvaluatorsPage() {
                 skipped_duplicate?: number;
                 skipped_no_account?: number;
                 skipped_missing_data?: number;
+                invited?: { email: string; activation_path: string; expires_at: string }[];
               };
               await refresh();
+              setInvitedLinks(response.invited ?? []);
               const imported = response.imported ?? 0;
+              const invitedCount = (response.invited ?? []).length;
               const dupes = response.skipped_duplicate ?? 0;
               const noAcct = response.skipped_no_account ?? 0;
               const missing = response.skipped_missing_data ?? 0;
-              const parts: string[] = [`${imported} evaluadores importados.`];
+              const parts: string[] = [`${imported} personas incorporadas al equipo.`];
+              if (invitedCount > 0)
+                parts.push(`${invitedCount} sin cuenta previa: abajo quedan sus enlaces de activación.`);
               if (dupes > 0) parts.push(`${dupes} omitidos por correo duplicado en este ECOE.`);
-              if (noAcct > 0) parts.push(`${noAcct} omitidos: no existe cuenta de usuario con ese rol. Crea el usuario primero en Usuarios.`);
-              if (missing > 0) parts.push(`${missing} omitidos por falta de datos.`);
+              if (noAcct > 0) parts.push(`${noAcct} omitidos: no existe cuenta y tu rol no puede crearlas.`);
+              if (missing > 0) parts.push(`${missing} omitidos por falta de datos (nombre, apellidos y correo son obligatorios).`);
               return parts.join(" ");
             }}
           />
@@ -211,7 +221,10 @@ export default function EvaluatorsPage() {
                     last_name: form.last_name,
                     email: form.email,
                     role_code: form.role_code,
-                    station_ids: form.station_id ? [Number(form.station_id)] : [],
+                    station_ids:
+                      form.role_code === "evaluador" && form.station_id
+                        ? [Number(form.station_id)]
+                        : [],
                   },
                 );
                 await refresh();
@@ -227,6 +240,8 @@ export default function EvaluatorsPage() {
                   role_code: "evaluador",
                   station_id: "",
                 });
+                setKnownFullName(null);
+                setLookupMessage(null);
                 setMessage(
                   result.status === "assigned"
                     ? "La cuenta existente fue asignada correctamente al ECOE."
@@ -239,23 +254,7 @@ export default function EvaluatorsPage() {
               }
             }}
           >
-            <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
-              <span className="text-sm font-semibold text-slate-700">Nombre</span>
-              <input
-                value={form.name}
-                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-              />
-            </label>
-            <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
-              <span className="text-sm font-semibold text-slate-700">Apellidos</span>
-              <input
-                value={form.last_name}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, last_name: event.target.value }))
-                }
-              />
-            </label>
-            <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
+            <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4 md:col-span-2">
               <span className="text-sm font-semibold text-slate-700">Correo</span>
               <input
                 type="email"
@@ -266,22 +265,55 @@ export default function EvaluatorsPage() {
                   setLookupMessage(null);
                   try {
                     const result = await api.lookupEventMember(eventId, form.email);
+                    setKnownFullName(result.exists ? result.full_name ?? null : null);
                     if (result.assigned_to_event) {
                       setLookupMessage("Esta persona ya pertenece al equipo del ECOE.");
                     } else if (result.account_status === "suspended") {
                       setLookupMessage("La cuenta está suspendida y requiere revisión del administrador global.");
                     } else if (result.exists) {
-                      setLookupMessage("Cuenta institucional encontrada; se asignará sin crear otra cuenta.");
+                      setLookupMessage(
+                        `Cuenta institucional encontrada: ${result.full_name ?? form.email}. Se asignará con ese nombre.`,
+                      );
                     } else {
                       setLookupMessage("No existe una cuenta; se generará una invitación de activación.");
                     }
                   } catch {
+                    setKnownFullName(null);
                     setLookupMessage("No se pudo comprobar el correo.");
                   }
                 }}
               />
               {lookupMessage ? <p className="text-xs leading-5 text-slate-500">{lookupMessage}</p> : null}
             </label>
+            {knownFullName ? (
+              <div className="space-y-2 rounded-[22px] border border-slate-200 bg-slate-50 p-4 md:col-span-2">
+                <span className="text-sm font-semibold text-slate-700">Nombre</span>
+                <p className="text-sm text-slate-900">{knownFullName}</p>
+                <p className="text-xs leading-5 text-slate-500">
+                  Viene de la cuenta institucional y no se edita aquí. Para corregirlo, el
+                  administrador global lo cambia en Usuarios.
+                </p>
+              </div>
+            ) : (
+              <>
+                <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
+                  <span className="text-sm font-semibold text-slate-700">Nombre</span>
+                  <input
+                    value={form.name}
+                    onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                  />
+                </label>
+                <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
+                  <span className="text-sm font-semibold text-slate-700">Apellidos</span>
+                  <input
+                    value={form.last_name}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, last_name: event.target.value }))
+                    }
+                  />
+                </label>
+              </>
+            )}
             <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4">
               <span className="text-sm font-semibold text-slate-700">Rol</span>
               <select
@@ -296,26 +328,35 @@ export default function EvaluatorsPage() {
                 <option value="cronometrador">Cronometrador</option>
               </select>
             </label>
-            <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4 md:col-span-2">
-              <span className="text-sm font-semibold text-slate-700">Estación principal asignada</span>
-              <select
-                value={form.station_id}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, station_id: event.target.value }))
-                }
-              >
-                <option value="">Sin estación asignada por ahora</option>
-                {stationOptions.map((station) => (
-                  <option key={station.id} value={station.id}>
-                    {station.label}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs leading-5 text-slate-500">
-                Si el rol es evaluador, esta estación es obligatoria. Coeditores, coordinadores y
-                cronometradores pueden quedar sin estación principal.
-              </p>
-            </label>
+            {form.role_code === "evaluador" ? (
+              <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4 md:col-span-2">
+                <span className="text-sm font-semibold text-slate-700">Estación principal asignada</span>
+                <select
+                  value={form.station_id}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, station_id: event.target.value }))
+                  }
+                >
+                  <option value="">Sin estación asignada por ahora</option>
+                  {stationOptions.map((station) => (
+                    <option key={station.id} value={station.id}>
+                      {station.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs leading-5 text-slate-500">
+                  Obligatoria para evaluadores: define a qué estación queda habilitado en Validación,
+                  Resultados y check-in.
+                </p>
+              </label>
+            ) : (
+              <div className="space-y-2 rounded-[22px] border border-slate-200 bg-slate-50 p-4 md:col-span-2">
+                <span className="text-sm font-semibold text-slate-700">Estación principal asignada</span>
+                <p className="text-xs leading-5 text-slate-500">
+                  No aplica: este rol tiene acceso a todo el ECOE, no queda limitado a una estación.
+                </p>
+              </div>
+            )}
             <div className="space-y-3 md:col-span-2">
               <button className="btn-primary" disabled={savingForm || !canInviteMembers}>
                 {savingForm ? "Guardando..." : "Guardar asignación"}
@@ -346,6 +387,45 @@ export default function EvaluatorsPage() {
           </form>
         </div>
       </SectionCard>
+
+      {invitedLinks.length > 0 ? (
+        <SectionCard
+          title="Enlaces de activación pendientes de repartir"
+          subtitle="Visibles solo ahora: si cierras esta pantalla no se pueden volver a mostrar, hay que reinvitar a la persona."
+        >
+          <div className="space-y-2">
+            {invitedLinks.map((item) => {
+              const url = `${window.location.origin}${item.activation_path}`;
+              return (
+                <div
+                  key={item.email}
+                  className="flex flex-col gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 sm:flex-row sm:items-center"
+                >
+                  <span className="min-w-[220px] text-sm font-semibold text-amber-900">{item.email}</span>
+                  <input readOnly value={url} className="min-w-0 flex-1" />
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(url);
+                      setMessage(`Enlace de ${item.email} copiado.`);
+                    }}
+                  >
+                    Copiar
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            className="btn-secondary mt-4"
+            onClick={() => setInvitedLinks([])}
+          >
+            Ya los repartí, ocultar
+          </button>
+        </SectionCard>
+      ) : null}
 
       <SectionCard title="Equipo operativo" subtitle="Las asignaciones quedan amarradas al ECOE activo y deben coincidir con la cuenta real de cada persona.">
         <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -409,7 +489,9 @@ export default function EvaluatorsPage() {
                 key: "station_ids",
                 label: "Estación principal",
                 render: (row) => {
-                  const stationId = String(((row as { station_ids?: number[] }).station_ids ?? [])[0] ?? "");
+                  const staff = row as { role_code?: string; station_ids?: number[] };
+                  if (staff.role_code !== "evaluador") return "No aplica";
+                  const stationId = String((staff.station_ids ?? [])[0] ?? "");
                   const station = stationOptions.find((item) => item.id === stationId);
                   return station?.label ?? "Sin asignar";
                 },
@@ -423,6 +505,9 @@ export default function EvaluatorsPage() {
                     role_code?: string;
                     station_ids?: number[];
                   };
+                  if (staff.role_code !== "evaluador") {
+                    return <span className="text-xs text-slate-500">No aplica (rol de evento completo)</span>;
+                  }
                   const staffId = String(staff.id ?? "");
                   const currentStationId = String((staff.station_ids ?? [])[0] ?? "");
                   const selectedStationId = assignmentDrafts[staffId] ?? currentStationId;

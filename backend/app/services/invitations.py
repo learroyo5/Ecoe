@@ -30,10 +30,23 @@ def hash_invitation_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def _validated_assignment(db: Session, payload: EventMemberInvite) -> tuple[str, list[int]]:
+def split_full_name(full_name: str) -> tuple[str, str]:
+    """Split on the last space so name + last_name always rebuilds full_name exactly."""
+    parts = (full_name or "").strip().rsplit(" ", 1)
+    if len(parts) == 2:
+        return parts[0], parts[1]
+    return parts[0], ""
+
+
+def _validated_assignment(
+    db: Session,
+    payload: EventMemberInvite,
+    *,
+    require_evaluator_station: bool = True,
+) -> tuple[str, list[int]]:
     role_code = validate_staff_role_code(payload.role_code)
     station_ids = normalize_station_ids(payload.station_ids)
-    if role_code == RoleCode.evaluador.value and not station_ids:
+    if require_evaluator_station and role_code == RoleCode.evaluador.value and not station_ids:
         raise HTTPException(status_code=400, detail="El evaluador debe tener una estación principal asignada")
     if station_ids:
         station = db.get(Station, station_ids[0])
@@ -66,8 +79,16 @@ def assign_or_invite_member(
     payload: EventMemberInvite,
     *,
     invited_by_email: str,
+    may_create_accounts: bool = True,
+    require_evaluator_station: bool = True,
 ) -> dict:
-    role_code, station_ids = _validated_assignment(db, payload)
+    """Assign an existing institutional identity, or invite a new one.
+
+    Does not commit: callers own the transaction so bulk imports stay atomic.
+    """
+    role_code, station_ids = _validated_assignment(
+        db, payload, require_evaluator_station=require_evaluator_station
+    )
     email = normalize_email(payload.email)
     account = db.scalar(select(User).where(func.lower(User.email) == email))
     created_account = False
@@ -79,6 +100,11 @@ def assign_or_invite_member(
         )
 
     if not account:
+        if not may_create_accounts:
+            raise HTTPException(
+                status_code=403,
+                detail="No existe una cuenta institucional con ese correo y este rol no puede crearla",
+            )
         member_role = db.scalar(select(Role).where(Role.code == RoleCode.miembro.value))
         if not member_role:
             raise HTTPException(status_code=500, detail="Rol institucional base no configurado")
@@ -96,6 +122,13 @@ def assign_or_invite_member(
         db.flush()
         created_account = True
 
+    # The institutional account owns the person's name: a typo in this form must
+    # never create a second, divergent identity for the same email.
+    if created_account:
+        member_name, member_last_name = payload.name.strip(), payload.last_name.strip()
+    else:
+        member_name, member_last_name = split_full_name(account.full_name)
+
     assignment = db.scalar(
         select(StaffAssignment).where(
             StaffAssignment.ecoe_event_id == payload.ecoe_event_id,
@@ -107,16 +140,16 @@ def assign_or_invite_member(
     if not assignment:
         assignment = StaffAssignment(
             ecoe_event_id=payload.ecoe_event_id,
-            name=payload.name.strip(),
-            last_name=payload.last_name.strip(),
+            name=member_name,
+            last_name=member_last_name,
             email=email,
             role_code=role_code,
             station_ids=station_ids,
         )
         db.add(assignment)
     else:
-        assignment.name = payload.name.strip()
-        assignment.last_name = payload.last_name.strip()
+        assignment.name = member_name
+        assignment.last_name = member_last_name
         assignment.role_code = role_code
         assignment.station_ids = station_ids
         db.add(assignment)
@@ -134,8 +167,6 @@ def assign_or_invite_member(
                 "role_code": role_code,
             },
         ))
-        db.commit()
-        db.refresh(assignment)
         return {
             "status": "assigned",
             "account_created": False,
@@ -177,7 +208,6 @@ def assign_or_invite_member(
             "account_created": created_account,
         },
     ))
-    db.commit()
     return {
         "status": "invited",
         "account_created": created_account,

@@ -38,6 +38,7 @@ def invite_event_member(
 ):
     ensure_event_access(db, user, payload.ecoe_event_id, RoleCode.admin_ecoe.value)
     result = assign_or_invite_member(db, payload, invited_by_email=user.email)
+    db.commit()
     response.headers["Cache-Control"] = "no-store"
     return result
 

@@ -7,8 +7,9 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.entities import StaffAssignment
 from app.models.enums import RoleCode
-from app.schemas.common import Page, StaffCreate, StaffRead, StaffUpdate
+from app.schemas.common import EventMemberInvite, Page, StaffCreate, StaffRead, StaffUpdate
 from app.services.dependencies import get_current_user, require_roles
+from app.services.invitations import assign_or_invite_member
 from app.utils.files import parse_tabular_file
 from app.services.authorization import (
     ensure_event_access,
@@ -193,7 +194,11 @@ async def import_staff(
     actor_roles = ensure_event_access(db, user, ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     rows = await parse_tabular_file(file)
+    # Minting institutional identities stays an admin_ecoe power: a coeditor may
+    # only import people who already have an account.
+    may_create_accounts = RoleCode.admin_ecoe.value in actor_roles
     imported = 0
+    invited: list[dict] = []
     skipped_duplicate = 0
     skipped_no_account = 0
     skipped_forbidden_role = 0
@@ -206,7 +211,9 @@ async def import_staff(
     }
     for row in rows:
         email = normalize_email(row.get("correo", row.get("email", "")))
-        if not email:
+        name = str(row.get("nombre", row.get("name", ""))).strip()
+        last_name = str(row.get("apellidos", row.get("last_name", ""))).strip()
+        if not email or not name or not last_name:
             skipped_missing_data += 1
             continue
         if email in existing_emails:
@@ -218,26 +225,42 @@ async def import_staff(
         except HTTPException:
             skipped_forbidden_role += 1
             continue
+        payload = EventMemberInvite(
+            ecoe_event_id=ecoe_event_id,
+            name=name,
+            last_name=last_name,
+            email=email,
+            role_code=role_code,
+            station_ids=[],
+        )
         try:
-            ensure_matching_operational_user(db, email=email, expected_role=role_code)
+            # A savepoint keeps a rejected row from discarding the rows already
+            # staged in this import.
+            with db.begin_nested():
+                result = assign_or_invite_member(
+                    db,
+                    payload,
+                    invited_by_email=user.email,
+                    may_create_accounts=may_create_accounts,
+                    # The file carries no station; evaluators get their primary
+                    # station afterwards in the Evaluadores screen.
+                    require_evaluator_station=False,
+                )
         except HTTPException:
             skipped_no_account += 1
             continue
-        db.add(
-            StaffAssignment(
-                ecoe_event_id=ecoe_event_id,
-                name=row.get("nombre", row.get("name", "")),
-                last_name=row.get("apellidos", row.get("last_name", "")),
-                email=email,
-                role_code=role_code,
-                station_ids=[],
-            )
-        )
+        if result["status"] == "invited":
+            invited.append({
+                "email": result["email"],
+                "activation_path": result["activation_path"],
+                "expires_at": result["expires_at"],
+            })
         imported += 1
         existing_emails.add(email)
     db.commit()
     return {
         "imported": imported,
+        "invited": invited,
         "skipped": skipped_duplicate + skipped_no_account + skipped_forbidden_role + skipped_missing_data,
         "skipped_duplicate": skipped_duplicate,
         "skipped_no_account": skipped_no_account,
