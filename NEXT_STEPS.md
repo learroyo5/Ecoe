@@ -43,10 +43,23 @@
 - ~~Filtros/buscadores en tablas de estudiantes y staff~~ ✅
 - ~~E2E Playwright del flujo dorado + checklist del dia D~~ ✅
 
+## Completado en agosto 2026
+
+- ~~Unificar el alta de equipo en una sola pantalla (Evaluadores)~~ ✅
+  - ~~Alta individual por correo: la cuenta existente manda su nombre, no se retipea~~ ✅
+  - ~~Importacion masiva que crea cuentas `pending` con invitacion en vez de descartar filas~~ ✅
+  - ~~Enlaces de activacion visibles al terminar el import, para repartirlos a mano~~ ✅
+  - ~~Selector de estacion principal solo para el rol evaluador (en el resto no tenia efecto)~~ ✅
+
 ## Prioridad actual
 
-1. Primera prueba funcional real
+1. Primera prueba funcional real — PENDIENTE, bloqueada por preparacion del evento
    - Ensayo general con el equipo usando la app en `en_pilotaje` (guiarse por docs/OPERACION_DIA_EXAMEN.md).
+   - Antes de convocar al equipo, cerrar estos pendientes en el ECOE demo (id 1):
+     - Asignar un evaluador a la estacion 5 "Consejeria y cierre" (hoy solo estan cubiertas la 1 y la 3).
+     - Homologar el estado de la estacion 2 "Interpretacion ECG", que quedo en `lista_para_pilotaje` mientras las otras cuatro estan `publicada`.
+     - Confirmar en el Constructor que el formulario de la estacion 4 "Plan diagnostico" tenga puntajes y claves; hoy no tiene instrumento asociado y no sumaria a resultados.
+     - Correr la pasada completa por las 5 estaciones y registrar hallazgos (hoy hay un solo registro en `pilot_records`).
    - Retro post-ensayo y ajustes.
 
 2. Multimedia
@@ -60,7 +73,7 @@
 4. Seguridad operativa
    - Logout real del lado cliente (invalidar token).
    - Expiracion de token mejor manejada (refresh token).
-   - Integrar envio transaccional de invitaciones y un flujo seguro de reemision; hoy el enlace se comparte manualmente.
+   - Integrar envio transaccional de invitaciones (SMTP en `core/config.py`, plantillas, decidir sincrono o en background) y un flujo seguro de reemision. Hoy los enlaces se reparten a mano, uno por uno o desde el panel que deja el import masivo; con correo configurado ese panel deja de ser necesario.
    - Ampliar auditoria y MFA para acciones institucionales sensibles.
 
 5. Testing
@@ -119,7 +132,14 @@ Tests:
 
 ```bash
 cd backend
-python3 -m pytest tests/test_api.py -v
+python3 -m pytest -q
+```
+
+Los mismos tests contra PostgreSQL real con migraciones Alembic (lo que corre CI):
+
+```bash
+cd backend
+TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q
 ```
 
 Migraciones:
@@ -136,5 +156,6 @@ Al retomar en otro servidor, pedir:
 
 ```text
 Lee README.md, PROJECT_STATUS.md y NEXT_STEPS.md, revisa la estructura del repo
-y continuemos desde la prioridad actual (multimedia, exportaciones, seguridad, UX).
+y continuemos desde la prioridad actual: preparar el ECOE para la primera prueba
+funcional real (ver los pendientes listados en Prioridad actual).
 ```
