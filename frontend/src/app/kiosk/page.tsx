@@ -179,11 +179,14 @@ export default function KioskPage() {
   }, [answers, draftKey, submitted]);
 
   // ── Cronómetro (deadline autoritativo del servidor) ─────────────────
+  // Se detiene al enviar: una vez respondido no hay nada más que contar, y
+  // dejar el reloj corriendo confundía (parecía que seguía activo cuando el
+  // estudiante ya terminó y solo falta que confirmen al siguiente).
   useEffect(() => {
-    if (!current) return;
+    if (!current || submitted) return;
     const intervalId = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(intervalId);
-  }, [current]);
+  }, [current, submitted]);
 
   const remainingSeconds = useMemo(() => {
     if (!current) return null;
@@ -340,13 +343,17 @@ export default function KioskPage() {
             </p>
           </div>
           <div className="text-right">
-            <p
-              className={`text-3xl font-semibold tabular-nums ${
-                TIMER_TONE_CLASSES[timeExpired ? "danger" : timerTone(remainingSeconds, Number(current.station_time_minutes) * 60)]
-              }`}
-            >
-              {timerLabel}
-            </p>
+            {submitted ? (
+              <p className="text-xl font-semibold text-emerald-700">Enviado ✓</p>
+            ) : (
+              <p
+                className={`text-3xl font-semibold tabular-nums ${
+                  TIMER_TONE_CLASSES[timeExpired ? "danger" : timerTone(remainingSeconds, Number(current.station_time_minutes) * 60)]
+                }`}
+              >
+                {timerLabel}
+              </p>
+            )}
             {draftSavedAt && !submitted ? (
               <p className="text-[11px] font-semibold text-emerald-700">
                 ✓ borrador {draftSavedAt.toLocaleTimeString()}
