@@ -8,7 +8,7 @@
 
 ## Estado general
 
-La v2 del producto esta completa y sobre ella corre la estabilizacion previa a las primeras pruebas funcionales reales: CRUD del ECOE con maquina de estados real en backend, constructor de estaciones con multimedia y formularios puntuables, panel en vivo con WebSocket con reconexion automatica y vista proyector, modo kiosco por estacion para tablets compartidas, correccion manual de respuestas, registro por contingencia, y suite de tests (167 backend + 29 frontend + e2e Playwright del flujo dorado). El proyecto corre con Docker Compose en este servidor con salida publica por `nginx`.
+La v2 del producto esta completa y ya paso su primer ensayo funcional real con el equipo (2026-08-18, ver seccion abajo): CRUD del ECOE con maquina de estados real en backend, constructor de estaciones con multimedia y formularios puntuables, panel en vivo con WebSocket con reconexion automatica y vista proyector, modo kiosco por estacion para tablets compartidas, correccion manual de respuestas, registro por contingencia, invitaciones/reinicio de acceso por correo real, y suite de tests (175 backend + 29 frontend + e2e Playwright del flujo dorado). El proyecto corre con Docker Compose en este servidor con salida publica por `nginx`.
 
 ### Estabilizacion pre-examen (fases 1-5, julio 2026)
 
@@ -159,21 +159,26 @@ Hoy `Evaluadores` es el unico lugar necesario:
 - La pausa del cronometro central no extiende las ventanas de envio de la rotacion en curso; esos casos se resuelven por contingencia (documentado en docs/OPERACION_DIA_EXAMEN.md).
 - La operacion publica depende de configuracion externa de `nginx`, router y Cloudflare, no solo del repo.
 
-## Estado de la primera prueba funcional real (pendiente)
+## Estado de la primera prueba funcional real (hecha, 2026-08-18)
 
-El ECOE demo `ECOE Medicina Interna 2026` (id 1) esta en `en_pilotaje`, que es el estado correcto para el ensayo. Antes de convocar al equipo quedan estos pendientes de la checklist T-7 de `docs/OPERACION_DIA_EXAMEN.md`:
+El ECOE demo `ECOE Medicina Interna 2026` (id 1) sigue en `en_pilotaje`. El ensayo general con el equipo se corrio de punta a punta: check-in, cronometro y evaluacion/kiosco en las 5 estaciones (1, 3 y 5 con evaluador real logueado; 2 y 4 cubiertas por coordinacion operativa vía el nuevo selector de estacion). Pilotaje `circuito_completo` con hallazgos registrados (`pilot_run` id 3, ver pantalla Pilotaje).
 
-- Estacion 5 "Consejeria y cierre" requiere evaluador y no tiene ninguno asignado (el equipo cubre solo las estaciones 1 y 3).
-- Estacion 2 "Interpretacion ECG" quedo en `lista_para_pilotaje` mientras las otras cuatro estan `publicada`.
-- Estacion 4 "Plan diagnostico" tiene formulario de estudiante y 20 puntos pero sin instrumento asociado: confirmar en el Constructor que sus preguntas tengan clave, o no sumara a resultados.
-- Falta la pasada completa de pilotaje por las 5 estaciones con hallazgos registrados (hay un solo registro en `pilot_records`).
+Durante la preparacion y el ensayo se encontraron y corrigieron en vivo:
+
+- `update_station` regresaba el estado de una estacion ya publicada a `incompleta`/`lista_para_pilotaje` al editarla, desincronizandola del resto (asi fue como la estacion 2 quedo en `lista_para_pilotaje`).
+- `update_ecoe_timing` no resincronizaba la `LiveSession` existente: el cronometro en vivo seguia mostrando los minutos de cuando se creo la sesion (8 min), no los configurados despues en la pestana ECOE (5 min).
+- La pantalla Estaciones no distinguia cuales necesitan Modo kiosco (formulario de estudiante y/o multimedia); ahora lo marca y deshabilita el boton en las que no aplica.
+- `admin_ecoe`/`coordinador_operativo` no podian hacer check-in en una estacion sin evaluador asignado: la pantalla Evaluador solo mostraba la estacion propia del usuario. Ahora esos roles ven un selector con todas las estaciones del evento.
+- Invitaciones y reinicio de acceso ahora envian correo real (SMTP configurado en `backend/.env`); antes el enlace de activacion solo se mostraba una vez en pantalla para repartir a mano.
+
+Pendiente antes del examen real: asignar evaluador fijo a las estaciones 2 y 4 (hoy las cubre coordinacion en el ensayo), y hacer la prueba de red formal en el recinto real.
 
 ## Repo y continuidad
 
 - Repo remoto: `git@github.com:learroyo5/Ecoe.git`
 - Rama principal de trabajo: `main`
 - Fuente de verdad del proyecto: este repositorio
-- Ultimo commit: `52786aa` — fix: permitir asignar una cuenta existente sin reescribir su nombre
+- Ultimo commit: `4168e8c` — fix: mostrar el enlace Evaluador a admin_ecoe y coordinador_operativo
 
 ## Recomendacion para continuar en otro servidor
 

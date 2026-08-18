@@ -53,14 +53,15 @@
 
 ## Prioridad actual
 
-1. Primera prueba funcional real — PENDIENTE, bloqueada por preparacion del evento
-   - Ensayo general con el equipo usando la app en `en_pilotaje` (guiarse por docs/OPERACION_DIA_EXAMEN.md).
-   - Antes de convocar al equipo, cerrar estos pendientes en el ECOE demo (id 1):
-     - Asignar un evaluador a la estacion 5 "Consejeria y cierre" (hoy solo estan cubiertas la 1 y la 3).
-     - Homologar el estado de la estacion 2 "Interpretacion ECG", que quedo en `lista_para_pilotaje` mientras las otras cuatro estan `publicada`.
-     - Confirmar en el Constructor que el formulario de la estacion 4 "Plan diagnostico" tenga puntajes y claves; hoy no tiene instrumento asociado y no sumaria a resultados.
-     - Correr la pasada completa por las 5 estaciones y registrar hallazgos (hoy hay un solo registro en `pilot_records`).
-   - Retro post-ensayo y ajustes.
+1. ~~Primera prueba funcional real~~ ✅ (2026-08-18)
+   - ~~Ensayo general con el equipo usando la app en `en_pilotaje`~~ → hecho: check-in, cronometro y evaluacion/kiosco de punta a punta en las 5 estaciones (1, 3 y 5 con evaluador real; 2 y 4 cubiertas por coordinacion). Pilotaje `circuito_completo` con hallazgos registrados (`pilot_run` id 3).
+   - Bugs encontrados y corregidos durante la preparacion y el ensayo (quedaron en commits separados):
+     - Editar una estacion publicada en el Constructor regresaba su estado a `incompleta`/`lista_para_pilotaje`, desincronizandola del resto.
+     - Editar el timing del ECOE no resincronizaba la `LiveSession`: el cronometro en vivo seguia mostrando los minutos con los que se creo la sesion, no los configurados despues.
+     - La pantalla Estaciones no distinguia cuales necesitan Modo kiosco (formulario de estudiante y/o multimedia).
+     - `admin_ecoe`/`coordinador_operativo` no tenian forma de hacer check-in en una estacion sin evaluador asignado (pantalla Evaluador acotada a la estacion propia).
+   - Invitaciones y reinicio de acceso ahora envian correo real (SMTP configurado); antes el enlace solo se mostraba una vez en pantalla.
+   - Retro pendiente: definir evaluador fijo para las estaciones 2 y 4 (hoy las cubre coordinacion), y hacer la prueba de red formal en el recinto real antes del examen.
 
 2. Multimedia
    - Mejorar preview de audio y video con controles avanzados.
