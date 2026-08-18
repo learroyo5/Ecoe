@@ -11,6 +11,7 @@ from app.models.entities import (
     AuditLog,
     ECOEPermission,
     ECOEEvent,
+    LiveSession,
     StaffAssignment,
     Station,
     User,
@@ -253,6 +254,19 @@ def update_ecoe_timing(
             station.station_time_minutes = payload.station_time_minutes
             station.transition_time_minutes = payload.transition_time_minutes
             db.add(station)
+        # La LiveSession copia estos minutos a segundos solo al crearse (o al
+        # arrancar/reiniciar el cronometro, que reusa su propio valor
+        # guardado): sin este resync queda pegada al timing que tenia el
+        # ECOE cuando se creo, aunque luego se edite en la pestaña ECOE.
+        live_session = db.scalar(
+            select(LiveSession).where(LiveSession.ecoe_event_id == ecoe_event_id).limit(1)
+        )
+        if live_session:
+            live_session.station_time_seconds = max(1, round(payload.station_time_minutes * 60))
+            live_session.transition_time_seconds = max(0, round(payload.transition_time_minutes * 60))
+            if live_session.status not in {"running", "transition"}:
+                live_session.remaining_seconds = live_session.station_time_seconds
+            db.add(live_session)
     db.commit()
     db.refresh(ecoe_event)
     return ecoe_event

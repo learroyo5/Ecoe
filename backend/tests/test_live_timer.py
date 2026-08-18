@@ -72,6 +72,38 @@ class TestLiveTimer:
         assert reset["phase_started_at"] is None
         assert reset["current_station_index"] == 1
 
+    def test_timing_update_resyncs_existing_live_session(self, auth_client):
+        """Regression: editing ECOE timing must not leave the running-session
+        template (seconds) stuck at whatever it was when the session was
+        first created."""
+        auth_client.post("/api/live/control", json={"ecoe_event_id": 1, "action": "reset"})
+        original = auth_client.get("/api/live/1").json()
+        try:
+            updated = auth_client.patch("/api/ecoe/1/timing", json={
+                "station_time_minutes": 3,
+                "transition_time_minutes": 1,
+                "sync_existing_stations": True,
+            })
+            assert updated.status_code == 200, updated.text
+
+            session = auth_client.get("/api/live/1").json()
+            assert session["station_time_seconds"] == 180
+            assert session["transition_time_seconds"] == 60
+            # Not running: the resync also refreshes the currently-displayed
+            # remaining time, not just the template for the next start/reset.
+            assert session["remaining_seconds"] == 180
+
+            stations = auth_client.get("/api/stations/1").json()
+            assert all(s["station_time_minutes"] == 3 for s in stations)
+            assert all(s["transition_time_minutes"] == 1 for s in stations)
+        finally:
+            auth_client.patch("/api/ecoe/1/timing", json={
+                "station_time_minutes": original["station_time_seconds"] / 60,
+                "transition_time_minutes": original["transition_time_seconds"] / 60,
+                "sync_existing_stations": True,
+            })
+            auth_client.post("/api/live/control", json={"ecoe_event_id": 1, "action": "reset"})
+
     def test_transition_uses_transition_time(self, auth_client):
         auth_client.post("/api/live/control", json={"ecoe_event_id": 1, "action": "reset"})
         transition = auth_client.post("/api/live/control", json={
