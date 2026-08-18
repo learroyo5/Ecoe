@@ -329,6 +329,28 @@ export default function KioskPage() {
     );
   }
 
+  // ── Pantalla post-envío ───────────────────────────────────────────────
+  // El check-in sigue "confirmado" en el servidor hasta que el evaluador
+  // confirme al siguiente estudiante (ver nota en CLAUDE.md: el kiosco no
+  // decide por si mismo cuando termino alguien). Mientras tanto, NO hay que
+  // seguir mostrando la identidad ni las respuestas ya enviadas: el
+  // siguiente estudiante que se acerque a la tablet no debe poder verlas.
+  if (current && submitted) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-100 px-6 text-center">
+        <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[var(--color-primary)]">
+          {station ? `Estación ${station.station_number} · ${station.station_name}` : "Conectando..."}
+        </p>
+        <h1 className="mt-6 text-4xl text-slate-900">Respuesta enviada ✓</h1>
+        <p className="mt-4 max-w-xl text-lg leading-8 text-slate-600">
+          Ya puedes entregar la tablet. Esta pantalla se actualizará sola cuando el evaluador
+          confirme el ingreso del siguiente estudiante.
+        </p>
+        <div className="mt-10 h-3 w-3 animate-ping rounded-full bg-emerald-500" />
+      </div>
+    );
+  }
+
   // ── Pantalla activa (estudiante confirmado) ──────────────────────────
   return (
     <div className="min-h-screen bg-slate-100 pb-16">
@@ -343,18 +365,14 @@ export default function KioskPage() {
             </p>
           </div>
           <div className="text-right">
-            {submitted ? (
-              <p className="text-xl font-semibold text-emerald-700">Enviado ✓</p>
-            ) : (
-              <p
-                className={`text-3xl font-semibold tabular-nums ${
-                  TIMER_TONE_CLASSES[timeExpired ? "danger" : timerTone(remainingSeconds, Number(current.station_time_minutes) * 60)]
-                }`}
-              >
-                {timerLabel}
-              </p>
-            )}
-            {draftSavedAt && !submitted ? (
+            <p
+              className={`text-3xl font-semibold tabular-nums ${
+                TIMER_TONE_CLASSES[timeExpired ? "danger" : timerTone(remainingSeconds, Number(current.station_time_minutes) * 60)]
+              }`}
+            >
+              {timerLabel}
+            </p>
+            {draftSavedAt ? (
               <p className="text-[11px] font-semibold text-emerald-700">
                 ✓ borrador {draftSavedAt.toLocaleTimeString()}
               </p>
