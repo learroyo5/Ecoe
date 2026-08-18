@@ -37,39 +37,65 @@ router = APIRouter()
 
 
 @router.get("/evaluator/context/{ecoe_event_id}")
-def evaluator_context(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    ensure_event_access(db, user, ecoe_event_id,
+def evaluator_context(
+    ecoe_event_id: int,
+    station_id: int | None = None,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    event_roles = ensure_event_access(db, user, ecoe_event_id,
                         RoleCode.admin_ecoe.value,
                         RoleCode.coordinador_operativo.value,
                         RoleCode.evaluador.value)
-    assignment = db.scalar(
-        select(StaffAssignment).where(
-            StaffAssignment.ecoe_event_id == ecoe_event_id,
-            StaffAssignment.email == normalize_email(user.email),
-            StaffAssignment.role_code == RoleCode.evaluador.value,
-        )
+
+    # admin_ecoe/coordinador_operativo need to be able to check a student in
+    # at ANY station, not just one they're personally assigned to (e.g. a
+    # station left without its own evaluador, or filling in during
+    # contingency). An evaluador stays scoped to their single principal
+    # station, same as before.
+    assignment = None
+    can_operate_any_station = bool(
+        event_roles & {RoleCode.admin_ecoe.value, RoleCode.coordinador_operativo.value}
     )
-    assigned_station_ids, assignment_changed = ensure_primary_station_assignment(assignment)
-    if assignment and assignment_changed:
-        db.add(assignment)
-        db.commit()
-        db.refresh(assignment)
-    assigned_stations = (
-        db.scalars(
+    if can_operate_any_station:
+        assigned_stations = db.scalars(
             select(Station)
-            .where(Station.ecoe_event_id == ecoe_event_id, Station.id.in_(assigned_station_ids))
+            .where(Station.ecoe_event_id == ecoe_event_id)
             .order_by(Station.station_number.asc())
         ).all()
-        if assigned_station_ids else []
-    )
+    else:
+        assignment = db.scalar(
+            select(StaffAssignment).where(
+                StaffAssignment.ecoe_event_id == ecoe_event_id,
+                StaffAssignment.email == normalize_email(user.email),
+                StaffAssignment.role_code == RoleCode.evaluador.value,
+            )
+        )
+        assigned_station_ids, assignment_changed = ensure_primary_station_assignment(assignment)
+        if assignment and assignment_changed:
+            db.add(assignment)
+            db.commit()
+            db.refresh(assignment)
+        assigned_stations = (
+            db.scalars(
+                select(Station)
+                .where(Station.ecoe_event_id == ecoe_event_id, Station.id.in_(assigned_station_ids))
+                .order_by(Station.station_number.asc())
+            ).all()
+            if assigned_station_ids else []
+        )
+
+    focus_station = next((s for s in assigned_stations if s.id == station_id), None)
+    if focus_station is None:
+        focus_station = assigned_stations[0] if assigned_stations else None
 
     active_checkin = None
-    if assigned_station_ids:
+    if focus_station:
         active_checkin = db.scalar(
             select(StationCheckIn)
             .where(
                 StationCheckIn.ecoe_event_id == ecoe_event_id,
-                StationCheckIn.station_id.in_(assigned_station_ids),
+                StationCheckIn.station_id == focus_station.id,
                 StationCheckIn.status == "confirmado",
             )
             .order_by(StationCheckIn.confirmed_at.desc(), StationCheckIn.id.desc())
@@ -105,6 +131,7 @@ def evaluator_context(ecoe_event_id: int, db: Session = Depends(get_db), user=De
     return {
         "assignment": assignment,
         "stations": assigned_stations,
+        "selected_station_id": focus_station.id if focus_station else None,
         "active_checkin": {
             "id": active_checkin.id,
             "station_id": active_checkin.station_id,

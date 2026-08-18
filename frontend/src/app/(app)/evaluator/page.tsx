@@ -12,9 +12,13 @@ import { ConfirmDialog, TIMER_TONE_CLASSES, timerTone } from "@/components/confi
 
 export default function EvaluatorPage() {
   const { authenticated, eventId, user } = useECOE();
+  const [selectedStationId, setSelectedStationId] = useState<number | null>(null);
   const { data: context, setData: setContext } = useApi(
-    () => api.evaluatorContext(eventId) as Promise<Record<string, unknown>>,
-    [eventId, authenticated],
+    () =>
+      api.evaluatorContext(eventId, selectedStationId ?? undefined) as Promise<
+        Record<string, unknown>
+      >,
+    [eventId, authenticated, selectedStationId],
   );
   const [ecoeNumber, setEcoeNumber] = useState("");
   const [scoreObtained, setScoreObtained] = useState("0");
@@ -33,7 +37,21 @@ export default function EvaluatorPage() {
   });
 
   const stations = (context?.stations as Record<string, unknown>[] | undefined) ?? [];
-  const assignedStation = stations[0];
+  // admin_ecoe/coordinador_operativo ven todas las estaciones del ECOE (para
+  // poder hacer check-in en una sin evaluador asignado); un evaluador solo
+  // ve su unica estacion principal, asi que el selector no aparece.
+  const canPickStation = stations.length > 1;
+  const contextSelectedStationId = context?.selected_station_id != null
+    ? Number(context.selected_station_id)
+    : null;
+  const assignedStation =
+    stations.find((s) => Number(s.id) === (selectedStationId ?? contextSelectedStationId)) ??
+    stations[0];
+  useEffect(() => {
+    if (selectedStationId === null && contextSelectedStationId !== null) {
+      setSelectedStationId(contextSelectedStationId);
+    }
+  }, [contextSelectedStationId, selectedStationId]);
   const activeCheckin = (context?.active_checkin as Record<string, unknown> | null | undefined) ?? null;
   const stationLabel = assignedStation
     ? `${String(assignedStation.station_number)} - ${String(assignedStation.name)}`
@@ -205,11 +223,27 @@ export default function EvaluatorPage() {
         <section className="space-y-4 rounded-3xl border border-slate-200 bg-white/80 p-4 lg:p-5">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Estación asignada
+              {canPickStation ? "Estación a operar" : "Estación asignada"}
             </p>
-            <h3 className="mt-2 text-2xl text-slate-900">{stationLabel}</h3>
+            {canPickStation ? (
+              <select
+                className="mt-2 w-full"
+                value={String(assignedStation?.id ?? "")}
+                onChange={(event) => setSelectedStationId(Number(event.target.value))}
+              >
+                {stations.map((station) => (
+                  <option key={String(station.id)} value={String(station.id)}>
+                    {String(station.station_number)} - {String(station.name)}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <h3 className="mt-2 text-2xl text-slate-900">{stationLabel}</h3>
+            )}
             <p className="mt-2 text-sm text-slate-600">
-              Evaluador: {user?.full_name ?? "Evaluador"}.
+              {canPickStation
+                ? "Sin evaluador asignado a esta estación: puedes hacer el check-in tú mismo (contingencia o ensayo)."
+                : `Evaluador: ${user?.full_name ?? "Evaluador"}.`}
             </p>
           </div>
 

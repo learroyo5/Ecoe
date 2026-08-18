@@ -250,6 +250,7 @@ export type StationIssue = {
 export type EvaluatorContext = {
   assignment: StaffAssignment | null;
   stations: Station[];
+  selected_station_id: number | null;
   active_checkin: ActiveCheckin | null;
 };
 

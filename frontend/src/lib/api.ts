@@ -175,7 +175,10 @@ export const api = {
   },
 
   // Evaluator
-  evaluatorContext: (eventId: number) => request<EvaluatorContext>(`/evaluator/context/${eventId}`),
+  evaluatorContext: (eventId: number, stationId?: number) =>
+    request<EvaluatorContext>(
+      `/evaluator/context/${eventId}${stationId ? `?station_id=${stationId}` : ""}`,
+    ),
   confirmStationCheckin: (payload: { ecoe_event_id: number; station_id: number; ecoe_number: string }) =>
     request<ConfirmCheckinResult>("/station-checkins/confirm", { method: "POST", body: JSON.stringify(payload) }),
   submitEvaluator: (payload: Record<string, unknown>) =>

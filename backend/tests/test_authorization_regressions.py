@@ -9,7 +9,7 @@ from starlette.websockets import WebSocketDisconnect
 from app.core.security import get_password_hash
 from app.models.entities import ECOEEvent, Role, StaffAssignment, StationCheckIn, Student, User
 from app.models.enums import ECOEStatus, RoleCode
-from conftest import ADMIN, COEDITOR, COORDINATOR, login
+from conftest import ADMIN, COEDITOR, COORDINATOR, EVALUATOR, login
 
 
 def set_event_status(db, event_id: int, status: str) -> None:
@@ -153,6 +153,37 @@ def test_effective_evaluator_role_enforces_station_assignment(client, db_factory
         "ecoe_number": "001",
     })
     assert response.status_code == 403
+
+
+def test_coordinator_sees_every_station_but_evaluator_stays_scoped(client):
+    """coordinador_operativo/admin_ecoe can pick any station to check a
+    student in (e.g. a station left without its own evaluador); an
+    evaluador must keep seeing only their own principal station."""
+    login(client, ADMIN)
+    all_stations = {
+        int(s["station_number"]): int(s["id"])
+        for s in client.get("/api/stations/1").json()
+    }
+    login(client, COORDINATOR)
+    coordinator_context = client.get("/api/evaluator/context/1").json()
+    assert len(coordinator_context["stations"]) == len(all_stations)
+    assert {s["id"] for s in coordinator_context["stations"]} == set(all_stations.values())
+    assert coordinator_context["selected_station_id"] == all_stations[1]
+
+    picked = client.get(
+        f"/api/evaluator/context/1?station_id={all_stations[3]}"
+    ).json()
+    assert picked["selected_station_id"] == all_stations[3]
+
+    login(client, EVALUATOR)
+    evaluator_context = client.get("/api/evaluator/context/1").json()
+    assert [s["id"] for s in evaluator_context["stations"]] == [all_stations[1]]
+    assert evaluator_context["selected_station_id"] == all_stations[1]
+    # An evaluador cannot use station_id to peek at a station outside theirs.
+    forced = client.get(
+        f"/api/evaluator/context/1?station_id={all_stations[3]}"
+    ).json()
+    assert forced["selected_station_id"] == all_stations[1]
 
 
 def test_student_only_event_relationship_cannot_submit_for_another_student(client, db_factory):
