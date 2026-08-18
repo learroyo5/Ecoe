@@ -35,9 +35,12 @@ describe("isRouteAllowedForRole", () => {
     expect(isRouteAllowedForRole("/students", "coeditor_docente")).toBe(true);
   });
 
-  it("allows evaluador only on /evaluator, not on staff routes", () => {
+  it("allows evaluador, admin_ecoe and coordinador_operativo on /evaluator (check-in fill-in for unassigned stations)", () => {
     expect(isRouteAllowedForRole("/evaluator", "evaluador")).toBe(true);
-    expect(isRouteAllowedForRole("/evaluator", "admin_ecoe")).toBe(false);
+    expect(isRouteAllowedForRole("/evaluator", "admin_ecoe")).toBe(true);
+    expect(isRouteAllowedForRole("/evaluator", "coordinador_operativo")).toBe(true);
+    expect(isRouteAllowedForRole("/evaluator", "coeditor_docente")).toBe(false);
+    expect(isRouteAllowedForRole("/evaluator", "estudiante")).toBe(false);
   });
 
   it("matches nested paths against the most specific configured prefix", () => {
