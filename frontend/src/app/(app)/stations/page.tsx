@@ -124,6 +124,7 @@ export default function StationsPage() {
         <div className="space-y-3">
           {stations.map((station) => {
             const id = Number(station.id);
+            const needsKiosk = Boolean(station.requires_student_form) || Boolean(station.uses_multimedia);
             return (
               <div
                 key={id}
@@ -148,10 +149,23 @@ export default function StationsPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <StatusBadge status={String(station.status ?? "en_diseno")} />
+                  {needsKiosk ? (
+                    <span
+                      className="inline-flex items-center rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-semibold text-purple-700"
+                      title="Tiene formulario de estudiante y/o multimedia: necesita una tablet en Modo kiosco"
+                    >
+                      Requiere kiosco
+                    </span>
+                  ) : null}
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1 rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-400"
-                    disabled={issuingKioskFor === id}
+                    className="inline-flex items-center gap-1 rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={issuingKioskFor === id || !needsKiosk}
+                    title={
+                      needsKiosk
+                        ? undefined
+                        : "Esta estación no tiene formulario de estudiante ni multimedia: no necesita tablet en kiosco"
+                    }
                     onClick={() => handleIssueKiosk(id)}
                   >
                     {issuingKioskFor === id ? "Generando..." : "Modo kiosco"}
