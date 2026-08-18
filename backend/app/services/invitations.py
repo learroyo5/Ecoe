@@ -218,6 +218,73 @@ def assign_or_invite_member(
         "account_created": created_account,
         "assignment_id": assignment.id,
         "email": email,
+        "role_code": role_code,
+        "activation_token": raw_token,
+        "activation_path": f"/activate?token={raw_token}",
+        "expires_at": invitation.expires_at.isoformat(),
+    }
+
+
+def reset_active_member_access(
+    db: Session, ecoe_event_id: int, email: str, invited_by_email: str
+) -> dict:
+    """Issue a fresh access-reset link for a member already active in this event.
+
+    Scoped to admin_ecoe/coeditor_docente of the event itself (checked by the
+    caller via ensure_event_access): an event admin can restore their own
+    team's access without escalating to admin_global, who already has an
+    institution-wide equivalent via Usuarios. Does not commit: caller owns
+    the transaction.
+    """
+    normalized_email = normalize_email(email)
+    assignment = db.scalar(
+        select(StaffAssignment).where(
+            StaffAssignment.ecoe_event_id == ecoe_event_id,
+            StaffAssignment.email == normalized_email,
+        )
+    )
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Esta persona no está asignada a este ECOE")
+    account = db.scalar(select(User).where(func.lower(User.email) == normalized_email))
+    if not account or account.account_status != "active":
+        raise HTTPException(
+            status_code=400,
+            detail="Esta cuenta no está activa: usa la invitación normal en vez de un reinicio de acceso",
+        )
+
+    now = utcnow_naive()
+    for previous in db.scalars(
+        select(UserInvitation).where(
+            UserInvitation.user_id == account.id,
+            UserInvitation.ecoe_event_id == ecoe_event_id,
+            UserInvitation.accepted_at.is_(None),
+        )
+    ).all():
+        previous.accepted_at = now
+        db.add(previous)
+
+    raw_token = secrets.token_urlsafe(32)
+    invitation = UserInvitation(
+        user_id=account.id,
+        ecoe_event_id=ecoe_event_id,
+        role_code=assignment.role_code,
+        token_hash=hash_invitation_token(raw_token),
+        invited_by_email=invited_by_email,
+        expires_at=now + timedelta(hours=get_settings().invitation_expire_hours),
+    )
+    db.add(invitation)
+    db.flush()
+    db.add(AuditLog(
+        user_email=invited_by_email,
+        action="reset_event_member_access",
+        target_type="UserInvitation",
+        target_id=str(invitation.id),
+        payload={"ecoe_event_id": ecoe_event_id, "user_id": account.id, "email": normalized_email},
+    ))
+    return {
+        "status": "reset",
+        "email": normalized_email,
+        "role_code": assignment.role_code,
         "activation_token": raw_token,
         "activation_path": f"/activate?token={raw_token}",
         "expires_at": invitation.expires_at.isoformat(),
@@ -234,7 +301,10 @@ def activate_invitation(db: Session, token: str, password: str) -> None:
     if not invitation or invitation.accepted_at is not None or invitation.expires_at <= now:
         raise HTTPException(status_code=400, detail="La invitación no es válida o ya expiró")
     account = db.get(User, invitation.user_id)
-    if not account or account.account_status != "pending":
+    # "pending" = primera activacion; "active" = reinicio de acceso de una
+    # cuenta ya activa (reset_active_member_access). Cualquier otro estado
+    # (p.ej. "suspended") no debe poder tomar un token viejo para reactivarse.
+    if not account or account.account_status not in {"pending", "active"}:
         raise HTTPException(status_code=400, detail="La invitación no es válida o ya fue utilizada")
 
     account.hashed_password = get_password_hash(password)

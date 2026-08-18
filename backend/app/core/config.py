@@ -34,6 +34,17 @@ class Settings(BaseSettings):
     student_password: str = ""
     coordinator_password: str = ""
     timer_password: str = ""
+    # Envio transaccional de invitaciones/reset de acceso. Si smtp_host queda
+    # vacio, el mailer no envia nada (fallback: seguir repartiendo el enlace
+    # a mano desde la pantalla Evaluadores, como hasta ahora).
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_use_tls: bool = True
+    # Base publica para construir enlaces de activacion/reset en los correos.
+    public_app_url: str = "http://localhost:3000"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

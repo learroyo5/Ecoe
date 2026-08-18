@@ -12,6 +12,10 @@ import { SectionCard } from "@/components/section-card";
 export default function EvaluatorsPage() {
   const { authenticated, eventId, eventRoles, user } = useECOE();
   const canInviteMembers = user?.role === "admin_global" || eventRoles.includes("admin_ecoe");
+  const canResetAccess =
+    user?.role === "admin_global" ||
+    eventRoles.includes("admin_ecoe") ||
+    eventRoles.includes("coeditor_docente");
   const { data: rawStaff, loading, error, setData: setRawStaff } = useApi(
     () => api.staff(eventId),
     [eventId, authenticated],
@@ -568,41 +572,76 @@ export default function EvaluatorsPage() {
                 key: "actions",
                 label: "Acciones",
                 render: (row) => {
-                  const staff = row as { id?: number };
+                  const staff = row as { id?: number; email?: string };
+                  const staffId = String(staff.id ?? "");
                   return (
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={async () => {
-                        const confirmed = window.confirm(
-                          "Vas a borrar este evaluador o colaborador de forma permanente. Esta acción no se puede deshacer. ¿Quieres continuar?",
-                        );
-                        if (!confirmed) {
-                          setMessage("El borrado del evaluador o colaborador fue cancelado.");
-                          return;
-                        }
-                        setProcessingAction(`delete-${String(staff.id ?? "")}`);
-                        setMessage(null);
-                        try {
-                          await api.deleteStaff(Number(staff.id));
-                          await refresh();
-                          setMessage("Evaluador o colaborador borrado correctamente.");
-                        } catch (actionError) {
-                          setMessage(
-                            actionError instanceof Error
-                              ? actionError.message
-                              : "No se pudo borrar el evaluador o colaborador.",
+                    <div className="flex flex-wrap gap-2">
+                      {canResetAccess ? (
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          title="Genera un enlace nuevo para definir contraseña e invalida el anterior; si hay SMTP configurado también se lo envía por correo."
+                          onClick={async () => {
+                            setProcessingAction(`reset-${staffId}`);
+                            setMessage(null);
+                            try {
+                              const result = await api.resetEventMemberAccess(
+                                eventId,
+                                String(staff.email ?? ""),
+                              );
+                              setActivationLink(`${window.location.origin}${result.activation_path}`);
+                              setMessage(
+                                result.email_sent
+                                  ? `Acceso reiniciado: se envió un correo a ${result.email} con el enlace nuevo.`
+                                  : `Acceso reiniciado. No hay SMTP configurado: comparte el enlace de abajo con ${result.email} por otro canal.`,
+                              );
+                            } catch (actionError) {
+                              setMessage(
+                                actionError instanceof Error
+                                  ? actionError.message
+                                  : "No se pudo reiniciar el acceso.",
+                              );
+                            } finally {
+                              setProcessingAction(null);
+                            }
+                          }}
+                          disabled={processingAction === `reset-${staffId}`}
+                        >
+                          {processingAction === `reset-${staffId}` ? "Reiniciando..." : "Reiniciar acceso"}
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={async () => {
+                          const confirmed = window.confirm(
+                            "Vas a borrar este evaluador o colaborador de forma permanente. Esta acción no se puede deshacer. ¿Quieres continuar?",
                           );
-                        } finally {
-                          setProcessingAction(null);
-                        }
-                      }}
-                      disabled={processingAction === `delete-${String(staff.id ?? "")}`}
-                    >
-                      {processingAction === `delete-${String(staff.id ?? "")}`
-                        ? "Borrando..."
-                        : "Borrar"}
-                    </button>
+                          if (!confirmed) {
+                            setMessage("El borrado del evaluador o colaborador fue cancelado.");
+                            return;
+                          }
+                          setProcessingAction(`delete-${staffId}`);
+                          setMessage(null);
+                          try {
+                            await api.deleteStaff(Number(staff.id));
+                            await refresh();
+                            setMessage("Evaluador o colaborador borrado correctamente.");
+                          } catch (actionError) {
+                            setMessage(
+                              actionError instanceof Error
+                                ? actionError.message
+                                : "No se pudo borrar el evaluador o colaborador.",
+                            );
+                          } finally {
+                            setProcessingAction(null);
+                          }
+                        }}
+                        disabled={processingAction === `delete-${staffId}`}
+                      >
+                        {processingAction === `delete-${staffId}` ? "Borrando..." : "Borrar"}
+                      </button>
+                    </div>
                   );
                 },
               },

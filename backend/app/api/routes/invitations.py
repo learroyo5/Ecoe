@@ -6,14 +6,16 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.enums import RoleCode
-from app.schemas.common import EventMemberInvite, InvitationActivation
+from app.schemas.common import EventMemberAccessReset, EventMemberInvite, InvitationActivation
 from app.services.authorization import ensure_event_access
 from app.services.dependencies import get_current_user, require_roles
 from app.services.invitations import (
     activate_invitation,
     assign_or_invite_member,
     lookup_member_by_exact_email,
+    reset_active_member_access,
 )
+from app.services.mailer import notify_event_access
 
 router = APIRouter()
 
@@ -39,6 +41,32 @@ def invite_event_member(
     ensure_event_access(db, user, payload.ecoe_event_id, RoleCode.admin_ecoe.value)
     result = assign_or_invite_member(db, payload, invited_by_email=user.email)
     db.commit()
+    if result["status"] == "invited":
+        result["email_sent"] = notify_event_access(db, payload.ecoe_event_id, result, is_reset=False)
+    response.headers["Cache-Control"] = "no-store"
+    return result
+
+
+@router.post("/event-members/reset-access")
+def reset_event_member_access(
+    payload: EventMemberAccessReset,
+    response: Response,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles(RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)),
+):
+    """Reissue access for a team member already active in this event.
+
+    Unlike /event-members/invite (admin_ecoe only, can mint new institutional
+    identities), a coeditor_docente can also trigger this: it never creates an
+    account, only resets the password of someone already on their own team.
+    """
+    ensure_event_access(db, user, payload.ecoe_event_id,
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    result = reset_active_member_access(
+        db, payload.ecoe_event_id, str(payload.email), invited_by_email=user.email
+    )
+    db.commit()
+    result["email_sent"] = notify_event_access(db, payload.ecoe_event_id, result, is_reset=True)
     response.headers["Cache-Control"] = "no-store"
     return result
 

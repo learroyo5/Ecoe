@@ -28,7 +28,7 @@ export default function ActivateInvitationPage() {
         {activated ? (
           <div className="mt-6 space-y-4">
             <p className="rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-800">
-              Tu cuenta fue activada. Ya puedes ingresar con tu correo y la contraseña que definiste.
+              Tu acceso quedó listo. Ya puedes ingresar con tu correo y la contraseña que definiste.
             </p>
             <Link href="/login" className="btn-primary inline-flex">Ir al inicio de sesión</Link>
           </div>

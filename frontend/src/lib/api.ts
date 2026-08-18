@@ -119,7 +119,19 @@ export const api = {
       email: string;
       activation_path?: string;
       expires_at?: string;
+      email_sent?: boolean;
     }>("/event-members/invite", { method: "POST", body: JSON.stringify(payload) }),
+  resetEventMemberAccess: (eventId: number, email: string) =>
+    request<{
+      status: "reset";
+      email: string;
+      activation_path: string;
+      expires_at: string;
+      email_sent: boolean;
+    }>("/event-members/reset-access", {
+      method: "POST",
+      body: JSON.stringify({ ecoe_event_id: eventId, email }),
+    }),
   activateInvitation: (token: string, password: string) =>
     request<{ activated: boolean }>("/auth/activate-invitation", {
       method: "POST",

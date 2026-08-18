@@ -10,6 +10,7 @@ from app.models.enums import RoleCode
 from app.schemas.common import EventMemberInvite, Page, StaffCreate, StaffRead, StaffUpdate
 from app.services.dependencies import get_current_user, require_roles
 from app.services.invitations import assign_or_invite_member
+from app.services.mailer import notify_event_access
 from app.utils.files import parse_tabular_file
 from app.services.authorization import (
     ensure_event_access,
@@ -252,12 +253,15 @@ async def import_staff(
         if result["status"] == "invited":
             invited.append({
                 "email": result["email"],
+                "role_code": result["role_code"],
                 "activation_path": result["activation_path"],
                 "expires_at": result["expires_at"],
             })
         imported += 1
         existing_emails.add(email)
     db.commit()
+    for entry in invited:
+        entry["email_sent"] = notify_event_access(db, ecoe_event_id, entry, is_reset=False)
     return {
         "imported": imported,
         "invited": invited,
