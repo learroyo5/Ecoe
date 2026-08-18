@@ -223,6 +223,68 @@ class TestStations:
         assert response.status_code == 200
         assert response.json()["name"] == "Estación Test"
 
+    def test_update_published_station_keeps_status(self, auth_client, db_factory):
+        from app.models.entities import Station
+
+        create_resp = auth_client.post("/api/stations", json={
+            "ecoe_event_id": 1,
+            "station_number": 1,
+            "name": "Estación Publicada",
+            "station_type": "procedimental",
+            "circuit_name": "Circuito A",
+            "expected_outcomes": "Resultado esperado",
+            "student_activity": "",
+            "student_station_instruction": "",
+            "pre_entry_instruction": "Instrucción previa",
+            "evaluator_instruction": "",
+            "max_score": 20,
+            "materials": "",
+            "multimedia_notes": "",
+            "requires_evaluator": False,
+            "requires_student_form": False,
+            "uses_multimedia": False,
+            "uses_simulated_patient": False,
+            "uses_physical_resources": False,
+            "contingency_ready": False,
+            "student_form_definition": {"questions": []},
+            "status": "en_diseno",
+        })
+        assert create_resp.status_code == 200
+        station_id = create_resp.json()["id"]
+        station_number = create_resp.json()["station_number"]
+
+        with db_factory() as db:
+            station = db.get(Station, station_id)
+            station.status = "publicada"
+            db.add(station)
+            db.commit()
+
+        update_resp = auth_client.put(f"/api/stations/{station_id}", json={
+            "ecoe_event_id": 1,
+            "station_number": station_number,
+            "name": "Estación Publicada (editada)",
+            "station_type": "procedimental",
+            "circuit_name": "Circuito A",
+            "expected_outcomes": "Resultado esperado editado",
+            "student_activity": "",
+            "student_station_instruction": "",
+            "pre_entry_instruction": "Instrucción previa",
+            "evaluator_instruction": "",
+            "max_score": 20,
+            "materials": "",
+            "multimedia_notes": "",
+            "requires_evaluator": False,
+            "requires_student_form": False,
+            "uses_multimedia": False,
+            "uses_simulated_patient": False,
+            "uses_physical_resources": False,
+            "contingency_ready": False,
+            "student_form_definition": {"questions": []},
+            "status": "publicada",
+        })
+        assert update_resp.status_code == 200
+        assert update_resp.json()["status"] == "publicada"
+
 
 class TestIncidents:
     def test_list_incidents(self, auth_client):

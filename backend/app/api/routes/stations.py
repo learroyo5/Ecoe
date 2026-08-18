@@ -254,7 +254,15 @@ def update_station(
         setattr(station, field, value)
     station.station_time_minutes = ecoe_event.station_time_minutes
     station.transition_time_minutes = ecoe_event.transition_time_minutes
-    if station.expected_outcomes and station.pre_entry_instruction:
+    # Solo recalcular el estado estructural (incompleta/lista_para_pilotaje) mientras
+    # la estacion sigue en construccion. Una vez publicada (o en un estado operativo
+    # posterior), editarla en el Constructor no debe regresarla a un estado previo:
+    # eso desincroniza su badge del resto de las estaciones ya publicadas.
+    if station.status in {
+        StationStatus.en_diseno.value,
+        StationStatus.incompleta.value,
+        StationStatus.lista_para_pilotaje.value,
+    } and station.expected_outcomes and station.pre_entry_instruction:
         station.status = (
             StationStatus.lista_para_pilotaje.value
             if station.assessment_tool_id or not station.requires_evaluator
