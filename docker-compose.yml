@@ -39,12 +39,21 @@ services:
     # Daily pg_dump with 14-day rotation. Restore procedure: scripts/restore_db.sh
     entrypoint: /bin/sh
     command: >-
-      -c 'while true; do
+      -c 'set -o pipefail;
+      while true; do
         ts=$$(date +%Y%m%d-%H%M%S);
-        if pg_dump -h db -U ecoe ecoe | gzip > /backups/ecoe-$$ts.sql.gz; then
+        ok=0;
+        for attempt in 1 2 3; do
+          if pg_dump -h db -U ecoe ecoe | gzip > /backups/ecoe-$$ts.sql.gz; then
+            ok=1; break;
+          fi;
+          rm -f /backups/ecoe-$$ts.sql.gz;
+          sleep 30;
+        done;
+        if [ "$$ok" = "1" ]; then
           echo "backup ok: ecoe-$$ts.sql.gz";
         else
-          echo "backup FAILED: $$ts" >&2;
+          echo "backup FAILED after 3 attempts: $$ts" >&2;
         fi;
         find /backups -name "ecoe-*.sql.gz" -mtime +14 -delete;
         sleep 86400;
