@@ -84,7 +84,11 @@ sudo certbot certonly --nginx -d plataformaecoe.cl -d www.plataformaecoe.cl --no
 
 Los 3 certificados se emitieron sin errores, expiran 2026-11-23, con renovacion automatica ya configurada por certbot (systemd timer).
 
-## 4. Landing: bug de encoding descubierto y corregido
+## 4. Landing: donde vive la fuente
+
+El HTML se genero originalmente como un artifact de Claude y se copio directo desde el scratchpad temporal de esa sesion — que no persiste ni esta versionado. Para no perder la fuente, la copia real desplegada (identica a `/var/www/ecoe-cl/index.html`) quedo en [ecoe-cl-landing.html](/home/learroyo/Proyectos/Ecoe/datos_proyecto/ecoe-cl-landing.html) dentro de este repo. Si se edita el landing, editar ese archivo y volver a copiarlo a `/var/www/ecoe-cl/index.html` en el servidor (mismo comando de siempre: `sudo tee /var/www/ecoe-cl/index.html < datos_proyecto/ecoe-cl-landing.html`).
+
+## 4b. Bug de encoding descubierto y corregido
 
 Al desplegar `/var/www/ecoe-cl/index.html` (copiado directo desde el filesystem local, ya que la sesion de agente y el servidor son la misma maquina — no hizo falta `scp`), el sitio mostraba los acentos rotos (`Ã¡` en vez de `á`). Causa: el HTML no tenia `<meta charset="UTF-8">` y el header `Content-Type` de nginx no declaraba charset, asi que el navegador adivinaba mal la codificacion. Se corrigio en dos lugares (ambos necesarios):
 

@@ -11,6 +11,7 @@ Indice rapido para no perdernos entre documentos de apoyo.
 - Contexto de producto y roadmap largo: `base_producto_y_roadmap.md`
 - Ajustes del despliegue publico: `ajuste_publico_ecoe.md`
 - Dominios propios (ecoe.cl / app.ecoe.cl / plataformaecoe.cl), como se armaron: `despliegue_dominios_ecoe.md`
+- Fuente real del landing de `ecoe.cl` (copia exacta de lo desplegado): `ecoe-cl-landing.html`
 - Sistema visual y lenguaje de interfaz: `design_system_drnotus.md`
 - Plan manual de pruebas de flujo: `plan_pruebas_flujo.md`
 
