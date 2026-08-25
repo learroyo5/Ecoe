@@ -7,7 +7,8 @@ Referencia rapida para recuperar el entorno del proyecto en este servidor.
 - Host Tailscale: `learroyo-macmini7-1`
 - IP Tailscale: `100.105.88.51`
 - IP LAN reservada objetivo: `192.168.0.2`
-- Dominio ECOE publicado: `ecoe.drnotus.cl`
+- Dominio ECOE de staging/dev (no se comparte con prospectos): `ecoe.drnotus.cl`
+- Dominios propios de producto, en produccion desde 2026-08-25: `ecoe.cl` (landing), `app.ecoe.cl` (plataforma), `plataformaecoe.cl` (solo redirect 301 a `ecoe.cl`) — ver detalle abajo y en `despliegue_dominios_ecoe.md`
 
 ## Stack actual
 
@@ -28,14 +29,37 @@ La salida publica la hace `nginx`, no Docker.
 
 ## Proxy del servidor
 
-Archivo relevante:
+Archivos relevantes:
 
-- `/etc/nginx/sites-available/drnotus-multisite`
+- `/etc/nginx/sites-available/drnotus-multisite` — todo `*.drnotus.cl` (drnotus.cl, transcripcion, presenta, asistente, cmc, **ecoe.drnotus.cl**). No tocar para nada de ECOE.CL.
+- `/etc/nginx/sites-available/ecoe-domains` — archivo separado, solo para `ecoe.cl` / `app.ecoe.cl` / `plataformaecoe.cl`. Se separo a proposito de `drnotus-multisite` para no arriesgar el resto de produccion al tocar dominios nuevos.
 
-Host de ECOE:
+Host de ECOE (staging/dev):
 
 - `ecoe.drnotus.cl` -> proxy a `127.0.0.1:3000`
 - `ecoe.drnotus.cl/api/` -> proxy a `127.0.0.1:8000`
+
+Dominios propios de producto (mismo backend, distinto dominio publico):
+
+- `ecoe.cl` (+`www`) -> estatico, `root /var/www/ecoe-cl/index.html` (landing de marketing, un solo archivo HTML autocontenido; incluye `charset utf-8` explicito en el bloque nginx y `<meta charset="UTF-8">` en el HTML porque sin eso los acentos se ven mal, `Ã¡` en vez de `á`)
+- `app.ecoe.cl` -> proxy a `127.0.0.1:3000`, `/api/` -> `127.0.0.1:8000` (clon exacto del bloque de `ecoe.drnotus.cl`, mismo backend)
+- `plataformaecoe.cl` (+`www`) -> `return 301 https://ecoe.cl$request_uri` (nunca debe tener contenido propio)
+
+Certificados Let's Encrypt independientes por dominio (`certbot certonly --nginx`, no `certbot --nginx` a secas — asi no modifica el bloque automaticamente y se controla el contenido a mano):
+
+- `/etc/letsencrypt/live/ecoe.cl/`
+- `/etc/letsencrypt/live/app.ecoe.cl/`
+- `/etc/letsencrypt/live/plataformaecoe.cl/`
+
+Expiran 2026-11-23, renovacion automatica ya configurada por certbot (`systemctl list-timers | grep certbot`).
+
+### DNS de ecoe.cl / plataformaecoe.cl
+
+A diferencia del router-forwarding descrito abajo para `drnotus.cl`, estos dos dominios se agregaron como zonas nuevas en la **misma cuenta de Cloudflare**: NS delegados en el registrador, registros `A` proxied (🟠) para `ecoe.cl`, `www`, `app`, `plataformaecoe.cl`, `www.plataformaecoe.cl` apuntando a la IP publica del origen. SSL/TLS mode de esas zonas: `Full (strict)` (ya con certificado real en el origen).
+
+### Permisos usados para aplicar esto sin password interactivo
+
+`/etc/sudoers.d/claude-ecoe-domains` con `NOPASSWD` acotado a comandos exactos: `tee` sobre `ecoe-domains` y `/var/www/ecoe-cl/index.html`, `ln -sf` del symlink a `sites-enabled`, `nginx -t`, `systemctl reload nginx`, `certbot *`, `mkdir -p /var/www/ecoe-cl`. No es `NOPASSWD: ALL` — el resto de `sudo` (ej. leer `/etc/shadow`) sigue pidiendo password. Se puede borrar (`sudo rm /etc/sudoers.d/claude-ecoe-domains`) si no se va a seguir iterando sobre estos dominios desde una sesion de agente.
 
 ## Reglas criticas del router
 
@@ -51,12 +75,17 @@ Error detectado en marzo 2026:
 
 ## DNS esperado en Cloudflare
 
-Minimo recomendado:
+Zona `drnotus.cl`, minimo recomendado:
 
 - `A @ -> 190.160.164.137` proxied
 - `CNAME www -> drnotus.cl` proxied
 - `A ecoe -> 190.160.164.137` proxied
 - `A transcripcion -> 190.160.164.137` proxied
+
+Zonas nuevas `ecoe.cl` y `plataformaecoe.cl` (mismo origen, verificar si la IP publica sigue siendo la misma que arriba o cambio):
+
+- `ecoe.cl`: `A @`, `A www`, `A app` -> IP publica del origen, proxied
+- `plataformaecoe.cl`: `A @`, `A www` -> IP publica del origen, proxied
 
 Evitar:
 

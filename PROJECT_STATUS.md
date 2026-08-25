@@ -136,6 +136,7 @@ Hoy `Evaluadores` es el unico lugar necesario:
 - verificacion local de `http://127.0.0.1:8000/health`
 - verificacion publica de `https://ecoe.drnotus.cl`
 - verificacion publica de `https://ecoe.drnotus.cl/api/health`
+- dominios propios de producto en produccion desde 2026-08-25: `https://ecoe.cl` (landing), `https://app.ecoe.cl` (plataforma, mismo backend), `https://plataformaecoe.cl` (redirect a `ecoe.cl`) — detalle en `datos_proyecto/operacion_despliegue.md`
 
 ## Decisiones importantes tomadas
 

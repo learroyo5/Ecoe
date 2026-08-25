@@ -22,7 +22,8 @@ Guia corta para retomar trabajo sin reconstruir contexto desde cero.
 
 ## Ahora mismo
 
-- El despliegue actual funciona localmente y por `https://ecoe.drnotus.cl`.
+- El despliegue actual funciona localmente y por `https://ecoe.drnotus.cl` (entorno de staging/dev, no se comparte con prospectos).
+- Dominios propios en produccion desde 2026-08-25: `https://ecoe.cl` (landing de marketing), `https://app.ecoe.cl` (la plataforma, mismo backend que `ecoe.drnotus.cl`), `https://plataformaecoe.cl` (solo redirect 301 a `ecoe.cl`). Detalle completo en `datos_proyecto/operacion_despliegue.md` y `datos_proyecto/despliegue_dominios_ecoe.md`.
 - Las credenciales vigentes del servidor actual estan en `backend/.env` y `datos_proyecto/credenciales_locales.md`.
 - Usuario demo: `admin@ecoe.cl` (rol `admin_ecoe`).
 - Stack: Next.js + FastAPI + PostgreSQL en Docker Compose, 3 servicios healthy.
