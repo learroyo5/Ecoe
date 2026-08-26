@@ -39,11 +39,11 @@ Host de ECOE (staging/dev):
 - `ecoe.drnotus.cl` -> proxy a `127.0.0.1:3000`
 - `ecoe.drnotus.cl/api/` -> proxy a `127.0.0.1:8000`
 
-Dominios propios de producto (mismo backend, distinto dominio publico):
+Dominios propios de producto (3 roles distintos, solo uno toca el backend):
 
-- `ecoe.cl` (+`www`) -> estatico, `root /var/www/ecoe-cl/index.html` (landing de marketing, un solo archivo HTML autocontenido; incluye `charset utf-8` explicito en el bloque nginx y `<meta charset="UTF-8">` en el HTML porque sin eso los acentos se ven mal, `Ã¡` en vez de `á`)
-- `app.ecoe.cl` -> proxy a `127.0.0.1:3000`, `/api/` -> `127.0.0.1:8000` (clon exacto del bloque de `ecoe.drnotus.cl`, mismo backend)
-- `plataformaecoe.cl` (+`www`) -> `return 301 https://ecoe.cl$request_uri` (nunca debe tener contenido propio)
+- `ecoe.cl` (+`www`) -> **estatico, sin backend**, `root /var/www/ecoe-cl/index.html` (landing de marketing, un solo archivo HTML autocontenido; incluye `charset utf-8` explicito en el bloque nginx y `<meta charset="UTF-8">` en el HTML porque sin eso los acentos se ven mal, `Ã¡` en vez de `á`)
+- `app.ecoe.cl` -> **la plataforma real**, proxy a `127.0.0.1:3000`, `/api/` -> `127.0.0.1:8000` (clon exacto del bloque de `ecoe.drnotus.cl`, mismo backend/frontend Docker)
+- `plataformaecoe.cl` (+`www`) -> **sin backend, sin contenido propio**, `return 301 https://ecoe.cl$request_uri`
 
 Certificados Let's Encrypt independientes por dominio (`certbot certonly --nginx`, no `certbot --nginx` a secas — asi no modifica el bloque automaticamente y se controla el contenido a mano):
 
@@ -55,7 +55,9 @@ Expiran 2026-11-23, renovacion automatica ya configurada por certbot (`systemctl
 
 ### DNS de ecoe.cl / plataformaecoe.cl
 
-A diferencia del router-forwarding descrito abajo para `drnotus.cl`, estos dos dominios se agregaron como zonas nuevas en la **misma cuenta de Cloudflare**: NS delegados en el registrador, registros `A` proxied (🟠) para `ecoe.cl`, `www`, `app`, `plataformaecoe.cl`, `www.plataformaecoe.cl` apuntando a la IP publica del origen. SSL/TLS mode de esas zonas: `Full (strict)` (ya con certificado real en el origen).
+A diferencia del router-forwarding descrito abajo para `drnotus.cl`, estos dos dominios se agregaron como zonas nuevas en la **misma cuenta de Cloudflare**: NS delegados en el registrador, registros `A` proxied (🟠) para `ecoe.cl`, `www`, `app`, `plataformaecoe.cl`, `www.plataformaecoe.cl` apuntando a la IP publica del origen (ver nota de IP mas abajo).
+
+SSL/TLS mode de esas zonas: se dejo en `Full` durante el despliegue (necesario porque el origen todavia no tenia certificado real). El usuario confirmo que iba a subirlo a `Full (strict)` una vez emitidos los certificados, pero **no quedo verificado en esta sesion que ya lo haya cambiado** — antes de asumirlo, confirmar en el dashboard de Cloudflare (SSL/TLS -> Overview de cada zona) en vez de dar por hecho este parrafo.
 
 ### Permisos usados para aplicar esto sin password interactivo
 
@@ -82,10 +84,12 @@ Zona `drnotus.cl`, minimo recomendado:
 - `A ecoe -> 190.160.164.137` proxied
 - `A transcripcion -> 190.160.164.137` proxied
 
-Zonas nuevas `ecoe.cl` y `plataformaecoe.cl` (mismo origen, verificar si la IP publica sigue siendo la misma que arriba o cambio):
+Zonas nuevas `ecoe.cl` y `plataformaecoe.cl` (mismo origen fisico que `drnotus.cl` arriba):
 
 - `ecoe.cl`: `A @`, `A www`, `A app` -> IP publica del origen, proxied
 - `plataformaecoe.cl`: `A @`, `A www` -> IP publica del origen, proxied
+
+**Nota sobre la IP:** al desplegar estos dos dominios (2026-08-25) la IP publica real del origen era `190.95.99.45` (verificada con `curl -4 ifconfig.me` desde el propio servidor), distinta de `190.160.164.137` que aparece arriba para `drnotus.cl`. Es la misma conexion residencial — la IP publica no es estatica y cambio entre cuando se documento `drnotus.cl` y ahora. **No asumir ninguna de las dos IPs como vigente, y ojo con como verificarlo**: como todos los dominios (`drnotus.cl` incluido) estan proxied (🟠) en Cloudflare, `dig <dominio> +short` **nunca** muestra la IP real del origen, solo IPs anycast de Cloudflare (`104.21.x.x`/`172.67.x.x`) — no sirve para detectar si la IP del origen cambio. Para verificar de verdad: `curl -4 ifconfig.me` desde el propio servidor, y comparar ese valor contra el contenido real del registro `A` en el dashboard de Cloudflare (DNS -> click en el registro) para cada zona. Si no coincide, la IP cambio y hay que actualizar el valor del registro `A` en todas las zonas, no solo en las nuevas.
 
 Evitar:
 

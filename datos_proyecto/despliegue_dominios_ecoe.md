@@ -47,7 +47,7 @@ Pasos reales, en orden:
 4. Crear los registros `A`, todos proxied (🟠):
    - Zona `ecoe.cl`: `A @`, `A www`, `A app` -> IP publica del origen
    - Zona `plataformaecoe.cl`: `A @`, `A www` -> IP publica del origen
-5. SSL/TLS mode de ambas zonas: dejar en `Full` mientras el origen no tenga certificado real (evita error 526), subir a `Full (strict)` recien despues de emitir los certificados (paso 3 mas abajo).
+5. SSL/TLS mode de ambas zonas: se dejo en `Full` mientras el origen no tenia certificado real (evita error 526). El plan era subirlo a `Full (strict)` recien despues de emitir los certificados (paso 3 mas abajo) — el usuario confirmo que lo haria, **pero no quedo verificado en esta sesion que ya este en `Full (strict)`**. Confirmar en el dashboard antes de asumirlo.
 
 Verificacion usada en cada etapa:
 
@@ -88,7 +88,7 @@ Los 3 certificados se emitieron sin errores, expiran 2026-11-23, con renovacion 
 
 El HTML se genero originalmente como un artifact de Claude y se copio directo desde el scratchpad temporal de esa sesion — que no persiste ni esta versionado. Para no perder la fuente, la copia real desplegada (identica a `/var/www/ecoe-cl/index.html`) quedo en [ecoe-cl-landing.html](/home/learroyo/Proyectos/Ecoe/datos_proyecto/ecoe-cl-landing.html) dentro de este repo. Si se edita el landing, editar ese archivo y volver a copiarlo a `/var/www/ecoe-cl/index.html` en el servidor (mismo comando de siempre: `sudo tee /var/www/ecoe-cl/index.html < datos_proyecto/ecoe-cl-landing.html`).
 
-## 4b. Bug de encoding descubierto y corregido
+## 5. Bug de encoding descubierto y corregido
 
 Al desplegar `/var/www/ecoe-cl/index.html` (copiado directo desde el filesystem local, ya que la sesion de agente y el servidor son la misma maquina — no hizo falta `scp`), el sitio mostraba los acentos rotos (`Ã¡` en vez de `á`). Causa: el HTML no tenia `<meta charset="UTF-8">` y el header `Content-Type` de nginx no declaraba charset, asi que el navegador adivinaba mal la codificacion. Se corrigio en dos lugares (ambos necesarios):
 
@@ -97,7 +97,7 @@ Al desplegar `/var/www/ecoe-cl/index.html` (copiado directo desde el filesystem 
 
 Cualquier landing/HTML estatico nuevo que se suba a este servidor deberia traer el `<meta charset="UTF-8">` desde el archivo fuente para no repetir este bug.
 
-## 5. Verificacion final
+## 6. Verificacion final
 
 ```bash
 curl -I https://ecoe.cl                 # 200
@@ -108,7 +108,7 @@ curl -I https://ecoe.drnotus.cl         # 307, intacto, sin romper nada
 curl -sI https://ecoe.cl/ | grep -i content-type   # debe incluir charset=utf-8
 ```
 
-## 6. Pendiente para mas adelante (no bloquea esto)
+## 7. Pendiente para mas adelante (no bloquea esto)
 
 Antes de vender a universidades/hospitales, evaluar migrar la plataforma (no el landing) a un VPS con SLA — la conexion residencial del homelab no lo garantiza. Ver `dr-notus-infrastructure/docs/decisions/005-network-exposure-proposal.md` para contexto de por que el homelab tiene limites para eso a largo plazo.
 
