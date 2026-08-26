@@ -133,7 +133,20 @@ Para escribir `terminos.html` y `privacidad.html` ademas de `index.html` hizo fa
 
 **Aviso sobre el contenido legal:** el texto de ambas paginas es generico y corto, escrito para cubrir lo minimo de este sitio informativo (no recopila datos, no tiene formularios, carga Google Fonts, la plataforma real se rige por acuerdos separados). No es asesoria legal — deberia revisarlo alguien con conocimiento legal antes de darlo por definitivo, especialmente por el manejo de datos clinicos/de salud en la plataforma real (`app.ecoe.cl`, aunque esa plataforma no se nombra explicitamente en el texto a proposito, para no señalarla como algo a lo que el publico general no deberia acceder).
 
-## 8. Pendiente para mas adelante (no bloquea esto)
+## 8. Rediseño del landing tras revision UX/UI — 2026-08-25
+
+A pedido del usuario se hizo una revision critica del landing (rol de supervisor UX/UI) y se aplicaron los cambios aceptados:
+
+- Se elimino el cronometro que corria en cada seccion (quedaba solo uno, en el hero) — distraia mas de lo que aportaba.
+- Se arreglo un desborde horizontal real en mobile: el encabezado de cada "estacion" no tenia `flex-wrap`.
+- Se reordenaron las secciones: `Para quien` subio de la posicion 6 a la 2 (el visitante institucional necesita confirmar temprano si esto es para el); `Origen` (la nota historica de Harden/Dundee) bajo de posicion y se demoto visualmente (sin la comilla gigante, cita mas compacta) porque interrumpia el impulso comercial.
+- Se agrego evidencia real del producto en la seccion "La plataforma": un mockup en HTML/CSS (no una captura de pantalla real incrustada — ver nota abajo) con datos reales tomados en vivo de `ecoe.drnotus.cl` (KPIs: En pilotaje / 10 estudiantes / 5 estaciones / 5 envios; estaciones reales "Ingreso y anamnesis", "Examen cardiovascular", "Plan diagnostico" con sus minutos/puntaje/badges).
+- Se agrego una seccion "Quienes somos" breve (Dr. Notus) y una linea honesta de madurez del producto, en vez de inventar clientes o cifras falsas.
+- Footer: se agrego "Un producto de Dr. Notus" (sin RUT, no se fabrico un numero legal inexistente).
+
+**Nota tecnica sobre las capturas:** se uso el navegador (Chrome via extension) para loguearse en `ecoe.drnotus.cl` con `admin@ecoe.cl` y navegar Dashboard / Estaciones / Constructor. Las capturas (`save_to_disk`) quedan guardadas en la maquina donde corre la extension de Chrome, no en este servidor — no hay forma de traerlas a este filesystem para incrustarlas como `data:` URI. Por eso se opto por recrear fielmente el contenido (mismos textos/numeros reales) como mockup HTML/CSS con paleta propia, en vez de una imagen real. Si en el futuro se consigue transferir los archivos de captura reales, se pueden reemplazar por `<img>` con `data:` URI dentro de `.app-preview-body`.
+
+## 9. Pendiente para mas adelante (no bloquea esto)
 
 Antes de vender a universidades/hospitales, evaluar migrar la plataforma (no el landing) a un VPS con SLA — la conexion residencial del homelab no lo garantiza. Ver `dr-notus-infrastructure/docs/decisions/005-network-exposure-proposal.md` para contexto de por que el homelab tiene limites para eso a largo plazo.
 
