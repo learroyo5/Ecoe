@@ -47,7 +47,7 @@ Pasos reales, en orden:
 4. Crear los registros `A`, todos proxied (🟠):
    - Zona `ecoe.cl`: `A @`, `A www`, `A app` -> IP publica del origen
    - Zona `plataformaecoe.cl`: `A @`, `A www` -> IP publica del origen
-5. SSL/TLS mode de ambas zonas: se dejo en `Full` mientras el origen no tenia certificado real (evita error 526). El plan era subirlo a `Full (strict)` recien despues de emitir los certificados (paso 3 mas abajo) — el usuario confirmo que lo haria, **pero no quedo verificado en esta sesion que ya este en `Full (strict)`**. Confirmar en el dashboard antes de asumirlo.
+5. SSL/TLS mode de ambas zonas: se dejo en `Full` mientras el origen no tenia certificado real (evita error 526), y se subio a `Full (strict)` una vez emitidos los certificados (paso 3 mas abajo) — confirmado por el usuario el 2026-08-25, con los 5 hosts verificados por `curl` sin cambios de comportamiento tras el cambio.
 
 Verificacion usada en cada etapa:
 

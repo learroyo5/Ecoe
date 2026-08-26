@@ -57,7 +57,7 @@ Expiran 2026-11-23, renovacion automatica ya configurada por certbot (`systemctl
 
 A diferencia del router-forwarding descrito abajo para `drnotus.cl`, estos dos dominios se agregaron como zonas nuevas en la **misma cuenta de Cloudflare**: NS delegados en el registrador, registros `A` proxied (🟠) para `ecoe.cl`, `www`, `app`, `plataformaecoe.cl`, `www.plataformaecoe.cl` apuntando a la IP publica del origen (ver nota de IP mas abajo).
 
-SSL/TLS mode de esas zonas: se dejo en `Full` durante el despliegue (necesario porque el origen todavia no tenia certificado real). El usuario confirmo que iba a subirlo a `Full (strict)` una vez emitidos los certificados, pero **no quedo verificado en esta sesion que ya lo haya cambiado** — antes de asumirlo, confirmar en el dashboard de Cloudflare (SSL/TLS -> Overview de cada zona) en vez de dar por hecho este parrafo.
+SSL/TLS mode de esas zonas: `Full (strict)`, confirmado por el usuario el 2026-08-25 (se dejo en `Full` durante el despliegue mientras el origen no tenia certificado real, y se subio a `Full (strict)` una vez emitidos los 3 certificados). Verificado con `curl` que los 5 hosts siguen respondiendo igual (`ecoe.cl` 200, `www.ecoe.cl`/`plataformaecoe.cl`/`www.plataformaecoe.cl` 301, `app.ecoe.cl` 307) tras el cambio.
 
 ### Permisos usados para aplicar esto sin password interactivo
 
