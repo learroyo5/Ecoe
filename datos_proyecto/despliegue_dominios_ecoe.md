@@ -108,7 +108,32 @@ curl -I https://ecoe.drnotus.cl         # 307, intacto, sin romper nada
 curl -sI https://ecoe.cl/ | grep -i content-type   # debe incluir charset=utf-8
 ```
 
-## 7. Pendiente para mas adelante (no bloquea esto)
+## 7. Paginas legales (Terminos y Privacidad) — agregadas el 2026-08-25
+
+Primer intento: un bloque "Terminos/Privacidad" oculto dentro del propio `index.html`, mostrado con JS al hacer click en el footer. Se descarto porque `drnotus.cl` ya tiene un patron establecido para esto (`location = /terminos`, `location = /privacidad` como archivos propios en `drnotus-multisite`) y no tenia sentido inventar uno distinto solo para `ecoe.cl`. Se reemplazo por dos archivos HTML reales, cada uno con su propia URL:
+
+- `/var/www/ecoe-cl/terminos.html` -> `https://ecoe.cl/terminos`
+- `/var/www/ecoe-cl/privacidad.html` -> `https://ecoe.cl/privacidad`
+
+Bloques agregados dentro del `server { server_name ecoe.cl; }` en `ecoe-domains` (el `root`/`charset` ya existian, ver [nginx_ecoe_cl_landing.conf](/home/learroyo/Proyectos/Ecoe/datos_proyecto/nginx_ecoe_cl_landing.conf) para la copia de referencia actualizada):
+
+```nginx
+location = /terminos {
+    try_files /terminos.html =404;
+}
+
+location = /privacidad {
+    try_files /privacidad.html =404;
+}
+```
+
+El footer del landing enlaza directo a `/terminos` y `/privacidad` (sin JS, son paginas reales). Fuente versionada en `datos_proyecto/ecoe-cl-terminos.html` y `datos_proyecto/ecoe-cl-privacidad.html`, mismo criterio que `ecoe-cl-landing.html`: son copias identicas a lo desplegado, no plantillas.
+
+Para escribir `terminos.html` y `privacidad.html` ademas de `index.html` hizo falta ampliar el sudoers: la regla `tee /var/www/ecoe-cl/index.html` (un archivo exacto) paso a `tee /var/www/ecoe-cl/*` (cualquier archivo dentro de esa carpeta especifica) en `/etc/sudoers.d/claude-ecoe-domains`.
+
+**Aviso sobre el contenido legal:** el texto de ambas paginas es generico y corto, escrito para cubrir lo minimo de este sitio informativo (no recopila datos, no tiene formularios, carga Google Fonts, la plataforma real se rige por acuerdos separados). No es asesoria legal — deberia revisarlo alguien con conocimiento legal antes de darlo por definitivo, especialmente por el manejo de datos clinicos/de salud en la plataforma real (`app.ecoe.cl`, aunque esa plataforma no se nombra explicitamente en el texto a proposito, para no señalarla como algo a lo que el publico general no deberia acceder).
+
+## 8. Pendiente para mas adelante (no bloquea esto)
 
 Antes de vender a universidades/hospitales, evaluar migrar la plataforma (no el landing) a un VPS con SLA — la conexion residencial del homelab no lo garantiza. Ver `dr-notus-infrastructure/docs/decisions/005-network-exposure-proposal.md` para contexto de por que el homelab tiene limites para eso a largo plazo.
 

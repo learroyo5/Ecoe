@@ -1,0 +1,79 @@
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacidad — ECOE.CL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --ink:#12213A; --ink-2:#3C4E6C; --ink-3:#647394;
+    --paper:#F3F4F0; --paper-2:#E7E8E1;
+    --accent:#B96E1E; --accent-2:#8A5115;
+    --line: rgba(18,33,58,0.16);
+    --font-display:'Source Serif 4', Georgia, 'Times New Roman', serif;
+    --font-body:'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif;
+    --font-mono:'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ink:#EDEEE8; --ink-2:#C4CAD8; --ink-3:#93A0B8;
+      --paper:#0E1620; --paper-2:#16202C;
+      --accent:#E0964A; --accent-2:#F0B36B;
+      --line: rgba(237,238,232,0.14);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ink:#EDEEE8; --ink-2:#C4CAD8; --ink-3:#93A0B8;
+    --paper:#0E1620; --paper-2:#16202C;
+    --accent:#E0964A; --accent-2:#F0B36B;
+    --line: rgba(237,238,232,0.14);
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--paper); color:var(--ink); font-family:var(--font-body); line-height:1.6; }
+  a{ color:var(--accent-2); }
+  .wrap{ max-width:720px; margin:0 auto; padding:0 clamp(1.25rem,4vw,2rem); }
+  header{ border-bottom:1px solid var(--line); padding:1.1rem 0; }
+  header .wrap{ display:flex; align-items:center; justify-content:space-between; }
+  .brand{ font-family:var(--font-mono); font-weight:600; font-size:1rem; text-decoration:none; color:var(--ink); }
+  .brand em{ font-style:normal; color:var(--accent-2); }
+  header nav a{ font-family:var(--font-mono); font-size:.78rem; text-decoration:none; color:var(--ink-2); }
+  main{ padding:clamp(2.5rem,6vw,4rem) 0; }
+  h1{ font-family:var(--font-display); font-weight:600; font-size:clamp(1.8rem,4vw,2.4rem); margin:0 0 .5rem; text-wrap:balance; }
+  .updated{ font-family:var(--font-mono); font-size:.72rem; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-3); margin-bottom:2.2rem; }
+  h2{ font-family:var(--font-mono); font-size:.82rem; letter-spacing:.06em; text-transform:uppercase; color:var(--accent-2); font-weight:600; margin:2.2rem 0 .8rem; }
+  h2:first-of-type{ margin-top:0; }
+  p{ color:var(--ink-2); font-size:.98rem; margin:0 0 .9rem; }
+  footer{ border-top:1px solid var(--line); padding:1.5rem 0; }
+  footer .wrap{ font-family:var(--font-mono); font-size:.72rem; color:var(--ink-3); }
+</style>
+
+<header>
+  <div class="wrap">
+    <a class="brand" href="/">ECOE<em>.CL</em></a>
+    <nav><a href="/">&larr; Volver al sitio</a></nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <h1>Privacidad</h1>
+    <div class="updated">Última actualización: agosto de 2026</div>
+
+    <h2>Este sitio</h2>
+    <p>Este sitio no tiene formularios ni cuentas de usuario: no recopilamos datos personales a través de ecoe.cl más allá de lo que usted envíe voluntariamente por correo.</p>
+
+    <h2>Tipografías externas</h2>
+    <p>El sitio carga tipografías desde Google Fonts; al visitarlo, su navegador solicita esos archivos directamente a Google, lo que puede compartir su dirección IP según las políticas propias de Google. No usamos cookies de seguimiento propias en este sitio.</p>
+
+    <h2>La plataforma</h2>
+    <p>Si su institución usa la plataforma ECOE para gestionar exámenes clínicos, el tratamiento de esos datos —que puede incluir información de estudiantes, evaluadores y pacientes simulados— se rige por un acuerdo y una política de privacidad separados, acordados al contratar el servicio, no por esta página.</p>
+
+    <h2>Contacto</h2>
+    <p>Consultas de privacidad: <a href="mailto:contacto@ecoe.cl">contacto@ecoe.cl</a>.</p>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">Evaluación Clínica Objetiva Estructurada · ecoe.cl</div>
+</footer>

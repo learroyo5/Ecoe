@@ -81,6 +81,17 @@
   .eyebrow::before{
     content:""; width:1.5rem; height:1px; background:var(--accent); flex:none;
   }
+  .eyebrow-station{
+    font-size:clamp(.85rem, 2.2vw, 1.05rem);
+    letter-spacing:.1em;
+    gap:.7rem;
+  }
+  .eyebrow-station .dash{ color:var(--ink-3); }
+  .eyebrow-station .stimer{
+    font-variant-numeric:tabular-nums;
+    color:var(--accent);
+    font-weight:700;
+  }
 
   /* ---------- top bar ---------- */
   .topbar{
@@ -117,7 +128,8 @@
   .hero p.lede{
     font-size:1.14rem; color:var(--ink-2); max-width:46ch; margin:1.4rem 0 2rem;
   }
-  .hero .ctas{ display:flex; flex-wrap:wrap; gap:.9rem; }
+  .ctas{ display:flex; flex-wrap:wrap; gap:.9rem; }
+  .cta .ctas{ justify-content:center; }
   .hero .foot-note{
     margin-top:2.2rem; font-family:var(--font-mono); font-size:.74rem; color:var(--ink-3);
     letter-spacing:.03em; display:flex; align-items:center; gap:.6rem;
@@ -223,6 +235,10 @@
   footer .brand{ color:var(--paper); }
   footer .brand em{ color:var(--accent-2); }
   footer .fine{ font-family:var(--font-mono); font-size:.72rem; color:color-mix(in srgb, var(--paper) 55%, transparent); letter-spacing:.03em; }
+  footer .legal-links{ display:flex; gap:1.2rem; font-family:var(--font-mono); font-size:.72rem; letter-spacing:.03em; }
+  footer .legal-links a{ color:color-mix(in srgb, var(--paper) 70%, transparent); text-decoration:none; }
+  footer .legal-links a:hover{ color:var(--accent-2); }
+
 </style>
 
 <div class="topbar">
@@ -274,7 +290,7 @@
 
 <section id="que-es">
   <div class="wrap">
-    <div class="eyebrow"><span class="num">Estación 01</span> — Qué es</div>
+    <div class="eyebrow eyebrow-station"><span class="num">Estación 01</span> <span class="dash">—</span> Qué es <span class="dash">—</span> <span class="stimer" data-total="300">4:58</span> <span class="dash">—</span></div>
     <div class="two-col">
       <div>
         <h2>El método de evaluación clínica más usado del mundo.</h2>
@@ -291,7 +307,7 @@
 
 <section id="para-que-sirve">
   <div class="wrap">
-    <div class="eyebrow"><span class="num">Estación 02</span> — Para qué sirve</div>
+    <div class="eyebrow eyebrow-station"><span class="num">Estación 02</span> <span class="dash">—</span> Para qué sirve <span class="dash">—</span> <span class="stimer" data-total="300">3:41</span> <span class="dash">—</span></div>
     <div class="section-head">
       <h2>Decisiones defendibles, no solo notas.</h2>
     </div>
@@ -307,7 +323,7 @@
 
 <section id="origen">
   <div class="wrap">
-    <div class="eyebrow"><span class="num">Estación 03</span> — Origen</div>
+    <div class="eyebrow eyebrow-station"><span class="num">Estación 03</span> <span class="dash">—</span> Origen <span class="dash">—</span> <span class="stimer" data-total="300">3:07</span> <span class="dash">—</span></div>
     <div class="quote-block">
       <div class="mark-open">&ldquo;</div>
       <div>
@@ -325,7 +341,7 @@
 
 <section id="funciona">
   <div class="wrap">
-    <div class="eyebrow"><span class="num">Estación 04</span> — Cómo funciona</div>
+    <div class="eyebrow eyebrow-station"><span class="num">Estación 04</span> <span class="dash">—</span> Cómo funciona <span class="dash">—</span> <span class="stimer" data-total="300">2:09</span> <span class="dash">—</span></div>
     <div class="section-head">
       <h2>Un circuito, no una conversación.</h2>
     </div>
@@ -341,7 +357,7 @@
 
 <section id="plataforma">
   <div class="wrap">
-    <div class="eyebrow"><span class="num">Estación 05</span> — La plataforma</div>
+    <div class="eyebrow eyebrow-station"><span class="num">Estación 05</span> <span class="dash">—</span> La plataforma <span class="dash">—</span> <span class="stimer" data-total="300">1:36</span> <span class="dash">—</span></div>
     <div class="section-head">
       <h2>Lo que hoy se resuelve con planillas y cronómetros, en un solo sistema.</h2>
       <p class="lead">ECOE.CL ordena toda la logística del examen —diseño, ejecución y resultados— para que el equipo docente se concentre en el criterio clínico, no en la coordinación.</p>
@@ -359,7 +375,7 @@
 
 <section id="dirigido">
   <div class="wrap">
-    <div class="eyebrow"><span class="num">Estación 06</span> — Para quién</div>
+    <div class="eyebrow eyebrow-station"><span class="num">Estación 06</span> <span class="dash">—</span> Para quién <span class="dash">—</span> <span class="stimer" data-total="300">4:14</span> <span class="dash">—</span></div>
     <div class="section-head">
       <h2>Pensado para quien evalúa a gran escala.</h2>
     </div>
@@ -385,7 +401,7 @@
 
 <section id="beneficios">
   <div class="wrap">
-    <div class="eyebrow"><span class="num">Estación 07</span> — Beneficios</div>
+    <div class="eyebrow eyebrow-station"><span class="num">Estación 07</span> <span class="dash">—</span> Beneficios <span class="dash">—</span> <span class="stimer" data-total="300">4:32</span> <span class="dash">—</span></div>
     <div class="section-head">
       <h2>Objetividad que se puede respaldar.</h2>
     </div>
@@ -414,6 +430,10 @@
 <footer>
   <div class="wrap">
     <div class="brand">ECOE<em>.CL</em></div>
+    <div class="legal-links">
+      <a href="/terminos">Términos</a>
+      <a href="/privacidad">Privacidad</a>
+    </div>
     <div class="fine">Evaluación Clínica Objetiva Estructurada · ecoe.cl</div>
   </div>
 </footer>
@@ -433,6 +453,33 @@
   setInterval(function(){
     remaining -= 1;
     if(remaining < 0) remaining = DURATION;
+    render();
+  }, 1000);
+})();
+
+(function(){
+  var nodes = document.querySelectorAll('.stimer[data-total]');
+  if(!nodes.length) return;
+  var timers = [];
+  nodes.forEach(function(node){
+    var total = parseInt(node.getAttribute('data-total'), 10);
+    var parts = node.textContent.split(':');
+    var start = parts.length === 2 ? (parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10)) : total;
+    timers.push({ el: node, total: total, remaining: start });
+  });
+  function fmt(s){
+    var m = Math.floor(s / 60);
+    var ss = s % 60;
+    return m + ':' + (ss < 10 ? '0' : '') + ss;
+  }
+  function render(){
+    timers.forEach(function(t){ t.el.textContent = fmt(t.remaining); });
+  }
+  setInterval(function(){
+    timers.forEach(function(t){
+      t.remaining -= 1;
+      if(t.remaining < 0) t.remaining = t.total;
+    });
     render();
   }, 1000);
 })();

@@ -41,7 +41,10 @@ Host de ECOE (staging/dev):
 
 Dominios propios de producto (3 roles distintos, solo uno toca el backend):
 
-- `ecoe.cl` (+`www`) -> **estatico, sin backend**, `root /var/www/ecoe-cl/index.html` (landing de marketing, un solo archivo HTML autocontenido; incluye `charset utf-8` explicito en el bloque nginx y `<meta charset="UTF-8">` en el HTML porque sin eso los acentos se ven mal, `Ã¡` en vez de `á`)
+- `ecoe.cl` (+`www`) -> **estatico, sin backend**, `root /var/www/ecoe-cl` (`charset utf-8` explicito en el bloque nginx y `<meta charset="UTF-8">` en cada HTML porque sin eso los acentos se ven mal, `Ã¡` en vez de `á`). Tres archivos, cada uno autocontenido (fuentes/estilos propios, no comparten build):
+  - `index.html` -> landing de marketing
+  - `terminos.html` -> `location = /terminos` (paginas legales separadas, no un toggle en el landing — mismo patron que `/terminos`/`/privacidad` de `drnotus.cl`)
+  - `privacidad.html` -> `location = /privacidad`
 - `app.ecoe.cl` -> **la plataforma real**, proxy a `127.0.0.1:3000`, `/api/` -> `127.0.0.1:8000` (clon exacto del bloque de `ecoe.drnotus.cl`, mismo backend/frontend Docker)
 - `plataformaecoe.cl` (+`www`) -> **sin backend, sin contenido propio**, `return 301 https://ecoe.cl$request_uri`
 
