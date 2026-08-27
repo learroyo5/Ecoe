@@ -98,6 +98,19 @@ Evitar:
 
 - registros `AAAA` inventados apuntando a IPs de Cloudflare
 
+## Correo de contacto@ecoe.cl (2026-08-26)
+
+`ecoe.cl` no tenia ningun registro MX previo (ni `drnotus.cl` lo tiene). Se resolvio con **Cloudflare Email Routing** (gratis, en la misma zona/cuenta de Cloudflare), solo para **recibir**:
+
+- Destino verificado: `learroyo@gmail.com`
+- Reglas activas: `contacto@ecoe.cl` -> ese Gmail, mas un `Catch-all` -> mismo Gmail (cualquier otra direccion `@ecoe.cl` mal escrita tambien llega ahi en vez de rebotar)
+- Cloudflare agrego solo los registros DNS (bloqueados/gestionados por Cloudflare, no tocar a mano): `MX` -> `route1/2/3.mx.cloudflare.net`, `TXT` (SPF) -> `v=spf1 include:_spf.mx.cloudflare.net ~all`
+- Probado de punta a punta el 2026-08-26: correo de prueba real llego al Gmail.
+
+**No se configuro "enviar como" `contacto@ecoe.cl` desde Gmail.** Se intento y no es posible sin pagar: Gmail personal exige un servidor SMTP real para enviar como un dominio que Google no reconoce, y Cloudflare Email Routing no tiene SMTP de salida (no existe ningun `smtp.ecoe.cl` al que conectarse). La opcion real para eso seria un buzon con SMTP propio (Zoho Mail gratis hasta 5 usuarios, o Google Workspace de pago) — evaluado y descartado por ahora porque el proyecto sigue en etapa de pilotaje interno, sin volumen de correo que lo justifique. Mientras tanto, las respuestas a `contacto@ecoe.cl` se hacen a mano desde `learroyo@gmail.com`, firmando como "Equipo ECOE.CL".
+
+Si mas adelante se necesita enviar mostrando `contacto@ecoe.cl`, repetir el intento de "enviar como" en Gmail pero primero migrar a un proveedor con SMTP real (Zoho o Workspace) en vez de reintentar con Cloudflare Email Routing solo.
+
 ## Recuperacion tras corte de luz
 
 1. Verificar que Docker este activo.
