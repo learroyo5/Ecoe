@@ -213,7 +213,9 @@ def update_ecoe(
     # Validate the status transition BEFORE committing anything: if it is
     # rejected, the field updates above are rolled back with it.
     try:
-        updated_event = update_ecoe_status(db, ecoe_event, payload.status, commit=False)
+        updated_event = update_ecoe_status(
+            db, ecoe_event, payload.status, commit=False, actor_email=user.email
+        )
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc

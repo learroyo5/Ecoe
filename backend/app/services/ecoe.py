@@ -8,6 +8,7 @@ from app.services.results import (
     export_contingency_pdf,
     export_results_excel,
     persist_results,
+    read_results,
     store_contingency_export,
 )
 
@@ -19,6 +20,7 @@ __all__ = [
     "export_contingency_pdf",
     "export_results_excel",
     "persist_results",
+    "read_results",
     "store_contingency_export",
     "update_ecoe_status",
 ]

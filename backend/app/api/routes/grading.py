@@ -5,8 +5,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.models.entities import AuditLog, StaffAssignment, Station, Student, StudentResponse
-from app.models.enums import RoleCode
+from app.models.entities import (
+    AuditLog,
+    ECOEEvent,
+    StaffAssignment,
+    Station,
+    Student,
+    StudentResponse,
+)
+from app.models.enums import ECOEStatus, RoleCode
 from app.schemas.common import ManualGradeSubmit
 from app.services.authorization import ensure_event_access
 from app.services.dependencies import require_roles
@@ -23,6 +30,11 @@ GRADING_ROLES = (
     RoleCode.corrector.value,
 )
 FULL_GRADING_ROLES = {RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value}
+
+# Una vez cerrado/archivado el evento, los resultados están consolidados: la
+# corrección tardía queda prohibida. Para rectificar una nota hay que reabrir el
+# evento con un retroceso de estado (permitido por el grafo).
+CLOSED_EVENT_STATUSES = {ECOEStatus.cerrado.value, ECOEStatus.archivado.value}
 
 
 def _corrector_station_scope(
@@ -114,6 +126,12 @@ def grade_response(
     response = db.get(StudentResponse, response_id)
     if not response:
         raise HTTPException(status_code=404, detail="Respuesta no encontrada")
+    ecoe_event = db.get(ECOEEvent, response.ecoe_event_id)
+    if ecoe_event is not None and str(ecoe_event.status) in CLOSED_EVENT_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail="El ECOE está cerrado; los resultados están consolidados",
+        )
     event_roles = ensure_event_access(db, user, response.ecoe_event_id, *GRADING_ROLES)
     station_scope = _corrector_station_scope(db, user, response.ecoe_event_id, event_roles)
     if station_scope is not None and response.station_id not in station_scope:

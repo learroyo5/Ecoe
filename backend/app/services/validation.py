@@ -409,7 +409,12 @@ ALLOWED_STATUS_TRANSITIONS: dict[str, set[str]] = {
 
 
 def update_ecoe_status(
-    db: Session, ecoe_event: ECOEEvent, target_status: str, *, commit: bool = True
+    db: Session,
+    ecoe_event: ECOEEvent,
+    target_status: str,
+    *,
+    commit: bool = True,
+    actor_email: str | None = None,
 ) -> ECOEEvent:
     validation = compute_ecoe_validation(db, ecoe_event)
     current_status = str(ecoe_event.status)
@@ -456,7 +461,7 @@ def update_ecoe_status(
         # window survives the closure (the stage gate rejects new records).
         from app.services.results import persist_results
 
-        persist_results(db, ecoe_event.id, commit=False)
+        persist_results(db, ecoe_event.id, commit=False, actor_email=actor_email)
         open_checkins = db.scalars(
             select(StationCheckIn).where(
                 StationCheckIn.ecoe_event_id == ecoe_event.id,

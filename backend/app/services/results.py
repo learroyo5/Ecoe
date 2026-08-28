@@ -9,8 +9,11 @@ from reportlab.pdfgen import canvas
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from datetime import datetime
+
 from app.core.config import get_settings
 from app.models.entities import (
+    AuditLog,
     ContingencyExport,
     ECOEEvent,
     ECOEResult,
@@ -22,7 +25,12 @@ from app.models.entities import (
     Student,
     StudentResponse,
 )
-from app.models.enums import RoleCode, SessionMode
+from app.models.enums import ECOEStatus, RoleCode, SessionMode
+
+# Una vez cerrado/archivado el evento, los resultados oficiales son el snapshot
+# `ECOEResult` escrito al cierre: ninguna edición posterior de respuestas o
+# registros debe mover el número que sirve `/results` o el export.
+FROZEN_RESULT_STATUSES = {ECOEStatus.cerrado.value, ECOEStatus.archivado.value}
 
 
 def compute_equivalent_grade(percentage: float, passing_reference_percent: float) -> float:
@@ -99,7 +107,60 @@ def compute_results(db: Session, ecoe_event_id: int) -> list[dict]:
     return results
 
 
-def persist_results(db: Session, ecoe_event_id: int, *, commit: bool = True) -> list[dict]:
+def read_results(
+    db: Session, ecoe_event_id: int
+) -> tuple[list[dict], bool, datetime | None]:
+    """Vista de resultados para lectura (`/results`, export).
+
+    Si el evento está `cerrado`/`archivado` **y** existe snapshot `ECOEResult`,
+    devuelve el snapshot congelado (misma forma que `compute_results`) junto con
+    `frozen=True` y la fecha de consolidación (`ECOEResult.updated_at`). En
+    cualquier otro estado —o si el cierre no dejó snapshot— recalcula en vivo con
+    `compute_results` y `frozen=False`.
+    """
+    ecoe_event = db.get(ECOEEvent, ecoe_event_id)
+    if ecoe_event is not None and str(ecoe_event.status) in FROZEN_RESULT_STATUSES:
+        snapshots = db.scalars(
+            select(ECOEResult)
+            .where(ECOEResult.ecoe_event_id == ecoe_event_id)
+            .order_by(ECOEResult.student_id.asc())
+        ).all()
+        if snapshots:
+            students = {
+                student.id: student
+                for student in db.scalars(
+                    select(Student).where(Student.ecoe_event_id == ecoe_event_id)
+                ).all()
+            }
+            consolidated_at = max(
+                (snap.updated_at for snap in snapshots if snap.updated_at is not None),
+                default=None,
+            )
+            results = []
+            for snap in snapshots:
+                student = students.get(snap.student_id)
+                results.append({
+                    "student_id": snap.student_id,
+                    "student_name": (
+                        f"{student.name} {student.last_name}" if student else ""
+                    ),
+                    "ecoe_number": student.ecoe_number if student else None,
+                    "total_score": round(snap.total_score, 2),
+                    "max_score": round(snap.max_score, 2),
+                    "percentage": round(snap.percentage, 2),
+                    "equivalent_grade": round(snap.equivalent_grade, 2),
+                })
+            return results, True, consolidated_at
+    return compute_results(db, ecoe_event_id), False, None
+
+
+def persist_results(
+    db: Session,
+    ecoe_event_id: int,
+    *,
+    commit: bool = True,
+    actor_email: str | None = None,
+) -> list[dict]:
     results = compute_results(db, ecoe_event_id)
     db.query(ECOEResult).filter(ECOEResult.ecoe_event_id == ecoe_event_id).delete()
     for item in results:
@@ -110,6 +171,14 @@ def persist_results(db: Session, ecoe_event_id: int, *, commit: bool = True) -> 
             max_score=item["max_score"],
             percentage=item["percentage"],
             equivalent_grade=item["equivalent_grade"],
+        ))
+    if actor_email:
+        db.add(AuditLog(
+            user_email=actor_email,
+            action="consolidate_results",
+            target_type="ECOEEvent",
+            target_id=str(ecoe_event_id),
+            payload={"student_count": len(results)},
         ))
     if commit:
         db.commit()
@@ -353,7 +422,10 @@ def build_traceability_report(
 
 
 def export_results_excel(db: Session, ecoe_event_id: int, *, persist: bool = False) -> bytes:
-    data = persist_results(db, ecoe_event_id) if persist else compute_results(db, ecoe_event_id)
+    if persist:
+        data = persist_results(db, ecoe_event_id)
+    else:
+        data, _, _ = read_results(db, ecoe_event_id)
     df = pd.DataFrame(data)
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:

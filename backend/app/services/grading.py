@@ -99,26 +99,37 @@ def apply_manual_scores(
 ) -> None:
     """Resolve the pending manual questions of a response."""
     grading = dict(response.grading or {})
-    pending = {
+    manual = {
         key
         for key, item in grading.items()
         if isinstance(item, dict) and item.get("kind") == "manual"
     }
-    if not pending:
+    if not manual:
         raise HTTPException(
             status_code=400,
             detail="Esta respuesta no tiene preguntas de corrección manual",
         )
-    unknown = set(scores) - pending
+    unknown = set(scores) - manual
     if unknown:
         raise HTTPException(
             status_code=400,
             detail=f"Preguntas no corregibles manualmente: {', '.join(sorted(unknown))}",
         )
-    missing = {
-        key for key in pending
-        if grading[key].get("earned") is None and key not in scores
-    }
+    # Re-corrección de una pregunta ya resuelta: prohibida por este flujo. Cambiar
+    # un puntaje ya asignado exige el procedimiento de rectificación (reabrir el
+    # evento), no un reenvío silencioso de `scores`.
+    already_resolved = {key for key in manual if grading[key].get("earned") is not None}
+    regrade = set(scores) & already_resolved
+    if regrade:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"La(s) pregunta(s) {', '.join(sorted(regrade))} ya tienen puntaje; "
+                "usa el flujo de rectificación"
+            ),
+        )
+    pending = manual - already_resolved
+    missing = {key for key in pending if key not in scores}
     if missing:
         raise HTTPException(
             status_code=400,

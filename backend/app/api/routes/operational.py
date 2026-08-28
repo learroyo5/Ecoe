@@ -31,10 +31,10 @@ from app.services.dependencies import authenticate_session_token, get_current_us
 from app.services.ecoe import (
     build_dashboard,
     build_traceability_report,
-    compute_results,
     export_contingency_pdf,
     export_results_excel,
     persist_results,
+    read_results,
 )
 from app.services.authorization import ADMIN_EVENT_ROLE_CODES, ensure_event_access
 from app.services.media import (
@@ -326,9 +326,11 @@ def validation(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(g
 @router.get("/results/{ecoe_event_id}")
 def get_results(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
-    results = compute_results(db, ecoe_event_id)
+    results, frozen, consolidated_at = read_results(db, ecoe_event_id)
     return {
         "results": results,
+        "frozen": frozen,
+        "consolidated_at": consolidated_at.isoformat() if consolidated_at else None,
         **build_traceability_report(db, ecoe_event_id, consolidated_results=results),
     }
 
@@ -336,7 +338,7 @@ def get_results(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(
 @router.post("/results/{ecoe_event_id}/consolidate")
 def consolidate_results(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
-    results = persist_results(db, ecoe_event_id)
+    results = persist_results(db, ecoe_event_id, actor_email=user.email)
     return {
         "consolidated": True,
         "results": results,
