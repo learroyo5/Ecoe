@@ -93,10 +93,14 @@ Test scratch del auditor (verificado): evento `cerrado` con `ECOEResult=(0,0)` �
 
 ## Verificación
 
-- [ ] `cd backend && python3 -m pytest`
+- [x] `cd backend && python3 -m pytest` — 200 passed (incluye `tests/test_results_immutability.py`, 14 casos).
+- [x] Migración desde base limpia: `DATABASE_URL=sqlite:////tmp/ecoe_alembic_check.db ... alembic upgrade head`
+      llega a `k1f2a3b4c5d6` sin migración nueva (OPT-1 es sin migración).
 - [ ] `TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q`
-      (no toca constraints, pero se cambió lógica de resultados)
-- [ ] `cd frontend && npm run lint && npm run build`
+      (no toca constraints, pero se cambió lógica de resultados) — pendiente: sin Postgres en el entorno de implementación.
+- [ ] `cd frontend && npm run lint && npm run build` — no aplica: OPT-1 se implementó **solo backend**
+      (A/B/C/D). Los ajustes de UI del plan (chip "Resultados consolidados" en `/results`, aviso "ECOE cerrado"
+      en `/grading`, test frontend) quedan como seguimiento; el backend ya es autoridad (409 + `frozen` en el payload).
 
 ## Decisión de producto pendiente (bloquea el detalle del plan)
 
