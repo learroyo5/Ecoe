@@ -169,7 +169,7 @@ export default function LoginPage() {
                 onChange={(event) => setPassword(event.target.value)}
               />
             </label>
-            <button className="btn-primary w-full text-base">Iniciar sesión</button>
+            <button className="btn-primary mt-4 w-full text-base">Iniciar sesión</button>
             {error ? (
               <p role="alert" className="text-sm text-[var(--color-error)]">{error}</p>
             ) : null}
