@@ -111,4 +111,5 @@ Test scratch del auditor (verificado): evento `cerrado` con `ECOEResult=(0,0)` �
 ## Estado de aprobación
 
 - Propuesto por: optimizador — 2026-08-28
-- Aprobado por usuario: ⬜ pendiente
+- Aprobado por usuario: ✅ 2026-08-28 (parte del lote de estabilización Grupo A)
+- **Decisión de producto**: corrección tardía tras `cerrado` queda **PROHIBIDA** — `grade_response` y `apply_manual_scores` devuelven 409 si `ecoe_event.status` es `cerrado`/`archivado`. `/results` y el export sirven el snapshot de `ECOEResult`; no recalculan en vivo cuando el evento está cerrado. Para corregir hay que reabrir explícitamente (retroceso de estado permitido por el grafo).

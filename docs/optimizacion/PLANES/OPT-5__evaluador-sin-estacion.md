@@ -71,4 +71,5 @@ individual)?** A es menos fricción y ya es el comportamiento del import; B es m
 ## Estado de aprobación
 
 - Propuesto por: optimizador — 2026-08-28
-- Aprobado por usuario: ⬜ pendiente
+- Aprobado por usuario: ✅ 2026-08-28 (parte del lote de estabilización Grupo A)
+- **Decisión**: Opción A — se permite el alta individual de evaluador sin estación (coherente con el import masivo). Alinear ambos caminos y conservar el copy de "asignación diferida".

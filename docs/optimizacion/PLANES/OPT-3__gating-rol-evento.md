@@ -83,4 +83,4 @@ No hay hueco de seguridad backend que cubrir con negativos (el backend ya valida
 ## Estado de aprobación
 
 - Propuesto por: optimizador — 2026-08-28
-- Aprobado por usuario: ⬜ pendiente
+- Aprobado por usuario: ✅ 2026-08-28 (parte del lote de estabilización Grupo A)

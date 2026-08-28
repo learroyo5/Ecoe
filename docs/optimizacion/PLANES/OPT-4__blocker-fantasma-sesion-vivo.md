@@ -50,4 +50,4 @@ transición a `publicado` (`validation.py:433-444`), así que en `borrador … p
 ## Estado de aprobación
 
 - Propuesto por: optimizador — 2026-08-28
-- Aprobado por usuario: ⬜ pendiente
+- Aprobado por usuario: ✅ 2026-08-28 (parte del lote de estabilización Grupo A)

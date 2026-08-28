@@ -105,4 +105,5 @@ funcionalmente suficiente para el día del examen pero H-vivo-6 queda parcialmen
 ## Estado de aprobación
 
 - Propuesto por: optimizador — 2026-08-28
-- Aprobado por usuario: ⬜ pendiente
+- Aprobado por usuario: ✅ 2026-08-28 (parte del lote de estabilización Grupo A)
+- **Decisión de schema**: se aprueba la **Parte 2** — columna `mode` en `station_checkins` con migración Alembic. Correr la suite contra Postgres antes de dar por buena la migración.
