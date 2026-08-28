@@ -22,6 +22,16 @@ La v2 del producto esta completa y ya paso su primer ensayo funcional real con e
 - UX operativa: modales de confirmacion con resumen, semaforo de tiempo, indicador de borrador, reconexion WS visible, vista proyector, busqueda en tablas.
 - E2E Playwright (`scripts/run_e2e.sh`) y checklist operativa (`docs/OPERACION_DIA_EXAMEN.md`).
 
+### Evaluación diferida — Fase 1 (agosto 2026)
+
+Vacío detectado: las estaciones sin evaluador presencial y sin autocorrección (el estudiante escribe, alguien puntúa después) no tenían responsable configurable. La corrección la hacía cualquier `admin_ecoe`/`coeditor_docente` sobre una lista plana, sin que Validación exigiera a nadie.
+
+- Rol operativo nuevo `corrector`: `StaffAssignment` acotado a una o varias estaciones, delegable por coeditor/coordinador igual que `evaluador`/`cronometrador`. Solo entra a la pantalla Corrección y solo ve las respuestas de sus estaciones.
+- Capacidad de estación `requires_deferred_grading` (switch en el Constructor). Exige el formulario del estudiante con al menos una pregunta de respuesta breve con puntaje y un corrector asignado; Validación lo bloquea y `can_publish` lo incluye.
+- Trazabilidad: una respuesta enviada pero sin puntuar mantiene al estudiante en `parcial` (`pending_deferred_gradings`). Cerrar el ECOE con correcciones pendientes se advierte en el modal de cierre, no se bloquea.
+- Demo: estación 6 "Informe de laboratorio" (corrección diferida) + cuenta `corrector@ecoe.cl`.
+- Diseño y alcance: `docs/architecture/EVALUACION_DIFERIDA_FASE1.md`.
+
 ### Alta de equipo unificada (agosto 2026)
 
 Incorporar gente a un ECOE obligaba a un rodeo: crear primero la cuenta institucional a mano en Usuarios y recien despues asignarla en Evaluadores, reescribiendo nombre y apellido (donde un tipeo creaba una identidad divergente para el mismo correo). La carga masiva exigia que todas las cuentas existieran de antemano y descartaba en silencio las filas sin cuenta.

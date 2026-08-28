@@ -33,9 +33,28 @@ def normalize_ecoe_lookup(value: str | None) -> str:
     return text.lower()
 
 
-def normalize_station_ids(raw_station_ids: list[int] | None) -> list[int]:
-    station_ids = [station_id for station_id in (raw_station_ids or []) if station_id]
-    return station_ids[:1]
+def normalize_station_ids(
+    raw_station_ids: list[int] | None, *, single: bool = True
+) -> list[int]:
+    """Clean a station-id list, de-duplicating and dropping falsy values.
+
+    `single=True` (default) keeps only the first id: most staff roles have at
+    most one meaningful station (the evaluador's principal station). A
+    `corrector` may cover several deferred-grading stations, so the staff
+    routes pass `single=False` for that role.
+    """
+    seen: set[int] = set()
+    station_ids: list[int] = []
+    for station_id in raw_station_ids or []:
+        if not station_id or station_id in seen:
+            continue
+        seen.add(station_id)
+        station_ids.append(station_id)
+    return station_ids[:1] if single else station_ids
+
+
+# Roles cuyo `station_ids` puede tener más de una estación.
+MULTI_STATION_ROLE_CODES = {"corrector"}
 
 
 # ── Business helpers ────────────────────────────────────────────────────
@@ -58,7 +77,8 @@ def next_student_ecoe_number(db: Session, ecoe_event_id: int) -> str:
 def ensure_primary_station_assignment(staff: StaffAssignment | None) -> tuple[list[int], bool]:
     if not staff:
         return [], False
-    normalized_station_ids = normalize_station_ids(staff.station_ids)
+    single = str(staff.role_code) not in MULTI_STATION_ROLE_CODES
+    normalized_station_ids = normalize_station_ids(staff.station_ids, single=single)
     changed = normalized_station_ids != (staff.station_ids or [])
     if changed:
         staff.station_ids = normalized_station_ids

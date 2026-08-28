@@ -195,6 +195,10 @@ def build_traceability_report(
     expected_evaluations_total = 0
     expected_student_submissions_total = 0
 
+    deferred_grading_station_ids = {
+        station.id for station in stations if station.requires_deferred_grading
+    }
+
     student_traceability: list[dict] = []
     for student in students:
         required_evaluator_station_count, required_student_form_station_count = (
@@ -214,9 +218,22 @@ def build_traceability_report(
         )
         has_expected_evaluations = len(student_evaluations) >= required_evaluator_station_count
         has_expected_student_responses = len(student_form_responses) >= required_student_form_station_count
+        # Respuestas en estaciones de corrección diferida aún sin puntaje
+        # definitivo: el estudiante no está "completo" hasta que se corrijan.
+        pending_deferred_gradings = sum(
+            1
+            for item in student_form_responses
+            if item.station_id in deferred_grading_station_ids
+            and item.max_score is not None
+            and item.score_obtained is None
+        )
         if not student_checkins and not student_evaluations and not student_form_responses:
             completion_status = "sin actividad"
-        elif has_expected_evaluations and has_expected_student_responses:
+        elif (
+            has_expected_evaluations
+            and has_expected_student_responses
+            and pending_deferred_gradings == 0
+        ):
             completion_status = "completo"
         else:
             completion_status = "parcial"
@@ -231,6 +248,7 @@ def build_traceability_report(
             "student_submissions": len(student_form_responses),
             "missing_evaluations": max(0, required_evaluator_station_count - len(student_evaluations)),
             "missing_student_submissions": max(0, required_student_form_station_count - len(student_form_responses)),
+            "pending_deferred_gradings": pending_deferred_gradings,
             "completion_status": completion_status,
             "last_checkin_at": latest_checkin.isoformat() if latest_checkin else None,
             "last_evaluation_at": latest_evaluation.isoformat() if latest_evaluation else None,

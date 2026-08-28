@@ -7,6 +7,7 @@ class RoleCode(str, Enum):
     admin_ecoe = "admin_ecoe"
     coeditor_docente = "coeditor_docente"
     evaluador = "evaluador"
+    corrector = "corrector"
     estudiante = "estudiante"
     coordinador_operativo = "coordinador_operativo"
     cronometrador = "cronometrador"

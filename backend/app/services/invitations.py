@@ -22,7 +22,11 @@ from app.models.enums import RoleCode
 from app.schemas.common import EventMemberInvite
 from app.services.authorization import validate_staff_role_code
 from app.utils.clock import utcnow_naive
-from app.utils.helpers import normalize_email, normalize_station_ids
+from app.utils.helpers import (
+    MULTI_STATION_ROLE_CODES,
+    normalize_email,
+    normalize_station_ids,
+)
 
 
 def hash_invitation_token(token: str) -> str:
@@ -45,12 +49,27 @@ def _validated_assignment(
     require_evaluator_station: bool = True,
 ) -> tuple[str, list[int]]:
     role_code = validate_staff_role_code(payload.role_code)
-    station_ids = normalize_station_ids(payload.station_ids)
-    if require_evaluator_station and role_code == RoleCode.evaluador.value and not station_ids:
-        raise HTTPException(status_code=400, detail="El evaluador debe tener una estación principal asignada")
+    single = role_code not in MULTI_STATION_ROLE_CODES
+    station_ids = normalize_station_ids(payload.station_ids, single=single)
+    if (
+        require_evaluator_station
+        and role_code in {RoleCode.evaluador.value, RoleCode.corrector.value}
+        and not station_ids
+    ):
+        detail = (
+            "El corrector debe tener al menos una estación de evaluación diferida asignada"
+            if role_code == RoleCode.corrector.value
+            else "El evaluador debe tener una estación principal asignada"
+        )
+        raise HTTPException(status_code=400, detail=detail)
     if station_ids:
-        station = db.get(Station, station_ids[0])
-        if not station or station.ecoe_event_id != payload.ecoe_event_id:
+        found = db.scalars(
+            select(Station).where(
+                Station.id.in_(station_ids),
+                Station.ecoe_event_id == payload.ecoe_event_id,
+            )
+        ).all()
+        if len(found) != len(station_ids):
             raise HTTPException(status_code=400, detail="La estación no pertenece al ECOE indicado")
     return role_code, station_ids
 

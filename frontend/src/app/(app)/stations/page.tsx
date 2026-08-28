@@ -149,6 +149,14 @@ export default function StationsPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <StatusBadge status={String(station.status ?? "en_diseno")} />
+                  {station.requires_deferred_grading ? (
+                    <span
+                      className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700"
+                      title="Las respuestas se puntúan después de la rotación en la pantalla Corrección"
+                    >
+                      Corrección diferida
+                    </span>
+                  ) : null}
                   {needsKiosk ? (
                     <span
                       className="inline-flex items-center rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-semibold text-purple-700"

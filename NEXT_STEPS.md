@@ -45,6 +45,7 @@
 
 ## Completado en agosto 2026
 
+- ~~Evaluación diferida Fase 1~~ ✅ — rol `corrector`, capacidad de estación `requires_deferred_grading`, Validación y trazabilidad. Diseño en `docs/architecture/EVALUACION_DIFERIDA_FASE1.md`. Pendiente Fase 2 (ver abajo).
 - ~~Unificar el alta de equipo en una sola pantalla (Evaluadores)~~ ✅
   - ~~Alta individual por correo: la cuenta existente manda su nombre, no se retipea~~ ✅
   - ~~Importacion masiva que crea cuentas `pending` con invitacion en vez de descartar filas~~ ✅
@@ -64,7 +65,14 @@
    - Retro pendiente: definir evaluador fijo para las estaciones 2 y 4 (hoy las cubre coordinacion), y hacer la prueba de red formal en el recinto real antes del examen.
    - Ya corregido en el mismo ensayo: el reloj del kiosco seguia corriendo tras enviar (ahora se congela), y la pantalla dejaba visible la identidad/respuestas del estudiante anterior para quien llegara despues (ahora se reemplaza por una pantalla neutra hasta que el evaluador confirme al siguiente).
 
-2. Rotacion autonoma en estaciones kiosco-solo sin evaluador (diseno, NO implementar aun)
+2. Evaluación diferida Fase 2 (diseño en `docs/architecture/EVALUACION_DIFERIDA_FASE1.md`, sección final)
+   - Adjuntar entregables (PDF, foto, audio, video) por estudiante/estación para corregir estaciones **sin formulario** (p. ej. un procedimiento grabado).
+   - Registro puntuable "en blanco" por check-in confirmado, para estaciones que se puntúan solo desde papel/observación.
+   - Puntuación estructurada contra los ítems de la pauta (mismo renderer que la pantalla Evaluador) con comentario por ítem, en vez de número libre.
+   - Edición de las estaciones de un corrector desde la tabla de Evaluadores (hoy solo en el alta).
+   - Opcional: doble corrección ciega e índice de acuerdo inter-rater.
+
+3. Rotacion autonoma en estaciones kiosco-solo sin evaluador (diseno, NO implementar aun)
    - Hoy el check-in de una estacion solo lo cierra un humano (el evaluador/coordinador confirma al siguiente estudiante por numero ECOE). En estaciones sin evaluador asignado (kiosco puro, ej. 2 y 4) eso exige que alguien este pendiente igual, lo que le quita el sentido a que sean "autonomas".
    - Opciones a evaluar mas adelante, no excluyentes:
      a. Auto-cierre por deadline: cuando pasa `submission_deadline` (o un margen corto despues), el backend cierra el check-in solo (job o chequeo perezoso en el poll del kiosco) y la tablet vuelve a esperar — pero sigue faltando quien confirme la identidad del siguiente.
@@ -72,21 +80,21 @@
      c. Rotacion atada al circuito: si el panel en vivo ya sincroniza la estacion actual de cada grupo (`current_station_index`), la identidad podria resolverse por asignacion de grupo/circuito en vez de confirmacion manual por instancia.
    - Cualquier opcion debe mantener la misma garantia de privacidad ya corregida arriba (nunca mostrar al siguiente estudiante la identidad/respuestas del anterior).
 
-3. Multimedia
+4. Multimedia
    - Mejorar preview de audio y video con controles avanzados.
    - Definir si el material se muestra antes, durante o despues de la estacion.
 
-4. Exportaciones
+5. Exportaciones
    - Mejorar formato de Excel consolidado con estadisticas por estacion.
    - PDF por estacion con formato imprimible real (membrete, tabla de puntajes).
 
-5. Seguridad operativa
+6. Seguridad operativa
    - Logout real del lado cliente (invalidar token).
    - Expiracion de token mejor manejada (refresh token).
    - ~~Integrar envio transaccional de invitaciones~~ ✅ (2026-08-18): SMTP configurado en `backend/.env`, invitaciones e import masivo envian correo real; se agrego ademas reinicio de acceso para cuentas activas (admin_ecoe/coeditor_docente, sin requerir admin_global).
    - Ampliar auditoria y MFA para acciones institucionales sensibles.
 
-6. Testing
+7. Testing
    - Tests de frontend de componentes clave (kiosco, evaluador).
    - Ampliar el e2e: pausa/contingencia y correccion manual en UI.
 

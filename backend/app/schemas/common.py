@@ -224,6 +224,7 @@ class StationCreate(BaseModel):
     evaluator_instruction: str
     requires_evaluator: bool = True
     requires_student_form: bool = False
+    requires_deferred_grading: bool = False
     uses_multimedia: bool = False
     uses_simulated_patient: bool = False
     uses_physical_resources: bool = False
@@ -260,6 +261,7 @@ class StationBankBase(BaseModel):
     evaluator_instruction: str
     requires_evaluator: bool = True
     requires_student_form: bool = False
+    requires_deferred_grading: bool = False
     uses_multimedia: bool = False
     uses_simulated_patient: bool = False
     uses_physical_resources: bool = False

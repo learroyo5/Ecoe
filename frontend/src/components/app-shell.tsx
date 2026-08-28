@@ -28,7 +28,13 @@ export function AppShell({
     ["admin_ecoe", "coeditor_docente", "coordinador_operativo"].includes(role),
   );
   const effectiveOperatorRole = !hasManagerRole
-    ? eventRoles.find((role) => role === "evaluador" || role === "estudiante" || role === "cronometrador")
+    ? eventRoles.find(
+        (role) =>
+          role === "evaluador" ||
+          role === "estudiante" ||
+          role === "cronometrador" ||
+          role === "corrector",
+      )
     : undefined;
 
   useEffect(() => {
@@ -36,6 +42,7 @@ export function AppShell({
     if (effectiveOperatorRole === "evaluador") router.replace("/evaluator");
     if (effectiveOperatorRole === "estudiante") router.replace("/student");
     if (effectiveOperatorRole === "cronometrador") router.replace("/live");
+    if (effectiveOperatorRole === "corrector") router.replace("/grading");
   }, [authenticated, effectiveOperatorRole, pathname, ready, router]);
 
   if (!ready || !authenticated) return null;

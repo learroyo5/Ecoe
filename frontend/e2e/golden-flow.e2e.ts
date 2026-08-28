@@ -133,7 +133,10 @@ test.describe.serial("flujo dorado", () => {
     await kiosk.getByRole("radio").first().check();
     await kiosk.getByRole("button", { name: "Enviar respuesta final" }).click();
     await kiosk.getByRole("dialog").getByRole("button", { name: "Enviar respuesta" }).click();
-    await expect(kiosk.getByRole("button", { name: "Respuesta enviada ✓" })).toBeVisible();
+    // Tras enviar, el kiosco reemplaza la identidad/respuestas por una pantalla
+    // neutra (ver commit "ocultar identidad y respuestas del kiosco tras enviar").
+    await expect(kiosk.getByRole("heading", { name: "Respuesta enviada ✓" })).toBeVisible();
+    await expect(kiosk.getByText("E002 · Estudiante2 Demo")).toHaveCount(0);
 
     await kioskContext.close();
   });

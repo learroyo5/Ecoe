@@ -13,6 +13,7 @@ from app.models.entities import (
     Station,
     StationCheckIn,
     Student,
+    StudentResponse,
     User,
 )
 from app.models.enums import ECOEStatus, RoleCode, StationStatus
@@ -33,6 +34,13 @@ ECOE_STATUS_LABELS: dict[str, str] = {
 
 # Re-export for backward compatibility
 __all__ = ["compute_ecoe_validation", "update_ecoe_status"]
+
+
+def _question_points(question: dict) -> float:
+    try:
+        return float(question.get("points") or 0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
@@ -59,6 +67,18 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
     assigned_station_ids = {
         int(station_id)
         for assignment in evaluator_assignments
+        for station_id in (assignment.station_ids or [])
+        if station_id
+    }
+    corrector_assignments = db.scalars(
+        select(StaffAssignment).where(
+            StaffAssignment.ecoe_event_id == ecoe_event.id,
+            StaffAssignment.role_code == RoleCode.corrector.value,
+        )
+    ).all()
+    corrector_station_ids = {
+        int(station_id)
+        for assignment in corrector_assignments
         for station_id in (assignment.station_ids or [])
         if station_id
     }
@@ -114,6 +134,20 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
             blockers.append("La pauta asignada no tiene criterios evaluables.")
         if station.requires_student_form and question_count == 0:
             blockers.append("Requiere formulario del estudiante, pero no tiene preguntas guardadas.")
+        manual_scored_questions = sum(
+            1
+            for q in (station.student_form_definition or {}).get("questions", [])
+            if isinstance(q, dict)
+            and str(q.get("type") or "") not in {"single_choice", "multiple_choice"}
+            and _question_points(q) > 0
+        )
+        if station.requires_deferred_grading:
+            if not station.requires_student_form or manual_scored_questions == 0:
+                blockers.append(
+                    "Marca corrección diferida, pero no tiene preguntas de corrección manual con puntaje."
+                )
+            if station.id not in corrector_station_ids:
+                blockers.append("No tiene corrector asignado para la evaluación diferida.")
         if station.uses_multimedia and media_count == 0:
             blockers.append("Declara uso de multimedia, pero no tiene archivos cargados.")
         if station.uses_simulated_patient and not station.simulated_patient_id:
@@ -171,6 +205,34 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
         ).requires_evaluator
         for issue in station_issues
     ) if station_issues else True
+    # Estaciones de corrección diferida: cada una debe tener un corrector
+    # asignado que la cubra (ver docs/architecture/EVALUACION_DIFERIDA_FASE1.md).
+    deferred_grading_stations = [s for s in stations if s.requires_deferred_grading]
+    deferred_grading_ready = all(
+        station.id in corrector_station_ids for station in deferred_grading_stations
+    )
+    # Respuestas enviadas en estaciones de corrección diferida que aún no
+    # tienen puntaje definitivo: quedan fuera del consolidado. No bloquea el
+    # cierre, pero el modal de cierre lo advierte.
+    pending_deferred_grading_station_numbers: list[int] = []
+    if deferred_grading_stations:
+        deferred_ids = [s.id for s in deferred_grading_stations]
+        pending_station_ids = {
+            row[0]
+            for row in db.execute(
+                select(StudentResponse.station_id)
+                .where(
+                    StudentResponse.ecoe_event_id == ecoe_event.id,
+                    StudentResponse.station_id.in_(deferred_ids),
+                    StudentResponse.score_obtained.is_(None),
+                    StudentResponse.max_score.is_not(None),
+                )
+                .distinct()
+            ).all()
+        }
+        pending_deferred_grading_station_numbers = sorted(
+            s.station_number for s in deferred_grading_stations if s.id in pending_station_ids
+        )
     # Evaluadores asignados cuyo correo no tiene cuenta activa: el dia del
     # examen no podran iniciar sesion, pero la asignacion "se ve" completa.
     evaluator_emails = {
@@ -215,7 +277,8 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
     can_pilot = metadata_ready and students_count > 0 and station_count > 0 and timer_ready and all_stations_ready
     can_publish = (
         metadata_ready and all_stations_ready and tools_ready and forms_ready
-        and multimedia_ready and assignments_ready and timer_ready and pilot_count > 0
+        and multimedia_ready and assignments_ready and deferred_grading_ready
+        and timer_ready and pilot_count > 0
     )
     has_live_session = db.scalar(
         select(func.count(LiveSession.id)).where(LiveSession.ecoe_event_id == ecoe_event.id)
@@ -239,6 +302,11 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
                 None if forms_ready else "Hay estaciones que requieren formulario del estudiante y aún no tienen preguntas guardadas.",
                 None if multimedia_ready else "Hay estaciones multimedia sin archivos cargados.",
                 None if assignments_ready else "Hay estaciones con evaluador requerido, pero sin asignación principal.",
+                None if deferred_grading_ready else "Hay estaciones de corrección diferida sin corrector asignado.",
+                None if not pending_deferred_grading_station_numbers else (
+                    "Estaciones de corrección diferida con respuestas sin puntuar (no sumarán a Resultados hasta corregirse): "
+                    + ", ".join(str(number) for number in pending_deferred_grading_station_numbers)
+                ),
                 None if not evaluators_without_account else (
                     "Evaluadores asignados sin cuenta de usuario activa (no podrán iniciar sesión): "
                     + ", ".join(evaluators_without_account)
@@ -279,6 +347,11 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
              "detail": "Todas las estaciones con evaluador o formulario deben tener su configuración guardada."},
             {"label": "Recursos y asignaciones resueltos", "ok": multimedia_ready and assignments_ready,
              "detail": "Multimedia declarada y asignación principal de evaluadores deben estar completos."},
+            {"label": "Correctores de evaluación diferida asignados", "ok": deferred_grading_ready,
+             "detail": (
+                 f"{len(deferred_grading_stations)} estación(es) marcadas como corrección diferida; "
+                 "cada una necesita un corrector asignado."
+             )},
             {"label": "Pilotajes registrados", "ok": pilot_count > 0,
              "detail": f"Se han registrado {pilot_count} pilotajes."},
         ],
@@ -294,6 +367,9 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
         ],
         "station_issues": station_issues,
         "assignments_ready": assignments_ready,
+        "deferred_grading_ready": deferred_grading_ready,
+        "deferred_grading_station_count": len(deferred_grading_stations),
+        "pending_deferred_grading_stations": pending_deferred_grading_station_numbers,
         "metadata_ready": metadata_ready,
         "timer_ready": timer_ready,
     }

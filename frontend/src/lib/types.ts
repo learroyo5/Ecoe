@@ -82,6 +82,7 @@ export type Station = {
   evaluator_instruction: string;
   requires_evaluator: boolean;
   requires_student_form: boolean;
+  requires_deferred_grading: boolean;
   uses_multimedia: boolean;
   uses_simulated_patient: boolean;
   uses_physical_resources: boolean;
@@ -144,6 +145,7 @@ export type StationBank = {
   evaluator_instruction: string;
   requires_evaluator: boolean;
   requires_student_form: boolean;
+  requires_deferred_grading: boolean;
   uses_multimedia: boolean;
   uses_simulated_patient: boolean;
   max_score: number;

@@ -293,6 +293,10 @@ class Station(Base, TimestampMixin):
     evaluator_instruction: Mapped[str] = mapped_column(Text, nullable=False)
     requires_evaluator: Mapped[bool] = mapped_column(Boolean, default=True)
     requires_student_form: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Corrección diferida: un `corrector` puntúa las respuestas del formulario
+    # después de la rotación, sin estar presente en la estación (ver
+    # docs/architecture/EVALUACION_DIFERIDA_FASE1.md).
+    requires_deferred_grading: Mapped[bool] = mapped_column(Boolean, default=False)
     uses_multimedia: Mapped[bool] = mapped_column(Boolean, default=False)
     uses_simulated_patient: Mapped[bool] = mapped_column(Boolean, default=False)
     uses_physical_resources: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -326,6 +330,7 @@ class StationBank(Base, TimestampMixin):
     evaluator_instruction: Mapped[str] = mapped_column(Text, nullable=False)
     requires_evaluator: Mapped[bool] = mapped_column(Boolean, default=True)
     requires_student_form: Mapped[bool] = mapped_column(Boolean, default=False)
+    requires_deferred_grading: Mapped[bool] = mapped_column(Boolean, default=False)
     uses_multimedia: Mapped[bool] = mapped_column(Boolean, default=False)
     uses_simulated_patient: Mapped[bool] = mapped_column(Boolean, default=False)
     uses_physical_resources: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -23,6 +23,7 @@ Fecha: 2026-06-29
 | `coordinador_operativo` | Opera estudiantes, staff, live, incidencias y resultados si esta asignado al ECOE. |
 | `cronometrador` | Controla panel en vivo si esta asignado al ECOE. |
 | `evaluador` | Accede a su estacion asignada dentro del ECOE. |
+| `corrector` | Puntua las respuestas de las estaciones de evaluacion diferida que tiene asignadas dentro del ECOE (pantalla Correccion). No accede a configuracion, live, estudiantes ni resultados. Delegable por coeditor/coordinador; admite varias estaciones. |
 | `estudiante` | Accede a su ECOE activo y a la estacion confirmada por check-in. |
 | `miembro` | Identidad institucional neutra; no concede acceso por si sola y obtiene capacidades solo mediante asignaciones por ECOE. |
 
@@ -46,6 +47,7 @@ Fecha: 2026-06-29
 | Live WebSocket | Si | No | Si | Si | No | No |
 | Incidencias | Si | No | Si | Si | No | No |
 | Evaluacion | Si | No | Si | No | Solo estacion asignada | No |
+| Correccion diferida (`/grading`) | Si | Si | No | No | No | No |
 | Respuesta estudiante | Si | No | Si | No | No | Solo su usuario/check-in |
 | Resultados | Si | Si | Si | No | No | No |
 | Consolidar resultados | Si | Si | Si | No | No | No |
@@ -53,6 +55,8 @@ Fecha: 2026-06-29
 | Media evaluador | Si | Si | Si | No | Solo estacion asignada | No |
 
 El `admin_global` hereda las capacidades de `admin_ecoe` sobre todos los eventos. Ademas, es el unico que puede listar/crear/modificar cuentas globales y conceder o revocar administradores por ECOE.
+
+La columna `corrector` (omitida de la tabla por brevedad) solo tiene `Si` en "Listar/ver ECOE asignado" y en "Correccion diferida (`/grading`)", y ahi acotado a las estaciones de su `StaffAssignment`. Todo lo demas es `No`. Ver `docs/architecture/EVALUACION_DIFERIDA_FASE1.md`.
 
 ## Incorporacion de miembros por ECOE
 
@@ -76,7 +80,8 @@ Los bancos de plantillas, instrumentos, pacientes simulados y estaciones son ins
 - Un admin de ECOE no puede gestionar cuentas institucionales ni crear otros ECOE.
 - Un ID de estacion de otro ECOE se rechaza en updates, exports e incidencias.
 - Las restricciones de evaluador/estudiante usan roles efectivos del ECOE, no el rol global de la cuenta.
-- Coeditor y coordinador no pueden delegar roles privilegiados; solo evaluador o cronometrador.
+- Coeditor y coordinador no pueden delegar roles privilegiados; solo evaluador, corrector o cronometrador.
+- Un corrector del ECOE A no puede listar ni corregir respuestas del ECOE B, ni de una estacion fuera de su asignacion.
 - Un administrador de ECOE no puede enumerar cuentas, invitar para otro ECOE ni asignar `admin_ecoe`.
 - Una cuenta pendiente o suspendida no puede iniciar sesion.
 - Una invitacion vencida, reutilizada o reemplazada no puede activar la cuenta.

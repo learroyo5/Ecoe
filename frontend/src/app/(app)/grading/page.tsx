@@ -51,9 +51,22 @@ export default function GradingPage() {
   const [draftScores, setDraftScores] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
+  const [stationFilter, setStationFilter] = useState<string>("");
+
   const responses = useMemo(() => data?.responses ?? [], [data]);
-  const pending = responses.filter((row) => row.pending_questions.length > 0);
-  const graded = responses.filter((row) => row.pending_questions.length === 0);
+  const stationChoices = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const row of responses) {
+      const key = String(row.station_number ?? "");
+      if (key && !seen.has(key)) seen.set(key, `Estación ${key}: ${row.station_name}`);
+    }
+    return [...seen.entries()].sort((a, b) => Number(a[0]) - Number(b[0]));
+  }, [responses]);
+  const visibleResponses = stationFilter
+    ? responses.filter((row) => String(row.station_number ?? "") === stationFilter)
+    : responses;
+  const pending = visibleResponses.filter((row) => row.pending_questions.length > 0);
+  const graded = visibleResponses.filter((row) => row.pending_questions.length === 0);
 
   const questionLabel = (row: GradableResponse, key: string) => {
     const index = Number(key.replace("question_", "")) - 1;
@@ -175,9 +188,26 @@ export default function GradingPage() {
     <div className="space-y-6">
       <SectionCard
         title="Corrección de formularios"
-        subtitle="Las alternativas se corrigen automáticamente al enviarse; aquí resuelves las respuestas breves con puntaje. Solo lo corregido entra a Resultados."
+        subtitle="Las alternativas se corrigen automáticamente al enviarse; aquí resuelves las respuestas breves con puntaje (evaluación diferida). Solo lo corregido entra a Resultados."
       >
         <StatusNotice message={message} />
+        {stationChoices.length > 1 ? (
+          <label className="mt-3 flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-700">
+            Estación
+            <select
+              value={stationFilter}
+              onChange={(event) => setStationFilter(event.target.value)}
+              className="font-normal"
+            >
+              <option value="">Todas ({responses.length})</option>
+              {stationChoices.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </SectionCard>
 
       {loading ? (

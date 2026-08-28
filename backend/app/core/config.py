@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     admin_password: str = ""
     coeditor_password: str = ""
     evaluator_password: str = ""
+    corrector_password: str = ""
     student_password: str = ""
     coordinator_password: str = ""
     timer_password: str = ""

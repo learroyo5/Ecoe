@@ -131,12 +131,14 @@ export default function StationBuilderPage() {
       requiresEvaluator: !(category.includes("formulario") || category.includes("multimedia")),
       requiresStudentForm:
         category.includes("formulario") || category.includes("multimedia") || category.includes("hibrid"),
+      requiresDeferredGrading: false,
       usesMultimedia: category.includes("multimedia") || category.includes("hibrid"),
       usesSimulatedPatient: category.includes("paciente"),
     };
     setCapabilities({
       requiresEvaluator: Boolean(config.requires_evaluator ?? base.requiresEvaluator),
       requiresStudentForm: Boolean(config.requires_student_form ?? base.requiresStudentForm),
+      requiresDeferredGrading: Boolean(config.requires_deferred_grading ?? base.requiresDeferredGrading),
       usesMultimedia: Boolean(config.uses_multimedia ?? base.usesMultimedia),
       usesSimulatedPatient: Boolean(config.uses_simulated_patient ?? base.usesSimulatedPatient),
     });
@@ -171,6 +173,18 @@ export default function StationBuilderPage() {
     return Number.isFinite(points) && points > 0 && question.prompt.trim() ? sum + points : sum;
   }, 0);
 
+  // Corrección diferida: exige el formulario del estudiante con al menos una
+  // pregunta de respuesta breve puntuada (el backend valida lo mismo).
+  const hasManualScoredQuestion = studentQuestions.some(
+    (question) =>
+      question.type === "short_text" &&
+      question.prompt.trim() &&
+      Number(question.points) > 0,
+  );
+  const deferredGradingReady =
+    !capabilities.requiresDeferredGrading ||
+    (capabilities.requiresStudentForm && hasManualScoredQuestion);
+
   const stepCompletion: Record<StepIndex, boolean> = {
     1:
       Boolean(form.name.trim()) &&
@@ -181,6 +195,7 @@ export default function StationBuilderPage() {
       (!capabilities.requiresEvaluator || Boolean(selectedAssessmentToolId)) &&
       (!capabilities.usesSimulatedPatient || Boolean(selectedPatientId)) &&
       (!capabilities.requiresStudentForm || hasStudentQuestions) &&
+      deferredGradingReady &&
       Number(form.max_score) > 0,
     3:
       Boolean(form.pre_entry_instruction.trim()) &&
@@ -197,6 +212,7 @@ export default function StationBuilderPage() {
     2: [
       capabilities.requiresEvaluator && !selectedAssessmentToolId ? "pauta de evaluación" : null,
       capabilities.requiresStudentForm && !hasStudentQuestions ? "preguntas del formulario" : null,
+      !deferredGradingReady ? "pregunta de respuesta breve con puntaje (corrección diferida)" : null,
       capabilities.usesSimulatedPatient && !selectedPatientId ? "paciente simulado" : null,
       Number(form.max_score) > 0 ? null : "puntaje máximo",
     ]
@@ -432,6 +448,7 @@ export default function StationBuilderPage() {
     max_score: Number(form.max_score),
     requires_evaluator: capabilities.requiresEvaluator,
     requires_student_form: capabilities.requiresStudentForm,
+    requires_deferred_grading: capabilities.requiresDeferredGrading,
     uses_multimedia: capabilities.usesMultimedia,
     uses_simulated_patient: capabilities.usesSimulatedPatient,
     uses_physical_resources: true,
@@ -454,6 +471,7 @@ export default function StationBuilderPage() {
     evaluator_instruction: form.evaluator_instruction,
     requires_evaluator: capabilities.requiresEvaluator,
     requires_student_form: capabilities.requiresStudentForm,
+    requires_deferred_grading: capabilities.requiresDeferredGrading,
     uses_multimedia: capabilities.usesMultimedia,
     uses_simulated_patient: capabilities.usesSimulatedPatient,
     uses_physical_resources: true,
@@ -494,6 +512,7 @@ export default function StationBuilderPage() {
     const nextCapabilities: StationCapabilities = {
       requiresEvaluator: Boolean(station.requires_evaluator ?? true),
       requiresStudentForm: Boolean(station.requires_student_form),
+      requiresDeferredGrading: Boolean(station.requires_deferred_grading),
       usesMultimedia: Boolean(station.uses_multimedia),
       usesSimulatedPatient: Boolean(station.uses_simulated_patient),
     };

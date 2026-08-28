@@ -58,6 +58,7 @@ def get_ecoe(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get
         RoleCode.coeditor_docente.value,
         RoleCode.coordinador_operativo.value,
         RoleCode.evaluador.value,
+        RoleCode.corrector.value,
         RoleCode.cronometrador.value,
         RoleCode.estudiante.value,
     )
@@ -328,6 +329,7 @@ def duplicate_ecoe(
             evaluator_instruction=st.evaluator_instruction,
             requires_evaluator=st.requires_evaluator,
             requires_student_form=st.requires_student_form,
+            requires_deferred_grading=st.requires_deferred_grading,
             uses_multimedia=st.uses_multimedia,
             uses_simulated_patient=st.uses_simulated_patient,
             uses_physical_resources=st.uses_physical_resources,

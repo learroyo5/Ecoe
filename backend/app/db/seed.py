@@ -54,6 +54,7 @@ def seed_data(db: Session) -> None:
         (RoleCode.admin_ecoe.value, "Administrador ECOE"),
         (RoleCode.coeditor_docente.value, "Coeditor docente"),
         (RoleCode.evaluador.value, "Evaluador"),
+        (RoleCode.corrector.value, "Corrector de evaluación diferida"),
         (RoleCode.estudiante.value, "Estudiante"),
         (RoleCode.coordinador_operativo.value, "Coordinador operativo"),
         (RoleCode.cronometrador.value, "Cronometrador"),
@@ -73,6 +74,7 @@ def seed_data(db: Session) -> None:
         ("admin@ecoe.cl", "Admin global", settings.admin_password, RoleCode.admin_global.value),
         ("coeditor@ecoe.cl", "Dr. Pablo Rojas", settings.coeditor_password, RoleCode.coeditor_docente.value),
         ("eval1@ecoe.cl", "Enf. Camila Soto", settings.evaluator_password, RoleCode.evaluador.value),
+        ("corrector@ecoe.cl", "Dra. Lucía Fuentes", settings.corrector_password, RoleCode.corrector.value),
         ("student1@ecoe.cl", "Estudiante 1 Demo", settings.student_password, RoleCode.estudiante.value),
         ("coord@ecoe.cl", "Coordinación ECOE", settings.coordinator_password, RoleCode.coordinador_operativo.value),
         ("timer@ecoe.cl", "Cronómetro Central", settings.timer_password, RoleCode.cronometrador.value),
@@ -118,7 +120,7 @@ def seed_data(db: Session) -> None:
         responsible_teacher="Admin ECOE",
         contact_email="ecoe@universidad.cl",
         circuit_mode="paralelo_espejo",
-        total_stations=5,
+        total_stations=6,
         station_time_minutes=8,
         transition_time_minutes=2,
         total_students=10,
@@ -202,14 +204,25 @@ def seed_data(db: Session) -> None:
     db.add(simulated_patient)
     db.flush()
 
+    # (nombre, tipo, requires_evaluator, requires_student_form, multimedia, requires_deferred_grading)
     station_defs = [
-        ("Ingreso y anamnesis", "paciente_simulado", True, False, False),
-        ("Interpretación ECG", "multimedia", True, True, True),
-        ("Examen cardiovascular", "procedimental", True, False, False),
-        ("Plan diagnóstico", "formulario_estudiante", False, True, False),
-        ("Consejería y cierre", "hibrida", True, True, False),
+        ("Ingreso y anamnesis", "paciente_simulado", True, False, False, False),
+        ("Interpretación ECG", "multimedia", True, True, True, False),
+        ("Examen cardiovascular", "procedimental", True, False, False, False),
+        ("Plan diagnóstico", "formulario_estudiante", False, True, False, False),
+        ("Consejería y cierre", "hibrida", True, True, False, False),
+        ("Informe de laboratorio", "formulario_estudiante", False, True, False, True),
     ]
-    for idx, (name, station_type, requires_eval, requires_form, multimedia) in enumerate(
+    deferred_form = {
+        "questions": [
+            {
+                "type": "short_text",
+                "label": "Interpreta los resultados de laboratorio y justifica tu conducta",
+                "points": 20,
+            }
+        ]
+    }
+    for idx, (name, station_type, requires_eval, requires_form, multimedia, requires_deferred) in enumerate(
         station_defs, start=1
     ):
         db.add(
@@ -230,6 +243,7 @@ def seed_data(db: Session) -> None:
                 evaluator_instruction="Observe, puntue y registre observaciones relevantes.",
                 requires_evaluator=requires_eval,
                 requires_student_form=requires_form,
+                requires_deferred_grading=requires_deferred,
                 uses_multimedia=multimedia,
                 uses_simulated_patient=station_type == "paciente_simulado",
                 uses_physical_resources=True,
@@ -239,17 +253,21 @@ def seed_data(db: Session) -> None:
                 simulator="Paciente estandarizado",
                 ambience="Box de urgencia",
                 multimedia_notes="Mostrar ECG previo en PDF" if multimedia else "",
-                student_form_definition={
-                    "questions": [
-                        {
-                            "type": "single_choice",
-                            "label": "Diagnóstico más probable",
-                            "options": ["SCA", "TEP", "RGE"],
-                        }
-                    ]
+                student_form_definition=(
+                    deferred_form
+                    if requires_deferred
+                    else {
+                        "questions": [
+                            {
+                                "type": "single_choice",
+                                "label": "Diagnóstico más probable",
+                                "options": ["SCA", "TEP", "RGE"],
+                            }
+                        ]
+                    }
                     if requires_form
-                    else []
-                },
+                    else {}
+                ),
                 contingency_ready=True,
                 status=StationStatus.validada.value,
             )
@@ -294,6 +312,15 @@ def seed_data(db: Session) -> None:
             email="eval2@ecoe.cl",
             role_code=RoleCode.evaluador.value,
             station_ids=[3, 4],
+        ),
+        StaffAssignment(
+            ecoe_event_id=ecoe.id,
+            name="Lucía",
+            last_name="Fuentes",
+            email="corrector@ecoe.cl",
+            role_code=RoleCode.corrector.value,
+            # Estación 6 "Informe de laboratorio": corrección diferida.
+            station_ids=[6],
         ),
         StaffAssignment(
             ecoe_event_id=ecoe.id,

@@ -330,9 +330,11 @@ interface StatusTransitionBarProps {
   onTransition: (targetStatus: string) => void;
   disabled?: boolean;
   loading?: boolean;
+  /** Números de estación con corrección diferida sin puntuar: se advierte al cerrar. */
+  pendingDeferredGradingStations?: number[];
 }
 
-export function StatusTransitionBar({ currentStatus, onTransition, disabled = false, loading = false }: StatusTransitionBarProps) {
+export function StatusTransitionBar({ currentStatus, onTransition, disabled = false, loading = false, pendingDeferredGradingStations = [] }: StatusTransitionBarProps) {
   const [confirming, setConfirming] = useState<TransitionAction | null>(null);
 
   const transitions = STATUS_TRANSITIONS[currentStatus] ?? [];
@@ -386,6 +388,13 @@ export function StatusTransitionBar({ currentStatus, onTransition, disabled = fa
           <div className="mx-4 w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl animate-fade-in" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-semibold text-slate-900">{confirming.confirmTitle}</h3>
             <p className="mt-2 text-sm text-slate-600">{confirming.confirmMessage}</p>
+            {confirming.target === "cerrado" && pendingDeferredGradingStations.length > 0 ? (
+              <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Hay corrección diferida pendiente en la(s) estación(es){" "}
+                {pendingDeferredGradingStations.join(", ")}. Esas respuestas no sumarán a Resultados si
+                cierras ahora.
+              </p>
+            ) : null}
             <div className="mt-6 flex gap-3 justify-end">
               <button className="btn-secondary" onClick={() => setConfirming(null)}>Cancelar</button>
               <button

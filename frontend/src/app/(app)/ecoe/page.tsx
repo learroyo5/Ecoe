@@ -28,6 +28,15 @@ export default function ECOEPage() {
     () => api.ecoe(eventId) as Promise<ECOEEvent>,
     [eventId, authenticated],
   );
+  const { data: validation } = useApi(
+    () => api.validation(eventId) as Promise<Record<string, unknown>>,
+    [eventId, authenticated],
+  );
+  const pendingDeferredGradingStations = Array.isArray(
+    (validation as { pending_deferred_grading_stations?: unknown })?.pending_deferred_grading_stations,
+  )
+    ? ((validation as { pending_deferred_grading_stations: number[] }).pending_deferred_grading_stations)
+    : [];
   const [formValues, setFormValues] = useState<Record<string, string> | null>(null);
   const [createValues, setCreateValues] = useState<Record<string, string>>({ ...DEFAULT_CREATE_VALUES });
   const [message, setMessage] = useState<string | null>(null);
@@ -133,6 +142,7 @@ export default function ECOEPage() {
               onTransition={handleStatusTransition}
               disabled={saving || transitioning}
               loading={transitioning}
+              pendingDeferredGradingStations={pendingDeferredGradingStations}
             />
             <div className="flex flex-wrap gap-3">
               <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Guardando..." : "Guardar ECOE"}</button>
