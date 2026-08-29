@@ -33,7 +33,7 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 | OPT-6 | Visibilidad de pausa del cronómetro en evaluador y kiosko | H-vivo-3 | media | carga operativa: 1 contingencia por estudiante del circuito por cada pausa | M–L · decisión de enfoque | **absorbido por OPT-20** | `PLANES/OPT-20__cronometro-sincronico.md` (F1) |
 | OPT-7 | CRUD de instrumentos / plantillas / pacientes simulados | H-admin-ecoe-4 | media | banco institucional se llena de pautas muertas; no se corrige una pauta con error | M · impacto cross-event | triado | — |
 | OPT-15 | Fricción del corrector (cola personal, siguiente-pendiente, rúbrica de referencia) | H-corr-5, H-corr-6 | media | corrección diferida a escala; gap vs. diseño FASE1 §Decisión 4 | M · sin migración | triado | — |
-| OPT-20 | Cronómetro sincrónico único + autoguardado/autoenvío (absorbe OPT-6) | mini-auditoría OPT-20 (H-opt20-1..6, D1–D8) + H-vivo-3 | media (capacidad + carga operativa) | día del examen: el buzzer no garantiza captura; cada pausa dispara reingresos por contingencia; el registro del evaluador a medio llenar se pierde | XL · 4 fases (M + L + M–L + M) · 3 migraciones (F2/F3/F4) — gate humano · cambia comportamiento observable (D2) | **implementando** (F1 + núcleo server-side de F2 en-verificación; frontend de F2 y F3–F4 pendientes) | `PLANES/OPT-20__cronometro-sincronico.md` |
+| OPT-20 | Cronómetro sincrónico único + autoguardado/autoenvío (absorbe OPT-6) | mini-auditoría OPT-20 (H-opt20-1..6, D1–D8) + H-vivo-3 | media (capacidad + carga operativa) | día del examen: el buzzer no garantiza captura; cada pausa dispara reingresos por contingencia; el registro del evaluador a medio llenar se pierde | XL · 4 fases (M + L + M–L + M) · 3 migraciones (F2/F3/F4) — gate humano · cambia comportamiento observable (D2) | **implementando** (F1 + F2 completas —backend + frontend— en-verificación; solo falta e2e con Docker; F3–F4 pendientes) | `PLANES/OPT-20__cronometro-sincronico.md` |
 
 ## Grupo C — Capacidad de análisis de datos (Fase 2 — features grandes, requieren dimensionamiento y definición metodológica del usuario)
 
@@ -214,10 +214,17 @@ frontend). Plan redactado: `PLANES/OPT-20__cronometro-sincronico.md`.
     (híbrido lazy + `/live/control`, sin scheduler) + persistencia server-side del borrador. Migración:
     tabla `station_response_drafts` + `student_responses.submission_kind`. **Cambia comportamiento observable
     el día del examen (D2)** → `docs/OPERACION_DIA_EXAMEN.md` y CLAUDE.md actualizados.
-    _Estado 2026-08-29: núcleo server-side implementado en rama `opt/OPT-20-F2`, en-verificación
-    (`resolve_submission_deadline`, `services/live_sweep.py`, `PUT /student|kiosk/draft`, acción
-    `expire_phase`). Backend + Postgres + alembic up/down verdes; 18 tests F2 nuevos. **Pendiente**:
-    frontend (`/student`, `/kiosk` empujan el borrador con debounce + 409 "ya enviada" como éxito) y e2e._
+    _Estado 2026-08-29: **F2 completa (backend + frontend), en-verificación total.** Backend en rama
+    `opt/OPT-20-F2` (`resolve_submission_deadline`, `services/live_sweep.py`, `PUT /student|kiosk/draft`,
+    acción `expire_phase`). Frontend en rama `opt/OPT-20-F2-frontend`: `/student` y `/kiosk` empujan el
+    borrador con debounce (~0,8 s) + latido de 10 s manteniendo el `localStorage` como respaldo; el 400/409
+    "ya fue enviada" del autoenvío y del envío manual se trata como éxito (re-fetch → pantalla enviado); el
+    `phaseEndsAt` del WS manda sobre el `submission_deadline` del REST cuando hay conexión y fase corriendo;
+    botón "Finalizar la estación en curso ahora" (`expire_phase`) con confirmación en `/live`. Backend +
+    Postgres + alembic up/down verdes; 18 tests F2 backend + 2 vitest nuevos
+    (`test_client_autosubmit_conflict_is_treated_as_success` + push de borrador con debounce); lint + build +
+    vitest (47) verdes; `pytest -q` sigue en 249. **Pendiente**: `./scripts/run_e2e.sh` (escenario de
+    autoenvío server-side; necesita Docker, no ejecutable en la sesión de implementación)._
   - **F3** (M–L) — borrador del `EvaluatorRecord` (`is_draft`) + finalización por contingencia + filtro en
     `compute_results`/trazabilidad. Migración: `evaluator_records.is_draft`.
   - **F4** (M) — `submission_kind` en `student_responses` y `evaluator_records` + flag `answered` por pregunta

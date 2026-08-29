@@ -248,7 +248,8 @@ cambia todavía la semántica del deadline ni toca migraciones. Riesgo bajo.
 de la fase del `LiveSession`; el servidor cierra las ventanas vencidas. **Cambia
 comportamiento observable el día del examen** (D2).
 
-> **Estado 2026-08-29 — núcleo server-side implementado, en-verificación** (rama `opt/OPT-20-F2`).
+> **Estado 2026-08-29 — F2 completa (backend + frontend), en-verificación total.** Backend en rama
+> `opt/OPT-20-F2`; frontend en rama `opt/OPT-20-F2-frontend` (desde el HEAD de F2). Solo resta el e2e con Docker.
 > - [x] Backend a) `helpers.py::resolve_submission_deadline` (running / transition / paused /
 >   fallback Reloj B en pilotaje) + `ensure_checkin_within_time` recableado (3 call-sites,
 >   contingencia sigue saltándose la ventana); context endpoints emiten `submission_deadline` /
@@ -269,10 +270,18 @@ comportamiento observable el día del examen** (D2).
 > - [x] Tests: `tests/test_opt20_f2_deadline_and_sweep.py` (18, con negativos) · `python3 -m pytest`
 >   SQLite y Postgres verdes (249) · alembic upgrade/downgrade/upgrade desde base limpia OK ·
 >   ningún test previo debilitado.
-> - [ ] **Frontend e)**: `/student`, `/kiosk` empujan el borrador con debounce (cada cambio + ~10s)
->   además del `localStorage`; tratar 409 "ya enviada" como éxito (re-fetch → pantalla enviado);
->   verificar que el `submission_deadline` del REST y el `current_phase_ends_at` del WS no se
->   contradigan. **Vitest `test_client_autosubmit_conflict_is_treated_as_success` pendiente.**
+> - [x] **Frontend e)** (rama `opt/OPT-20-F2-frontend`): `api.studentDraft` / `api.kioskDraft` en
+>   `src/lib/api.ts`; `/student` y `/kiosk` empujan el borrador con debounce (~0,8 s) + latido de 10 s,
+>   manteniendo el `localStorage` como respaldo. `isAlreadySubmittedError` en `api.ts`: el 400/409 "ya fue
+>   enviada" del autoenvío y del envío manual se trata como éxito (re-fetch del contexto → pantalla
+>   "respuesta enviada" en kiosko / vuelta a identificación con aviso en estudiante). Precedencia WS: el
+>   `phaseEndsAt` del frame WS manda sobre el `submission_deadline` del REST cuando hay conexión y
+>   `status === "running"` (REST = arranque/fallback; en transición/pausa el REST ya refleja la ventana
+>   cerrada y no se pisa). Botón "Finalizar la estación en curso ahora" (`expire_phase`, con confirmación)
+>   en `src/app/(app)/live/page.tsx`. Tipos `submission_deadline` / `evaluator_deadline` / snapshot del
+>   reloj en `src/lib/types.ts`. Vitest: `test_client_autosubmit_conflict_is_treated_as_success` + push de
+>   borrador con debounce en `src/app/kiosk/__tests__/page.test.tsx`. `npm run lint && npm run build &&
+>   npx vitest run` (47) verdes; `pytest -q` sigue en 249 (backend intacto).
 > - [ ] `./scripts/run_e2e.sh` — escenario de autoenvío server-side (sandbox sin Docker).
 
 **Decisión de implementación (2026-08-29):** el barrido disparado por
