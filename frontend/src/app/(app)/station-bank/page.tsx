@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
+import { canAccessStationArea, canEditStations } from "@/lib/permissions";
+import { defaultRouteForRole } from "@/lib/routes";
 import { useApi } from "@/hooks/use-api";
 import { DataTable } from "@/components/data-table";
 import { SectionCard } from "@/components/section-card";
@@ -18,9 +20,10 @@ const bankStatusOptions = [
 ];
 
 export default function StationBankPage() {
-  const { authenticated, eventId, eventRoles, user } = useECOE();
-  const canEditContent = user?.role === "admin_global"
-    || eventRoles.some((role) => role === "admin_ecoe" || role === "coeditor_docente");
+  const { authenticated, eventId, eventRoles, eventRolesLoaded, user } = useECOE();
+  const canEditContent = canEditStations(user?.role, eventRoles);
+  const canAccess = canAccessStationArea(user?.role, eventRoles);
+  const accessDenied = eventRolesLoaded && !canAccess;
   const router = useRouter();
   const { data: templates } = useApi(
     () => api.templates(eventId) as Promise<Record<string, unknown>[]>,
@@ -32,16 +35,16 @@ export default function StationBankPage() {
   );
 
   useEffect(() => {
-    if (user?.role === "evaluador") {
-      router.replace("/evaluator");
+    if (accessDenied) {
+      router.replace(defaultRouteForRole(user?.role ?? ""));
     }
-  }, [router, user?.role]);
+  }, [router, accessDenied, user?.role]);
 
-  if (user?.role === "evaluador") {
+  if (accessDenied) {
     return (
       <SectionCard
         title="Acceso restringido"
-        subtitle="El perfil evaluador no puede entrar al banco de estaciones."
+        subtitle="Tu rol en este ECOE no permite entrar al banco de estaciones."
       >
         <p>Te estamos redirigiendo a tu interfaz operativa.</p>
       </SectionCard>

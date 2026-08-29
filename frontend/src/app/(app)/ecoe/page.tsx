@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
+import { canDuplicateEcoe } from "@/lib/permissions";
 import { useApi } from "@/hooks/use-api";
 import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
@@ -19,7 +21,9 @@ const DEFAULT_CREATE_VALUES: Record<string, string> = {
 };
 
 export default function ECOEPage() {
-  const { authenticated, eventId, setEventId, user } = useECOE();
+  const { authenticated, eventId, setEventId, user, eventRoles } = useECOE();
+  const searchParams = useSearchParams();
+  const canDuplicate = canDuplicateEcoe(user?.role, eventRoles);
   const { data: ecoeList, loading: listLoading, error: listError, setData: setECOEList } = useApi(
     () => api.listECOE() as Promise<ECOEEvent[]>,
     [authenticated],
@@ -54,6 +58,17 @@ export default function ECOEPage() {
 
   const editableValues = useMemo(() => toEditableValues(ecoeEvent as unknown as Record<string, unknown> | null), [ecoeEvent]);
   const activeValues = formValues ?? editableValues;
+
+  // Abrir el modal de duplicación cuando se llega desde /ecoe/[id] "Duplicar"
+  // (?duplicate=1). Así el botón de detalle deja de ser un callejón sin salida.
+  useEffect(() => {
+    if (searchParams.get("duplicate") === "1" && ecoeEvent && canDuplicate) {
+      setDupName(`${ecoeEvent.name} (copia)`);
+      setDupDate(ecoeEvent.date ?? "");
+      setDupCopyEvaluators(false);
+      setDupModal(true);
+    }
+  }, [searchParams, ecoeEvent, canDuplicate]);
 
   const refreshList = async (targetId?: number) => {
     const refreshed = (await api.listECOE()) as ECOEEvent[];
@@ -147,7 +162,7 @@ export default function ECOEPage() {
             <div className="flex flex-wrap gap-3">
               <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Guardando..." : "Guardar ECOE"}</button>
               <button type="button" className="btn-secondary" onClick={() => { setFormValues(editableValues); setMessage(null); setErrors({}); }} disabled={saving}>Revertir</button>
-              <button type="button" className="btn-secondary" disabled={!ecoeEvent || user?.role !== "admin_ecoe"}
+              <button type="button" className="btn-secondary" disabled={!ecoeEvent || !canDuplicate}
                 onClick={() => {
                   if (!ecoeEvent) return;
                   setDupName(`${ecoeEvent.name} (copia)`);

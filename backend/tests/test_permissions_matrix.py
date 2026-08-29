@@ -77,3 +77,18 @@ def test_ecoe_creation_is_admin_only(client):
     login(client, ADMIN)
     response = client.post("/api/ecoe", json=payload)
     assert response.status_code == 200
+
+
+def test_duplicate_ecoe_allowed_for_global_admin(client):
+    """OPT-3: la UI habilita "Duplicar ECOE" para admin_global; el backend
+    ya lo acepta. Este test fija ese contrato (200 para admin_global) y que
+    los roles operativos siguen bloqueados (403)."""
+    for credentials in (COORDINATOR, EVALUATOR, STUDENT, TIMER):
+        login(client, credentials)
+        denied = client.post("/api/ecoe/1/duplicate", json={"name": "ECOE Copia No"})
+        assert denied.status_code == 403, f"{credentials[0]} pudo duplicar un ECOE"
+
+    login(client, ADMIN)
+    allowed = client.post("/api/ecoe/1/duplicate", json={"name": "ECOE Copia OPT3"})
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.json()["status"] == "borrador"

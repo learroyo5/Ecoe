@@ -13,6 +13,10 @@ type ECOEContextValue = {
   authenticated: boolean;
   user: UserSession | null;
   eventRoles: string[];
+  /** true once the effective ECOE roles for the active event have been
+   *  fetched at least once. Guards must wait for this before redirecting,
+   *  so a multi-role account is not bounced on the initial empty `[]`. */
+  eventRolesLoaded: boolean;
   ready: boolean;
   eventId: number;
   loading: boolean;
@@ -30,6 +34,7 @@ export function ECOEProvider({ children }: { children: React.ReactNode }) {
   const [authenticated, setAuthenticated] = useState(false);
   const [user, setUser] = useState<UserSession | null>(null);
   const [eventRoles, setEventRoles] = useState<string[]>([]);
+  const [eventRolesLoaded, setEventRolesLoaded] = useState(false);
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [ecoeList, setECOEList] = useState<ECOEEvent[]>([]);
@@ -74,6 +79,7 @@ export function ECOEProvider({ children }: { children: React.ReactNode }) {
   const loadECOEData = useCallback(async () => {
     if (!authenticated || !eventId) return;
     setLoading(true);
+    setEventRolesLoaded(false);
     try {
       const [event, dash, roleContext] = await Promise.all([
         api.ecoe(eventId),
@@ -82,6 +88,7 @@ export function ECOEProvider({ children }: { children: React.ReactNode }) {
       ]);
       setECOEEvent(event);
       setEventRoles(roleContext.roles);
+      setEventRolesLoaded(true);
       if (dash) setDashboard(dash);
       // Not cleared here either — see the comment in loadECOEList above.
     } catch (err) {
@@ -150,6 +157,7 @@ export function ECOEProvider({ children }: { children: React.ReactNode }) {
     setECOEList([]);
     setECOEEvent(null);
     setEventRoles([]);
+    setEventRolesLoaded(false);
     setDashboard(null);
     setReady(true);
     if (typeof window !== "undefined") {
@@ -159,10 +167,10 @@ export function ECOEProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(
     () => ({
-      ecoeList, ecoeEvent, dashboard, authenticated, user, eventRoles, ready, eventId, loading, loadError,
+      ecoeList, ecoeEvent, dashboard, authenticated, user, eventRoles, eventRolesLoaded, ready, eventId, loading, loadError,
       setEventId, login, logout, refreshECOE,
     }),
-    [ecoeList, ecoeEvent, dashboard, authenticated, user, eventRoles, ready, eventId, loading, loadError, setEventId, login, logout, refreshECOE],
+    [ecoeList, ecoeEvent, dashboard, authenticated, user, eventRoles, eventRolesLoaded, ready, eventId, loading, loadError, setEventId, login, logout, refreshECOE],
   );
 
   return <ECOEContext.Provider value={value}>{children}</ECOEContext.Provider>;
