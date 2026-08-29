@@ -333,6 +333,9 @@ export type TraceabilityReport = {
     confirmed_checkins: number;
     evaluator_submissions: number;
     student_submissions: number;
+    pending_evaluator_drafts?: number;
+    /** OPT-20 F4 (D4): autoenvíos del barrido sin contenido. */
+    blank_auto_submissions?: number;
     pilot_runs: number;
   };
   student_traceability: StudentTraceability[];
@@ -350,6 +353,9 @@ export type StudentTraceability = {
   student_submissions: number;
   missing_evaluations: number;
   missing_student_submissions: number;
+  pending_evaluator_drafts?: number;
+  /** OPT-20 F4 (D4): respuestas autoenviadas en blanco por el barrido. */
+  blank_auto_submissions?: number;
   completion_status: string;
   last_activity_at: string | null;
   total_score: number;
@@ -368,6 +374,9 @@ export type StationTraceability = {
   checkins_count: number;
   evaluations_count: number;
   student_submissions_count: number;
+  pending_evaluator_drafts?: number;
+  /** OPT-20 F4 (D4): respuestas autoenviadas en blanco por el barrido. */
+  blank_auto_submissions?: number;
   last_activity_at: string | null;
 };
 
@@ -378,6 +387,9 @@ export type ActivityLogEntry = {
   detail: string;
   actor: string;
   mode: string;
+  /** OPT-20 F4 (D4): solo en entradas de tipo `respuesta_estudiante`. */
+  submission_kind?: string;
+  answered?: boolean;
 };
 
 export type ECOEResult = {

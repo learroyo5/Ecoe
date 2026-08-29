@@ -2,7 +2,7 @@
 
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
-import { modeLabel } from "@/lib/labels";
+import { modeLabel, submissionKindLabel } from "@/lib/labels";
 import { useApi } from "@/hooks/use-api";
 import { DataTable } from "@/components/data-table";
 import { SectionCard } from "@/components/section-card";
@@ -159,6 +159,23 @@ export default function ResultsPage() {
               { key: "evaluator_submissions", label: "Evaluaciones" },
               { key: "student_submissions", label: "Respuestas" },
               {
+                key: "blank_auto_submissions",
+                label: "Autoenvíos en blanco",
+                render: (row) => {
+                  const n = row.blank_auto_submissions ?? 0;
+                  return n > 0 ? (
+                    <span
+                      className="status-badge status-badge-warning"
+                      title="Respuestas cerradas por el servidor al vencer el cronómetro, sin contenido. Suman 0 al consolidado; no fueron entregas deliberadas."
+                    >
+                      {n}
+                    </span>
+                  ) : (
+                    <span className="text-[var(--color-text-muted)]">—</span>
+                  );
+                },
+              },
+              {
                 key: "last_activity_at",
                 label: "Última actividad",
                 render: (row) => formatTimestamp(row.last_activity_at),
@@ -185,6 +202,18 @@ export default function ResultsPage() {
               { key: "checkins_count", label: "Check-ins" },
               { key: "evaluations_count", label: "Evaluaciones" },
               { key: "student_submissions_count", label: "Respuestas" },
+              {
+                key: "blank_auto_submissions",
+                label: "Autoenvíos en blanco",
+                render: (row) => {
+                  const n = row.blank_auto_submissions ?? 0;
+                  return n > 0 ? (
+                    <span className="status-badge status-badge-warning">{n}</span>
+                  ) : (
+                    <span className="text-[var(--color-text-muted)]">—</span>
+                  );
+                },
+              },
               {
                 key: "status",
                 label: "Estado",
@@ -223,6 +252,19 @@ export default function ResultsPage() {
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="status-badge status-badge-info">{String(item.type ?? "actividad")}</span>
                   <p className="text-sm font-semibold text-[var(--color-text-main)]">{String(item.label ?? "")}</p>
+                  {item.submission_kind && item.submission_kind !== "manual" ? (
+                    <span
+                      className={
+                        item.submission_kind === "auto" && item.answered === false
+                          ? "status-badge status-badge-warning"
+                          : "status-badge status-badge-muted"
+                      }
+                    >
+                      {item.submission_kind === "auto" && item.answered === false
+                        ? "Automática · sin respuesta"
+                        : submissionKindLabel(item.submission_kind)}
+                    </span>
+                  ) : null}
                   <span className="text-xs text-[var(--color-text-muted)]">{formatTimestamp(item.timestamp)}</span>
                 </div>
                 <p className="mt-2 text-sm text-[var(--color-text-secondary)]">{String(item.detail ?? "")}</p>

@@ -50,6 +50,14 @@ const MODE_LABELS: Record<string, string> = {
   ejecucion: "ejecución",
 };
 
+// Cómo entró una respuesta / registro (OPT-20 F4, D4).
+const SUBMISSION_KIND_LABELS: Record<string, string> = {
+  manual: "Manual",
+  auto: "Automática",
+  contingency: "Por contingencia",
+  draft_finalized: "Borrador finalizado",
+};
+
 function humanize(value: string): string {
   const clean = value.replace(/_/g, " ").trim();
   return clean.charAt(0).toUpperCase() + clean.slice(1);
@@ -78,4 +86,9 @@ export function roleLabel(role: unknown): string {
 export function modeLabel(mode: unknown): string {
   const key = String(mode ?? "");
   return MODE_LABELS[key] ?? key;
+}
+
+export function submissionKindLabel(kind: unknown): string {
+  const key = String(kind ?? "");
+  return SUBMISSION_KIND_LABELS[key] ?? humanize(key);
 }

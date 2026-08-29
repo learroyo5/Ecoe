@@ -12,6 +12,7 @@ import { useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
+import { submissionKindLabel } from "@/lib/labels";
 import { useApi } from "@/hooks/use-api";
 import { SectionCard } from "@/components/section-card";
 import { StatusNotice } from "@/components/forms";
@@ -21,11 +22,14 @@ type GradingItem = {
   kind: "auto" | "manual";
   earned: number | null;
   max: number;
+  answered?: boolean;
 };
 
 type GradableResponse = {
   response_id: number;
   mode: string;
+  submission_kind?: string;
+  by_contingency?: boolean;
   student_name: string;
   student_ecoe_number: string;
   station_number: number | null;
@@ -39,6 +43,11 @@ type GradableResponse = {
   graded_by_email: string | null;
   questions: { label?: string; type?: string }[];
 };
+
+/** ¿La respuesta llegó incompleta (algún ítem puntuable sin responder)? */
+function hasUnansweredItems(row: GradableResponse): boolean {
+  return Object.values(row.grading ?? {}).some((item) => item?.answered === false);
+}
 
 const CLOSED_STATUSES = new Set(["cerrado", "archivado"]);
 
@@ -109,6 +118,28 @@ export default function GradingPage() {
               {row.mode === "pilotaje" ? "Pilotaje" : "Ejecución"} ·{" "}
               {new Date(row.submitted_at).toLocaleString()}
             </p>
+            {(row.submission_kind && row.submission_kind !== "manual") ||
+            hasUnansweredItems(row) ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {row.submission_kind === "auto" ? (
+                  <span
+                    className="status-badge status-badge-warning"
+                    title="El servidor cerró esta respuesta al vencer el cronómetro; no fue una entrega deliberada del estudiante."
+                  >
+                    Respuesta automática
+                  </span>
+                ) : row.submission_kind && row.submission_kind !== "manual" ? (
+                  <span className="status-badge status-badge-info">
+                    {submissionKindLabel(row.submission_kind)}
+                  </span>
+                ) : null}
+                {hasUnansweredItems(row) ? (
+                  <span className="status-badge status-badge-warning">
+                    Incompleta — ítems sin responder
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           <div className="flex items-center gap-3">
             {row.score_obtained !== null ? (
@@ -135,7 +166,12 @@ export default function GradingPage() {
           <div className="mt-4 space-y-4 border-t border-slate-100 pt-4">
             {row.pending_questions.map((key) => (
               <div key={key} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-sm font-semibold text-slate-900">{questionLabel(row, key)}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-semibold text-slate-900">{questionLabel(row, key)}</p>
+                  {row.grading[key]?.answered === false ? (
+                    <span className="status-badge status-badge-warning">Sin responder</span>
+                  ) : null}
+                </div>
                 <p className="mt-2 rounded-xl bg-white px-3 py-2 text-sm leading-6 text-slate-800">
                   {answerText(row, key)}
                 </p>
