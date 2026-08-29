@@ -120,7 +120,10 @@ export default function ResultsPage() {
           se cae la plataforma.
         </p>
       </SectionCard>
-      <SectionCard title="Consolidado por estudiante" subtitle="Vista tipo ficha de resultados, pensada para una lectura académica clara y una exportación segura.">
+      <SectionCard
+        title="Consolidado por estudiante"
+        subtitle="El porcentaje es el promedio del % de logro de cada estación (cada una normalizada a su propio máximo, todas pesan igual). Puntaje y Máximo son sumas crudas informativas: con estaciones de distinto máximo no cuadran con el porcentaje."
+      >
         {loading ? (
           <p>{frozen ? "Cargando resultados consolidados..." : "Calculando resultados..."}</p>
         ) : error ? (
@@ -133,6 +136,11 @@ export default function ResultsPage() {
               { key: "student_name", label: "Estudiante" },
               { key: "total_score", label: "Puntaje" },
               { key: "max_score", label: "Máximo" },
+              {
+                key: "stations_counted",
+                label: "Estaciones",
+                render: (row) => formatNumber(row.stations_counted),
+              },
               { key: "percentage", label: "Porcentaje" },
               { key: "equivalent_grade", label: "Nota equivalente" },
             ]}

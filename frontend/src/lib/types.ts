@@ -462,10 +462,18 @@ export type ECOEResult = {
   student_id: number;
   student_name: string;
   ecoe_number: string;
+  /** Suma cruda del puntaje obtenido (informativa). Desde OPT-17, para eventos
+   *  con estaciones de máximo heterogéneo, `percentage` ya NO es
+   *  `total_score / max_score * 100`. */
   total_score: number;
   max_score: number;
+  /** OPT-17: promedio del % de logro de cada estación del estudiante (cada
+   *  estación normalizada a su propio máximo → todas pesan igual). */
   percentage: number;
   equivalent_grade: number;
+  /** OPT-17: nº de estaciones con actividad puntuable que entraron al promedio
+   *  de `percentage`. Ausente en actas congeladas anteriores a OPT-17. */
+  stations_counted?: number;
 };
 
 /** OPT-16: agregado por estación. La DE es muestral (n−1) y llega `null`

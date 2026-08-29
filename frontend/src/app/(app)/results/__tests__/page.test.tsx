@@ -137,3 +137,49 @@ describe("ResultsPage — resultados por estación OPT-16", () => {
     );
   });
 });
+
+describe("ResultsPage — normalización por estación OPT-17", () => {
+  it("aclara en el subtítulo que el porcentaje es el promedio del % por estación", async () => {
+    mockedApi.results.mockResolvedValue({
+      results: [],
+      frozen: false,
+      consolidated_at: null,
+      ...baseTraceability,
+    } as never);
+
+    render(<ResultsPage />);
+
+    expect(
+      await screen.findByText(/promedio del % de logro de cada estación/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/sumas crudas informativas/i)).toBeInTheDocument();
+  });
+
+  it("muestra la columna Estaciones con stations_counted del consolidado", async () => {
+    mockedApi.results.mockResolvedValue({
+      results: [
+        {
+          student_id: 1,
+          student_name: "Ana Pérez",
+          ecoe_number: "001",
+          total_score: 20,
+          max_score: 25,
+          percentage: 50,
+          equivalent_grade: 3.5,
+          stations_counted: 2,
+        },
+      ],
+      frozen: false,
+      consolidated_at: null,
+      ...baseTraceability,
+    } as never);
+
+    render(<ResultsPage />);
+
+    expect(await screen.findByText("Estaciones")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Ana Pérez")).toBeInTheDocument());
+    const row = screen.getByText("Ana Pérez").closest("tr");
+    expect(row).not.toBeNull();
+    expect(row).toHaveTextContent("2");
+  });
+});
