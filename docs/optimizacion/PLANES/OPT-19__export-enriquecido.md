@@ -177,16 +177,73 @@ nuevas (test trivial, sólo si se quiere fijar el copy).
 
 ## Verificación
 
-- [ ] `cd backend && python3 -m pytest` (SQLite) — incluye
-      `test_export_excel_opt19.py`.
-- [ ] `TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q`
-- [ ] `DATABASE_URL=sqlite:////tmp/ecoe_alembic_check.db SECRET_KEY=test-secret ENVIRONMENT=test AUTO_SEED_DEMO=false alembic upgrade head`
-      llega a head **sin revisión nueva**.
-- [ ] `cd frontend && npm run lint && npm run build && npx vitest run` (si se
-      tocó el copy).
-- [ ] Descarga manual del Excel de un evento demo cerrado → 5 hojas, metadatos
-      correctos, `por_estacion` cuadra con `/results`.
-- [ ] `./scripts/run_e2e.sh --grep "results"` sobre el stack de ramas (si aplica).
+- [x] `cd backend && python3 -m pytest` (SQLite) — **359 passed** (13 nuevos en
+      `tests/test_export_opt19.py`; el archivo del plan se llamó
+      `test_export_opt19.py`, no `test_export_excel_opt19.py`).
+- [x] `TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q`
+      — **359 passed**.
+- [x] `DATABASE_URL=sqlite:////tmp/ecoe_opt19_check.db SECRET_KEY=test-secret ENVIRONMENT=test AUTO_SEED_DEMO=false alembic upgrade head`
+      llega a head (`n4o5p6q7r8s9`) **sin revisión nueva** — OPT-19 es sin migración.
+- [x] `cd frontend && npm run lint` (0 errores, 2 warnings preexistentes)
+      `&& npm run build` (OK) `&& npx vitest run` — **61 passed**.
+- [ ] Descarga manual del Excel de un evento demo cerrado — no corrida
+      (restricción de sandbox de red en la sesión de implementación).
+- [ ] `./scripts/run_e2e.sh --grep "results"` sobre el stack de ramas — pendiente
+      global de Fase 2.
+
+## Notas de implementación (2026-08-29)
+
+- Rama `opt/OPT-19-export` desde `opt/OPT-18-psicometria` (`4c27779`). **Último de
+  Fase 2**: con esto OPT-16..19 quedan `en-verificación` (falta e2e + merge).
+- **`persist` eliminado** de `export_results_excel(db, ecoe_event_id) -> bytes`.
+  `grep` confirmó que el único llamador real es el endpoint `export_excel`
+  (`operational.py`), que pasaba `persist=False`; el re-export de
+  `app/services/ecoe.py` no lo invoca. La rama `if persist: persist_results(...)`
+  (una escritura en un GET) desapareció. Test negativo
+  `test_export_excel_does_not_mutate` + `test_export_excel_signature_has_no_persist_param`.
+- **Hojas del Excel, en orden**: `metadatos` · `consolidado` · `por_estacion` ·
+  `item_analysis` · `trazabilidad_envios`. La hoja de OPT-16 se **renombró** de
+  `resultados_por_estacion` a `por_estacion`.
+- **`frozen`**: `consolidado` sale de `read_results` y `por_estacion` de
+  `read_station_results` (ambos snapshot-aware): evento `cerrado`/`archivado` con
+  snapshot → acta congelada. `item_analysis` y la trazabilidad se calculan
+  **siempre en vivo** (derivados, no parte del acta).
+- **`metadatos`** (clave–valor, 2 columnas `campo`/`valor`): nombre, curso,
+  escuela/institución (`school_name`), docente responsable, correo de contacto,
+  fecha, estado, modo de circuito, minutos por estación/transición,
+  `passing_reference_percent`, nº de estudiantes activos, nº de estaciones,
+  `frozen` (Sí/No), `consolidated_at`. No hay un campo "umbral" separado en el
+  modelo → se omite (el `passing_reference_percent` es el único umbral).
+- **`item_analysis`**: reusa `build_psychometrics_block(mode="ejecucion")` de
+  OPT-18. Una fila por criterio: `estacion_numero`, `estacion`, `criterio`, `n`,
+  `dificultad`, `punto_biserial`, `maximo`, `fuera_de_umbral` (Sí/No, contra las
+  advertencias del bloque). Estaciones sin pauta estructurada ni formulario
+  puntuable → sin filas (hoja con solo encabezados). Item analysis de pilotaje
+  **no** entra al export (queda en pantalla vía OPT-18).
+- **`trazabilidad_envios`** ampliada (`_submission_trace_rows`): una fila por
+  cada `StudentResponse` (`tipo_registro="formulario"`) **y** cada
+  `EvaluatorRecord` (`tipo_registro="evaluador"`) de `mode==ejecucion`. Columnas:
+  `n_ecoe`, `estudiante`, `estacion_numero`, `estacion`, `circuito`,
+  `tipo_registro`, `mode`, `submission_kind`, `origen` (etiqueta), `borrador`
+  (Sí/No — los borradores de evaluador `is_draft=True` **se incluyen**),
+  `en_blanco`, `by_contingency`, `score_obtained`, `max_score`, `porcentaje`,
+  `evaluador` (`EvaluatorRecord.evaluator_name`), `corrector`
+  (`StudentResponse.graded_by_email`; `"auto"` para autocorrección),
+  `enviado_at` (`submitted_at` / `created_at`), `corregido_at` (`graded_at`),
+  `actualizado_at` (`updated_at`). No hay campo de email en `EvaluatorRecord` →
+  la identidad del evaluador es el nombre.
+- **Decisiones de implementación abiertas del plan**: (1) hoja
+  `trazabilidad_pilotaje` aparte → **no** se agregó (fuera del alcance explícito
+  de la tarea, que fija exactamente 5 hojas); los `mode='pilotaje'` simplemente
+  no aparecen. (2) borradores de evaluador → **incluidos** con columna
+  `borrador`. (3) resumen agregado por estación → **no** como hoja aparte (el
+  agregado ya vive en `/results` y en el endpoint de psicometría). (4)
+  item analysis de pilotaje → **solo ejecución**. (5) `persist` eliminable →
+  confirmado.
+- **Tests existentes ajustados** (adaptación al Excel multi-hoja, sin debilitar
+  la aserción): `test_results_immutability.py::test_export_excel_uses_snapshot_after_close`
+  y `test_opt20_f4_submission_kind.py::test_export_excel_includes_submission_kind_column`
+  ahora leen la hoja `consolidado` por nombre en vez de la primera hoja.
 
 ## Estado de aprobación
 
@@ -196,7 +253,9 @@ nuevas (test trivial, sólo si se quiere fijar el copy).
   metadatos; identidad/timestamps/mode/submission_kind/by_contingency por
   registro; limpiar el `persist` muerto; sin migración; implementar último).
 - **Plan técnico y decisiones de implementación: ✅ 2026-08-29 — aprobado; decisiones de implementación = las recomendadas.**
-  usuario.**
+- Implementado por: implementador — 2026-08-29 → `en-verificación` (rama
+  `opt/OPT-19-export` desde `opt/OPT-18-psicometria`). **Cierra Fase 2 (OPT-16..19),
+  toda `en-verificación`; falta e2e sobre el stack de ramas y merge.**
 - Decisiones de implementación abiertas:
   1. ¿Hoja `trazabilidad_pilotaje` aparte para `mode='pilotaje'` (recomendado)?
   2. ¿Registros de evaluador en borrador (`is_draft=True`) en la trazabilidad,

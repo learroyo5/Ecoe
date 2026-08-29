@@ -44,7 +44,12 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 | OPT-16 | Resultado por estación (poblar `StationResult`) + desglose `by_station` | H-dato-1 | alta (capacidad) | ancla del análisis final; hoy imposible ver desempeño por estación | M · sin migración (tabla ya existe) | **en-verificación** (`opt/OPT-16-station-results`) | `PLANES/OPT-16__resultado-por-estacion.md` |
 | OPT-17 | Normalización por estación (promedio de %-de-logro) | H-dato-3 | alta (capacidad) | una estación de `max_score` alto domina la nota agregada | S/M · sin migración (bajó de L: decisiones metodológicas tomadas) | **en-verificación** (`opt/OPT-17-normalizacion`) | `PLANES/OPT-17__normalizacion-por-estacion.md` |
 | OPT-18 | Analítica psicométrica (ejecución + pilotaje, item analysis por criterio) | H-dato-2 | alta (capacidad) | `pilotaje_validado` es un click sin respaldo cuantitativo | L–XL · sin migración · 3 sub-fases | **en-verificación** (`opt/OPT-18-psicometria`) — F1+F2+F3 | `PLANES/OPT-18__psicometria.md` |
-| OPT-19 | Export Excel enriquecido (multi-hoja) + limpieza `persist` muerto | H-dato-4 | media (capacidad) | análisis externo imposible; arg muerto viola "GET sin mutación" | M · sin migración (etiqueta ya hecha en `e642abd`) | **aprobado** | `PLANES/OPT-19__export-enriquecido.md` |
+| OPT-19 | Export Excel enriquecido (multi-hoja) + limpieza `persist` muerto | H-dato-4 | media (capacidad) | análisis externo imposible; arg muerto viola "GET sin mutación" | M · sin migración (etiqueta ya hecha en `e642abd`) | **en-verificación** (`opt/OPT-19-export`) — 5 hojas + `persist` eliminado | `PLANES/OPT-19__export-enriquecido.md` |
+
+> **Fase 2 (OPT-16 a OPT-19) completa en `en-verificación`.** Ramas encadenadas
+> `opt/OPT-16-station-results` → `opt/OPT-17-normalizacion` → `opt/OPT-18-psicometria`
+> → `opt/OPT-19-export`. Falta el e2e sobre el stack de ramas (pendiente global,
+> restricción de sandbox de red) y el merge.
 
 ---
 
