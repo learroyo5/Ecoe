@@ -92,10 +92,25 @@ maquinaria de cierre y corrección no filtra por `mode`**:
 
 ## Verificación
 
-- [ ] `cd backend && python3 -m pytest`
-- [ ] `TEST_DATABASE_URL=postgresql+psycopg://... python3 -m pytest -q` (obligatorio si se hace la Parte 2)
-- [ ] `DATABASE_URL=sqlite:////tmp/ecoe_alembic_check.db ... alembic upgrade head` (Parte 2)
-- [ ] frontend no se toca
+- [x] `cd backend && python3 -m pytest` — 219 passed (SQLite).
+- [x] `TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q` — 219 passed (Postgres, migraciones Alembic reales).
+- [x] `DATABASE_URL=sqlite:////tmp/ecoe_opt2_check.db ... alembic upgrade head` + `downgrade -1` + `upgrade head` OK (SQLite y Postgres desde base limpia).
+- [x] frontend no se toca.
+
+### Implementación
+
+- Rama `opt/OPT-2-aislamiento-mode` desde `43dfa5b`.
+- Parte 1: `b0b0b95` — filtros de `mode == ejecucion` en `build_traceability_report`,
+  `pending_deferred_grading_station_numbers` y la cola de `/grading`; efecto colateral
+  `→ en_ejecucion` que cierra los check-ins `confirmado` residuales del pilotaje
+  (documentado en el docstring de `update_ecoe_status` y en CLAUDE.md §Máquina de estados).
+- Parte 2: `baad565` — columna `mode` en `station_checkins` (migración `6d1ac67a3ab8`,
+  down_revision `k1f2a3b4c5d6`), estampada por `confirm_station_checkin` con el modo de
+  `ensure_submission_stage`; `build_traceability_report` filtra check-ins por `mode` y
+  `activity_log` usa `checkin.mode`.
+- Tests: `backend/tests/test_opt2_mode_isolation.py` (10 casos, incluye negativos).
+- Nota de implementación: la columna se creó como `String(32)` (no `String(16)`) para
+  igualar las otras columnas `mode` del esquema (`evaluator_records`, `student_responses`).
 
 ## Decisión pendiente del usuario
 
