@@ -114,7 +114,7 @@ export default function EvaluatorsPage() {
 
       <SectionCard
         title="Equipo operativo del ECOE"
-        subtitle="Asigna una cuenta existente o genera una invitación temporal; los evaluadores además necesitan una estación principal."
+        subtitle="Asigna una cuenta existente o genera una invitación temporal; la estación principal del evaluador puede quedar pendiente y asignarse después en la tabla de abajo."
       >
         <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
           <FileImport
@@ -354,8 +354,10 @@ export default function EvaluatorsPage() {
                   ))}
                 </select>
                 <p className="text-xs leading-5 text-slate-500">
-                  Obligatoria para evaluadores: define a qué estación queda habilitado en Validación,
-                  Resultados y check-in.
+                  Puede quedar pendiente: si eliges &quot;Sin estación asignada por ahora&quot; el
+                  evaluador se crea igual y la asignas después en la tabla de abajo. Define a qué
+                  estación queda habilitado en Validación, Resultados y check-in; Validación te
+                  avisará si el día del examen queda alguno sin estación.
                 </p>
               </label>
             ) : form.role_code === "corrector" ? (

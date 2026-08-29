@@ -399,6 +399,63 @@ def test_existing_account_is_assigned_without_retyping_the_name(client, db_facto
         assert (assignment.name, assignment.last_name) == ("Valeria", "Munoz")
 
 
+def test_invite_evaluator_without_station_succeeds(client, db_factory):
+    """OPT-5 (Opción A): el alta individual de evaluador sin estación queda
+    permitida, igual que el import masivo. La estación se asigna después."""
+    event_id, _station_id = create_event_and_station(client, "Evaluador sin estación")
+    credentials = create_delegated_admin(client, event_id, "sinestacion")
+    invited_email = f"sinestacion-{secrets.token_hex(5)}@example.edu"
+
+    login(client, credentials)
+    response = client.post("/api/event-members/invite", json={
+        "ecoe_event_id": event_id,
+        "name": "Sin",
+        "last_name": "Estacion",
+        "email": invited_email,
+        "role_code": RoleCode.evaluador.value,
+        "station_ids": [],
+    })
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "invited"
+
+    with db_factory() as db:
+        assignment = db.scalar(
+            select(StaffAssignment).where(StaffAssignment.email == invited_email)
+        )
+        assert assignment is not None
+        assert assignment.role_code == RoleCode.evaluador.value
+        assert (assignment.station_ids or []) == []
+
+
+def test_invite_evaluator_with_invalid_station_still_rejected(client):
+    """Negativo: relajar la exigencia de estación no debe dejar pasar una
+    estación inexistente o de otro evento."""
+    event_id, _station_id = create_event_and_station(client, "Evaluador estación inválida")
+    foreign_event_id, foreign_station_id = create_event_and_station(
+        client, "Evento ajeno estación"
+    )
+    credentials = create_delegated_admin(client, event_id, "estacioninvalida")
+    login(client, credentials)
+
+    ghost = client.post("/api/event-members/invite", json={
+        "ecoe_event_id": event_id,
+        "name": "Est", "last_name": "Fantasma",
+        "email": f"ghost-{secrets.token_hex(5)}@example.edu",
+        "role_code": RoleCode.evaluador.value,
+        "station_ids": [999999],
+    })
+    assert ghost.status_code in (400, 404), ghost.text
+
+    foreign = client.post("/api/event-members/invite", json={
+        "ecoe_event_id": event_id,
+        "name": "Est", "last_name": "Ajena",
+        "email": f"foreign-{secrets.token_hex(5)}@example.edu",
+        "role_code": RoleCode.evaluador.value,
+        "station_ids": [foreign_station_id],
+    })
+    assert foreign.status_code in (400, 404), foreign.text
+
+
 def test_new_identity_without_name_is_rejected_with_a_readable_message(client):
     event_id, station_id = create_event_and_station(client, "Alta incompleta")
     credentials = create_delegated_admin(client, event_id, "incompleta")

@@ -254,6 +254,16 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
         }
     evaluators_without_account = sorted(evaluator_emails - active_account_emails)
 
+    # Evaluadores dados de alta sin estación principal (permitido al invitar
+    # desde OPT-5): la asignación se completa en /evaluators. Si llega el día
+    # del examen sin estación, ese evaluador no puede hacer check-in.
+    evaluators_without_station = sorted(
+        normalize_email(assignment.email)
+        for assignment in evaluator_assignments
+        if assignment.email
+        and not [station_id for station_id in (assignment.station_ids or []) if station_id]
+    )
+
     # Formularios del estudiante sin puntaje: registran respuestas que no
     # suman al consolidado; debe ser una decision consciente, no un olvido.
     unscored_form_stations = sorted(
@@ -310,6 +320,10 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
                 None if not evaluators_without_account else (
                     "Evaluadores asignados sin cuenta de usuario activa (no podrán iniciar sesión): "
                     + ", ".join(evaluators_without_account)
+                ),
+                None if not evaluators_without_station else (
+                    "Evaluadores sin estación principal asignada (no podrán hacer check-in): "
+                    + ", ".join(evaluators_without_station)
                 ),
                 None if not unscored_form_stations else (
                     "Estaciones con formulario sin puntaje definido (las respuestas no sumarán a Resultados): "

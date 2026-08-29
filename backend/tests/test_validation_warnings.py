@@ -90,6 +90,41 @@ def test_no_account_warning_for_seeded_evaluator_with_account():
     assert not any("sin cuenta de usuario activa" in w for w in validation["warnings"])
 
 
+def test_warns_when_evaluator_assigned_without_primary_station():
+    """OPT-5: el alta de evaluador sin estación es válida al invitar; la
+    compuerta de publicación debe advertirlo para que no pase silenciosa."""
+    with TestingSessionLocal() as db:
+        event, _station = _build_event(db, form_questions=[])
+        db.add(StaffAssignment(
+            ecoe_event_id=event.id,
+            name="Sin", last_name="Estacion",
+            email="sinestacion@example.edu",
+            role_code=RoleCode.evaluador.value,
+            station_ids=[],
+        ))
+        db.commit()
+        validation = compute_ecoe_validation(db, event)
+    assert any(
+        "sin estación principal asignada" in warning and "sinestacion@example.edu" in warning
+        for warning in validation["warnings"]
+    )
+
+
+def test_no_station_warning_for_evaluator_with_primary_station():
+    with TestingSessionLocal() as db:
+        event, station = _build_event(db, form_questions=[])
+        db.add(StaffAssignment(
+            ecoe_event_id=event.id,
+            name="Con", last_name="Estacion",
+            email="conestacion@example.edu",
+            role_code=RoleCode.evaluador.value,
+            station_ids=[station.id],
+        ))
+        db.commit()
+        validation = compute_ecoe_validation(db, event)
+    assert not any("sin estación principal asignada" in w for w in validation["warnings"])
+
+
 def test_warns_when_form_has_questions_but_no_points():
     with TestingSessionLocal() as db:
         event, _station = _build_event(db, form_questions=[

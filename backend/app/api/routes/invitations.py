@@ -39,7 +39,14 @@ def invite_event_member(
     user=Depends(require_roles(RoleCode.admin_ecoe.value)),
 ):
     ensure_event_access(db, user, payload.ecoe_event_id, RoleCode.admin_ecoe.value)
-    result = assign_or_invite_member(db, payload, invited_by_email=user.email)
+    # El alta individual permite evaluador/corrector sin estación, igual que
+    # el import masivo (staff.py): la estación principal se completa después
+    # en la tabla de asignaciones de /evaluators. La ausencia de estación se
+    # detecta como advertencia en la compuerta de publicación
+    # (compute_ecoe_validation), no como un 400 al invitar (OPT-5).
+    result = assign_or_invite_member(
+        db, payload, invited_by_email=user.email, require_evaluator_station=False
+    )
     db.commit()
     if result["status"] == "invited":
         result["email_sent"] = notify_event_access(db, payload.ecoe_event_id, result, is_reset=False)
