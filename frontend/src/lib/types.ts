@@ -103,6 +103,10 @@ export type AssessmentTool = {
   tool_type: string;
   max_score: number;
   free_observation: boolean;
+  created_by?: string | null;
+  origin_event_id?: number | null;
+  archived?: boolean;
+  reference_count?: number;
   items?: AssessmentItem[];
 };
 

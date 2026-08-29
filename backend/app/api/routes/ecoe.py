@@ -282,6 +282,13 @@ def duplicate_ecoe(
     db: Session = Depends(get_db),
     user=Depends(require_roles("admin_ecoe")),
 ):
+    """Clona la estructura de un ECOE.
+
+    Las estaciones clonadas **comparten** el mismo ``assessment_tool_id`` (no se
+    clona el banco de instrumentos, decisión OPT-7). El tool conserva su
+    ``origin_event_id`` original, así que la regla de propiedad para
+    editar/archivar la pauta sigue apuntando al ECOE que la creó, no a la copia.
+    """
     ensure_event_access(db, user, ecoe_event_id, RoleCode.admin_ecoe.value)
     ecoe_event = db.get(ECOEEvent, ecoe_event_id)
 
