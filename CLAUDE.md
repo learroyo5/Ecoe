@@ -115,6 +115,15 @@ Desde OPT-20 F2 el **deadline de envío de cualquier pantalla operativa se deriv
 
 Los endpoints de contingencia auditan envíos fuera de ventana en vez de simplemente rechazarlos, porque el día del examen algunas situaciones (un envío que se venció antes de alcanzar a pausar, papel tras una caída de red) se resuelven operativamente, no técnicamente — ver `docs/OPERACION_DIA_EXAMEN.md`.
 
+### Consolidación de resultados y nota agregada
+
+`backend/app/services/results.py` es la autoridad de la nota. Dos capas:
+
+- **Nota por (estudiante, estación)** — `compute_station_results` (OPT-16) suma `EvaluatorRecord` (`is_draft=False`) + `StudentResponse` (`score_obtained IS NOT NULL`) por par, `mode=ejecucion`; `persist_results` la congela en `station_results` al cierre.
+- **Nota agregada por estudiante** — `compute_results`. Desde **OPT-17** el `percentage` es el **promedio de los `percent_score` por estación** del estudiante (cada estación normalizada a su propio máximo → todas pesan igual), **no** la razón de sumas crudas `sum(obtenido)/sum(máx)*100`. El estándar sigue siendo **compensatorio**: un solo umbral global (`ECOEEvent.passing_reference_percent`) sobre ese promedio, sin lógica conjuntiva ni umbral por estación. `compute_equivalent_grade` mapea ese promedio a la escala 1.0–7.0 y **no se toca**. `total_score`/`max_score` de la respuesta se mantienen como **suma cruda** informativa: para eventos con estaciones de máximo heterogéneo ya no cuadran con `percentage`. Campo `stations_counted` = nº de estaciones puntuables que entraron al promedio (sólo en el recálculo en vivo; el snapshot `ECOEResult` no lo persiste, no hay migración).
+
+**Inmutabilidad (OPT-1):** con el evento `cerrado`/`archivado` y snapshot `ECOEResult`, `read_results` sirve el número congelado tal como se consolidó — los eventos cerrados antes de OPT-17 conservan su razón-de-sumas vieja. Sólo los eventos que se **consoliden desde OPT-17 en adelante** usan la fórmula nueva, y sólo cambian de nota si tienen estaciones de máximo heterogéneo (con todas las estaciones del mismo máximo, `promedio(%) == razón de sumas` exactamente). Un evento cerrado **sin** snapshot cae al recálculo en vivo → ya usa la fórmula nueva.
+
 ### Modo kiosco
 
 `backend/app/services/kiosk.py`: en vez de que cada estudiante haga login en una tablet compartida por estación, la estación tiene un único token (generado con `secrets.token_urlsafe`, solo su SHA-256 se guarda en BD — mismo patrón que las invitaciones de usuario). Emitir un token nuevo revoca automáticamente el anterior (un solo dispositivo activo por estación). El backend resuelve quién responde a partir del check-in activo confirmado en esa estación, no de una sesión de usuario.

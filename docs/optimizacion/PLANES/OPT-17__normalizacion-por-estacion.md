@@ -258,15 +258,46 @@ nuevo se renderiza; si se agrega la columna "Estaciones", aparece.
 
 ## Verificación
 
-- [ ] `cd backend && python3 -m pytest` (SQLite) — incluye `test_results.py`
-      ampliado y `test_station_results_opt16.py` ajustado.
-- [ ] `TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q`
-- [ ] Migración desde base limpia llega a head **sin revisión nueva**:
-      `DATABASE_URL=sqlite:////tmp/ecoe_alembic_check.db SECRET_KEY=test-secret ENVIRONMENT=test AUTO_SEED_DEMO=false alembic upgrade head`
-- [ ] `cd frontend && npm run lint && npm run build && npx vitest run`
+- [x] `cd backend && python3 -m pytest` (SQLite) — **323 passed** (11 nuevos en
+      `test_normalizacion_opt17.py`; `test_station_results_opt16.py::test_station_results_sum_matches_consolidated`
+      reescrito citando OPT-17).
+- [x] `TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q` — **323 passed**
+- [x] Migración desde base limpia llega a head (`n4o5p6q7r8s9`) **sin revisión nueva**:
+      `DATABASE_URL=sqlite:////tmp/ecoe_opt17_check.db SECRET_KEY=test-secret ENVIRONMENT=test AUTO_SEED_DEMO=false alembic upgrade head` — OPT-17 es sin migración.
+- [x] `cd frontend && npm run lint` (0 errores, 2 warnings preexistentes) `&& npm run build` (OK) `&& npx vitest run` — **59 passed** (2 nuevos).
 - [ ] Revisión manual: evento demo con 2 estaciones de distinto máximo →
       `/results` muestra el promedio de %-por-estación y el subtítulo aclaratorio.
-- [ ] `./scripts/run_e2e.sh --grep "results"` sobre el stack de ramas (si aplica).
+- [ ] `./scripts/run_e2e.sh --grep "results"` sobre el stack de ramas — no corrido
+      (restricción de sandbox de red en la sesión de implementación).
+
+## Notas de implementación (2026-08-29)
+
+- Rama `opt/OPT-17-normalizacion` desde `opt/OPT-16-station-results` (`adc7303`).
+- `compute_results` reescrito sobre `compute_station_results` (OPT-16). Fórmula
+  nueva de `percentage`:
+  ```python
+  rows = station_rows_by_student.get(student.id, [])
+  scored = [r for r in rows if r["max_score"] and r["max_score"] > 0]
+  percentage = (sum(r["percent_score"] for r in scored) / len(scored)) if scored else 0.0
+  ```
+  Estudiante sin ninguna estación puntuable → `percentage = 0.0` (no `None`),
+  `equivalent_grade = 1.0` — idéntico al comportamiento anterior a OPT-17.
+- `total_score` / `max_score` = suma cruda de `obtained_score` / `max_score` de
+  **todas** las filas del estudiante (incluidas las de `max == 0`).
+- `stations_counted = len(scored)` — sólo en `compute_results` (recálculo en
+  vivo). El snapshot `ECOEResult` **no** lo persiste (sin columna, sin
+  migración); `read_results` en la rama congelada devuelve las mismas 7 claves
+  de antes. `test_results_immutability.py::test_read_results_helper_shapes_match`
+  queda sin cambios (sigue verde).
+- Frontend: columna "Estaciones" en "Consolidado por estudiante" + subtítulo
+  reescrito (el % es promedio de %-por-estación; Puntaje/Máximo son sumas
+  crudas). `ECOEResult.stations_counted?: number` (opcional) en `types.ts`.
+- Tests de terceros verificados sin cambio: `test_grading.py:164`
+  (`percentage == 100`, 1 estación), `test_deferred_grading.py:256`
+  (`total_score`/`max_score` crudos), `test_results_immutability.py`
+  (`total_score` crudo + shape congelado). Ningún assert de `percentage` en
+  escenario multi-estación heterogéneo se rompió.
+- CLAUDE.md: nueva sección "Consolidación de resultados y nota agregada".
 
 ## Estado de aprobación
 
@@ -276,7 +307,7 @@ nuevo se renderiza; si se agrega la columna "Estaciones", aparece.
   1.0–7.0 sin cambio de método; sin peso/umbral por estación; sin migración;
   eventos cerrados conservan snapshot viejo).
 - **Plan técnico y decisiones de implementación: ✅ 2026-08-29 — aprobado; decisiones de implementación = las recomendadas.**
-  usuario.**
+- Implementado por: implementador — 2026-08-29 → `en-verificación` (rama `opt/OPT-17-normalizacion`).
 - Decisiones de implementación abiertas:
   1. ¿`total_score` / `max_score` se mantienen como suma cruda (recomendado, no
      rompe tests ni el export) o se re-expresan como `mean%` / `100`?

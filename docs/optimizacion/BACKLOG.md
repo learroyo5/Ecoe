@@ -42,7 +42,7 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 | ID | Título | Origen (hallazgo) | Severidad | Impacto | Factibilidad | Estado | Plan |
 |----|--------|-------------------|-----------|---------|--------------|--------|------|
 | OPT-16 | Resultado por estación (poblar `StationResult`) + desglose `by_station` | H-dato-1 | alta (capacidad) | ancla del análisis final; hoy imposible ver desempeño por estación | M · sin migración (tabla ya existe) | **en-verificación** (`opt/OPT-16-station-results`) | `PLANES/OPT-16__resultado-por-estacion.md` |
-| OPT-17 | Normalización por estación (promedio de %-de-logro) | H-dato-3 | alta (capacidad) | una estación de `max_score` alto domina la nota agregada | S/M · sin migración (bajó de L: decisiones metodológicas tomadas) | **aprobado** | `PLANES/OPT-17__normalizacion-por-estacion.md` |
+| OPT-17 | Normalización por estación (promedio de %-de-logro) | H-dato-3 | alta (capacidad) | una estación de `max_score` alto domina la nota agregada | S/M · sin migración (bajó de L: decisiones metodológicas tomadas) | **en-verificación** (`opt/OPT-17-normalizacion`) | `PLANES/OPT-17__normalizacion-por-estacion.md` |
 | OPT-18 | Analítica psicométrica (ejecución + pilotaje, item analysis por criterio) | H-dato-2 | alta (capacidad) | `pilotaje_validado` es un click sin respaldo cuantitativo | L–XL · sin migración · 3 sub-fases | **aprobado** | `PLANES/OPT-18__psicometria.md` |
 | OPT-19 | Export Excel enriquecido (multi-hoja) + limpieza `persist` muerto | H-dato-4 | media (capacidad) | análisis externo imposible; arg muerto viola "GET sin mutación" | M · sin migración (etiqueta ya hecha en `e642abd`) | **aprobado** | `PLANES/OPT-19__export-enriquecido.md` |
 
@@ -477,6 +477,14 @@ metodológicas (registradas en cada plan) y los tres planes están redactados:
 post-OPT-16 y correr en paralelo a la ventana de revisión de OPT-17 (ambos tocan `results.py` y
 `results/page.tsx`, conflicto pequeño y mecánico; rebasar OPT-18 sobre OPT-17 antes de merge). OPT-19
 estrictamente al final.
+
+**Actualización 2026-08-29 · OPT-17 → `en-verificación`** (rama `opt/OPT-17-normalizacion`, desde
+`opt/OPT-16-station-results`). `compute_results` reescrito sobre `compute_station_results`: `percentage`
+= promedio de los `percent_score` por estación (estaciones con `max > 0`); `total_score`/`max_score`
+siguen crudos; campo nuevo `stations_counted` (sólo en vivo, no en el snapshot). `compute_equivalent_grade`
+sin tocar. Sin migración (head sigue `n4o5p6q7r8s9`). 11 tests nuevos (`test_normalizacion_opt17.py`) +
+invariante de OPT-16 reescrito. Backend 323 passed (SQLite + Postgres), frontend 59 passed / lint / build.
+Falta: revisión manual sobre evento demo heterogéneo y `run_e2e.sh --grep results` (sandbox sin red).
 
 **Actualización 2026-08-29 · OPT-16 → `en-plan`.** Mini-auditoría de fundamento
 (`hallazgos/auditor-correccion-resultados__OPT-16__2026-08-29.md`) + plan redactado
