@@ -103,7 +103,7 @@ export default function ResultsPage() {
             target="_blank"
             rel="noreferrer"
           >
-            Exportar Excel consolidado
+            Exportar Excel de resultados
           </a>
           <a
             className="btn-secondary"
@@ -115,10 +115,14 @@ export default function ResultsPage() {
           </a>
         </div>
         <p className="mt-3 text-xs leading-5 text-slate-500">
-          El Excel consolidado es el que contiene los resultados (puntajes, porcentaje y nota por
-          estudiante). El PDF de contingencia <strong>no</strong> trae resultados: es la hoja
-          imprimible con instrucciones, materiales y listado de estaciones para operar el examen si
-          se cae la plataforma.
+          El Excel de resultados trae cinco hojas: <strong>metadatos</strong> del ECOE,{" "}
+          <strong>consolidado</strong> por estudiante, <strong>por estación</strong>,{" "}
+          <strong>item analysis</strong> por criterio de pauta y{" "}
+          <strong>trazabilidad de envíos</strong> (un registro por evaluación/respuesta, con
+          identidad, timestamps y origen). Consolidado y por estación salen del acta congelada
+          cuando el evento está cerrado; item analysis y trazabilidad se calculan en vivo. El PDF de
+          contingencia <strong>no</strong> trae resultados: es la hoja imprimible con instrucciones,
+          materiales y listado de estaciones para operar el examen si se cae la plataforma.
         </p>
       </SectionCard>
       <SectionCard
