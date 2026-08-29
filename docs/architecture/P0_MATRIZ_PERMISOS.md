@@ -71,6 +71,8 @@ La columna `corrector` (omitida de la tabla por brevedad) solo tiene `Si` en "Li
 
 Los bancos de plantillas, instrumentos, pacientes simulados y estaciones son institucionales y reutilizables. Su consulta o mutacion exige indicar un ECOE de contexto: admin/coeditor pueden modificar; coordinador solo puede consultar.
 
+Instrumentos (`AssessmentTool`, OPT-7): editar/archivar/restaurar una pauta exige, ademas del contexto de evento, ser `admin_global` **o** `admin_ecoe`/`coeditor_docente` del `origin_event_id` de la pauta. Para pautas legadas sin `origin_event_id`, basta ese rol en algun evento que hoy la referencia; si no tiene ninguna referencia, solo `admin_global`. Una pauta usada por una estacion de un ECOE en `en_pilotaje`/`publicado`/`en_ejecucion`/`cerrado`/`archivado` no se puede editar ni archivar (409): hay que duplicarla. El `DELETE` es soft (`archived`); el hard-delete (`.../purge`) es solo `admin_ecoe`/`admin_global` y solo con 0 referencias.
+
 ## Casos negativos obligatorios P0
 
 - Usuario autenticado sin relacion con el ECOE recibe 403.

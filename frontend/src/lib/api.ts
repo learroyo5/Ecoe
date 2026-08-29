@@ -4,6 +4,8 @@ import type {
   ECOEEvent,
   EvaluatorContext,
   EvaluatorDraftRow,
+  GradeResponseResult,
+  GradingListResult,
   Incident,
   LiveSession,
   MediaAsset,
@@ -292,9 +294,22 @@ export const api = {
   templates: (eventId: number) => request<StationTemplate[]>(`/templates?ecoe_event_id=${eventId}`),
   createTemplate: (eventId: number, payload: Record<string, unknown>) =>
     request<StationTemplate>(`/templates?ecoe_event_id=${eventId}`, { method: "POST", body: JSON.stringify(payload) }),
-  instruments: (eventId: number) => request<AssessmentTool[]>(`/instruments?ecoe_event_id=${eventId}`),
+  instruments: (eventId: number, opts?: { includeArchived?: boolean }) =>
+    request<AssessmentTool[]>(
+      `/instruments?ecoe_event_id=${eventId}${opts?.includeArchived ? "&include_archived=true" : ""}`,
+    ),
+  instrument: (eventId: number, id: number) =>
+    request<AssessmentTool>(`/instruments/${id}?ecoe_event_id=${eventId}`),
   createInstrument: (eventId: number, payload: Record<string, unknown>) =>
     request<AssessmentTool>(`/instruments?ecoe_event_id=${eventId}`, { method: "POST", body: JSON.stringify(payload) }),
+  updateInstrument: (eventId: number, id: number, payload: Record<string, unknown>) =>
+    request<AssessmentTool>(`/instruments/${id}?ecoe_event_id=${eventId}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  archiveInstrument: (eventId: number, id: number) =>
+    request<AssessmentTool>(`/instruments/${id}?ecoe_event_id=${eventId}`, { method: "DELETE" }),
+  restoreInstrument: (eventId: number, id: number) =>
+    request<AssessmentTool>(`/instruments/${id}/restore?ecoe_event_id=${eventId}`, { method: "POST" }),
+  purgeInstrument: (eventId: number, id: number) =>
+    request<{ deleted: boolean }>(`/instruments/${id}/purge?ecoe_event_id=${eventId}`, { method: "DELETE" }),
   simulatedPatients: (eventId: number) => request<SimulatedPatient[]>(`/simulated-patients?ecoe_event_id=${eventId}`),
   createSimulatedPatient: (eventId: number, payload: Record<string, unknown>) =>
     request<SimulatedPatient>(`/simulated-patients?ecoe_event_id=${eventId}`, { method: "POST", body: JSON.stringify(payload) }),
@@ -310,9 +325,9 @@ export const api = {
 
   // Grading (corrección manual de formularios del estudiante)
   gradingList: (eventId: number) =>
-    request<{ responses: Record<string, unknown>[]; pending_count: number }>(`/grading/${eventId}`),
+    request<GradingListResult>(`/grading/${eventId}`),
   gradeResponse: (responseId: number, scores: Record<string, number>) =>
-    request<{ graded: boolean; score_obtained: number; max_score: number }>(
+    request<GradeResponseResult>(
       `/grading/responses/${responseId}`,
       { method: "POST", body: JSON.stringify({ scores }) },
     ),

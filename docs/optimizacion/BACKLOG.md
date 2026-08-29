@@ -31,8 +31,10 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 | ID | Título | Origen (hallazgo) | Severidad | Impacto | Factibilidad | Estado | Plan |
 |----|--------|-------------------|-----------|---------|--------------|--------|------|
 | OPT-6 | Visibilidad de pausa del cronómetro en evaluador y kiosko | H-vivo-3 | media | carga operativa: 1 contingencia por estudiante del circuito por cada pausa | M–L · decisión de enfoque | **absorbido por OPT-20** (su entregable = F1, en-verificación) | `PLANES/OPT-20__cronometro-sincronico.md` (F1) |
-| OPT-7 | CRUD de instrumentos / plantillas / pacientes simulados | H-admin-ecoe-4 | media | banco institucional se llena de pautas muertas; no se corrige una pauta con error | M · impacto cross-event | triado | — |
-| OPT-15 | Fricción del corrector (cola personal, siguiente-pendiente, rúbrica de referencia) | H-corr-5, H-corr-6 | media | corrección diferida a escala; gap vs. diseño FASE1 §Decisión 4 | M · sin migración | triado | — |
+| OPT-7 | CRUD de instrumentos (`AssessmentTool`) | H-admin-ecoe-4 | media | banco institucional se llena de pautas muertas; no se corrige una pauta con error | M · migración (columnas + `ondelete`) · impacto cross-event | **en-verificación** (backend + migración + CRUD real en `/instruments` + script de purga; modo "editar pauta" del Constructor pendiente) | `PLANES/OPT-7__crud-instrumentos.md` |
+| OPT-7b | CRUD de plantillas (`StationTemplate`) y pacientes simulados (`SimulatedPatient`) | H-admin-ecoe-4 §6 | baja | mismo patrón solo-creación; sin riesgo de trazabilidad ni huérfanas de alto volumen | S · UPDATE libre + soft-delete trivial | triado | — |
+| OPT-15 | Cola del corrector (núcleo: pauta de referencia, autoavance, progreso, empty-states) | H-corr-5, H-corr-6 | media | corrección diferida a escala; gap vs. diseño FASE1 §Decisión 4 | M · sin migración · sin endpoints nuevos | **en-verificación** (backend + frontend + tests; suite SQLite y Postgres verde) | `PLANES/OPT-15__cola-corrector.md` |
+| OPT-15b | Corrector: bulk "puntuar 0 los blancos" + "Reasignar" in-place para correctores | H-corr-5 §C, auditoría OPT-15 §4/§6 | baja | residuo de fricción; hoy delete+recreate para cambiar estaciones de un corrector | S · sin migración (`api.updateStaff` ya lo soporta) | diferido | — |
 | OPT-20 | Cronómetro sincrónico único + autoguardado/autoenvío (absorbe OPT-6) | mini-auditoría OPT-20 (H-opt20-1..6, D1–D8) + H-vivo-3 | media (capacidad + carga operativa) | día del examen: el buzzer no garantiza captura; cada pausa dispara reingresos por contingencia; el registro del evaluador a medio llenar se pierde | XL · 4 fases (M + L + M–L + M) · 2 migraciones (F2/F3; F4 sin migración) — gate humano · cambia comportamiento observable (D2) | **en-verificación** (F1–F4 completas —backend + frontend—; solo falta el e2e con Docker, pendiente global sobre el stack de ramas) | `PLANES/OPT-20__cronometro-sincronico.md` |
 
 ## Grupo C — Capacidad de análisis de datos (Fase 2 — features grandes, requieren dimensionamiento y definición metodológica del usuario)
@@ -265,7 +267,7 @@ frontend). Plan redactado: `PLANES/OPT-20__cronometro-sincronico.md`.
 - **Prerequisito operativo de F1**: el `nginx` público real necesita los headers `Upgrade`/`Connection` en
   `location /api/` (ya en la copia de referencia del repo; el server real requiere el cambio manual).
 
-### OPT-7 · CRUD de instrumentos / plantillas / pacientes simulados
+### OPT-7 · CRUD de instrumentos (`AssessmentTool`) — plantillas/pacientes → OPT-7b
 **Confirmado** (`app/api/routes/stations.py:54-129` — solo GET y POST para `/templates`, `/instruments`,
 `/simulated-patients`; contraste: `/station-bank` sí tiene PUT+PATCH. `stations/builder/page.tsx:363-382` —
 `saveInstrumentDraft` siempre hace `api.createInstrument`). Los bancos son institucionales (sin
@@ -279,6 +281,22 @@ frontend). Plan redactado: `PLANES/OPT-20__cronometro-sincronico.md`.
   mutar/borrar si hay `StudentResponse`/`EvaluatorRecord` que lo referencian en un evento cerrado. Frontend:
   copy-on-write explícito en el builder. **Impacto cross-event** (banco compartido) — cuidado. Tests de datos.
 - **Prioridad**: P2 — dimensionar.
+- **Estado 2026-08-29**: **aprobado** — mini-auditoría de fundamento
+  (`hallazgos/auditor-admin-ecoe__OPT-7__2026-08-29.md`) + decisiones de producto del usuario. Plan:
+  `PLANES/OPT-7__crud-instrumentos.md`. Alcance recortado a **`AssessmentTool`** (plantillas/pacientes →
+  OPT-7b). Edición in-place por ítem preservando `AssessmentItem.id`; editable sólo mientras ningún ECOE que
+  lo use pasó a `en_pilotaje`+ → si no, 409. Soft-delete (`archived`) por defecto; hard-delete sólo vía
+  `DELETE /api/instruments/{id}/purge` (`admin_ecoe`/`admin_global`, 0 referencias). Migración: `created_by`,
+  `origin_event_id` (FK `ondelete SET NULL`), `archived` en `assessment_tools` + `ondelete` en las 3 FK de
+  referencia — **requiere OK de schema del usuario**. Limpieza de huérfanas = comando opt-in, no en `upgrade`.
+
+### OPT-7b · CRUD de plantillas y pacientes simulados
+Follow-up de OPT-7. `StationTemplate` y `SimulatedPatient` comparten el patrón solo-creación
+(`stations.py:54-73,110-129`) pero, según el hallazgo §6: `default_configuration` sólo se lee al aplicar la
+plantilla en el Constructor (no en runtime) y `SimulatedPatient` no interviene en el cálculo de notas → editar
+cualquiera es de bajo riesgo, sin el problema de `answers` keyed por `item.id`. CRUD casi trivial: UPDATE libre
++ soft-delete (`archived`). Se hace después de OPT-7 reusando su infraestructura (`origin_event_id`/`created_by`
+/`archived`, comando de purga). **Estado**: triado — pendiente de que el usuario lo priorice.
 
 ### OPT-8 · `/kiosk/submit` debe exigir el check-in confirmado vigente
 **Confirmado** (`app/api/routes/kiosk.py::kiosk_submit` — `db.get(StationCheckIn, payload.checkin_id)` valida
@@ -385,6 +403,32 @@ ve lista vacía indistinguible de "todo corregido" (H-corr-6).
 - **Factibilidad**: M. Endpoint: enviar `assessment_tool`, `pending_count` con scope, orden por prioridad.
   Frontend: autoavance, contador personal, empty-state distinguido. Sin migración.
 - **Prioridad**: P2 — dimensionar (cierra el diseño de Fase 2 de evaluación diferida).
+- **Estado 2026-08-29**: **en-verificación** — implementado en `opt/OPT-15-cola-corrector` (desde
+  `opt/backlog-grupo-b`). Mini-auditoría de fundamento
+  (`hallazgos/auditor-correccion-resultados__OPT-15__2026-08-29.md`) + decisiones de producto del usuario.
+  Plan: `PLANES/OPT-15__cola-corrector.md`. **Sin migración, sin endpoints nuevos.** Se extendió la respuesta
+  de `GET /api/grading/{event}` con `assessment_tool` serializado por fila (reusa `serialize_assessment_tool`,
+  cacheado por `station_id`), `scope` ({is_corrector, has_assignment, assigned_station_ids}) y
+  `pending_by_station`; `grade_response` devuelve `{next, pending_remaining}` y el cliente ya no refetchea la
+  lista completa. Pauta = **sólo referencia visual** (FASE1 §Decisión 4); `apply_manual_scores` sin cambios.
+  Frontend: panel de pauta colapsable, autoavance a "siguiente pendiente", barra de progreso
+  "X de Y en tus estaciones" + chips por estación, `pending_count` re-renderizado, empty-state diferenciado
+  para corrector sin estaciones (H-corr-6), Enter envía la corrección. Tests nuevos
+  `backend/tests/test_grading_queue_opt15.py` (con negativos de scoping) + tests de la página
+  `grading`. Suite backend verde en SQLite y Postgres (280); frontend `lint` + `build` + `vitest` (51) verdes.
+  Corrección de precisión sobre el triage previo: `pending_count` **sí** estaba scopeado al corrector; el gap
+  real era que la UI no lo usaba.
+- **Pendiente para cerrar**: revisión del usuario + e2e (`./scripts/run_e2e.sh --grep "grading"`) sobre el
+  stack de ramas; merge/deploy.
+
+### OPT-15b · Corrector — bulk-0 y reasignación in-place
+Follow-up de OPT-15, fuera del núcleo. (1) Bulk "puntuar 0 las respuestas en blanco de esta estación",
+apoyado en `submission_kind == "auto"` + `grading[k].answered == false` (ambos ya disponibles tras OPT-20 F4);
+cierra el residuo de fricción de F4 (hoy los autoenvíos en blanco se resuelven uno a uno). (2) Extender la
+columna "Reasignar" de `frontend/src/app/(app)/evaluators/page.tsx:537-604` a `role_code === "corrector"`
+con multi-select ligado a `api.updateStaff` — hoy corta con "No aplica" para todo `!== "evaluador"` y cambiar
+las estaciones de un corrector exige borrarlo y recrearlo. PATCH ya lo soporta; sólo falta la UI.
+**Estado**: diferido — se retoma tras el núcleo de OPT-15 si el volumen operativo lo justifica.
 
 ### OPT-16 a OPT-19 · Capacidad de análisis de datos — **Fase 2**
 **Confirmados** todos (ver `PLANES/FASE2_ANALISIS_DATOS__scoping.md` para el detalle de evidencia por item).
