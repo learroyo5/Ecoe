@@ -16,8 +16,8 @@ import type { ECOEEvent, PsychometricsResponse } from "@/lib/types";
 const DEFAULT_CREATE_VALUES: Record<string, string> = {
   name: "", date: "", course_name: "", school_name: "",
   responsible_teacher: "", contact_email: "", circuit_mode: "paralelo_espejo",
-  total_stations: "8", station_time_minutes: "8", transition_time_minutes: "2",
-  total_students: "0", total_groups: "1", passing_reference_percent: "60",
+  station_time_minutes: "8", transition_time_minutes: "2",
+  total_groups: "1", passing_reference_percent: "60",
 };
 
 export default function ECOEPage() {

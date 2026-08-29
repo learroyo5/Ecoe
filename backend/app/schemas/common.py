@@ -48,10 +48,8 @@ class ECOEEventBase(BaseModel):
     responsible_teacher: str
     contact_email: EmailStr
     circuit_mode: str
-    total_stations: int = Field(ge=1)
     station_time_minutes: float = Field(ge=0.1)
     transition_time_minutes: float = Field(ge=0)
-    total_students: int = Field(ge=0)
     total_groups: int = Field(ge=1)
     passing_reference_percent: float = Field(default=60, ge=0, le=100)
 
@@ -67,6 +65,11 @@ class ECOEEventUpdate(ECOEEventBase):
 class ECOEEventRead(ECOEEventBase, ORMBase):
     id: int
     status: str
+    # OPT-11b: se derivan en el handler a partir de las filas reales — cantidad
+    # de estaciones del evento y de estudiantes activos. No son input del
+    # cliente ni se leen de las columnas homónimas legadas de `ecoe_events`.
+    total_stations: int
+    total_students: int
     created_at: datetime
     updated_at: datetime
 

@@ -113,6 +113,10 @@ class ECOEEvent(Base, TimestampMixin):
     responsible_teacher: Mapped[str] = mapped_column(String(255), nullable=False)
     contact_email: Mapped[str] = mapped_column(String(255), nullable=False)
     circuit_mode: Mapped[str] = mapped_column(String(64), nullable=False)
+    # OPT-11b: columnas legadas, NO autoritativas. La API deriva estos conteos
+    # de las filas reales (estaciones del evento / estudiantes activos) en el
+    # handler; ningún código las lee. Se conservan sin migración; se escriben
+    # con su default y quedan huérfanas.
     total_stations: Mapped[int] = mapped_column(Integer, default=0)
     station_time_minutes: Mapped[float] = mapped_column(Float, default=8)
     transition_time_minutes: Mapped[float] = mapped_column(Float, default=2)

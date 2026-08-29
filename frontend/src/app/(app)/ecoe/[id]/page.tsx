@@ -78,9 +78,9 @@ export default function ECOEDetailPage() {
           name: ecoe.name, date: ecoe.date,
           course_name: ecoe.course_name, school_name: ecoe.school_name,
           responsible_teacher: ecoe.responsible_teacher, contact_email: ecoe.contact_email,
-          circuit_mode: ecoe.circuit_mode, total_stations: ecoe.total_stations,
+          circuit_mode: ecoe.circuit_mode,
           station_time_minutes: ecoe.station_time_minutes, transition_time_minutes: ecoe.transition_time_minutes,
-          total_students: ecoe.total_students, total_groups: ecoe.total_groups,
+          total_groups: ecoe.total_groups,
           passing_reference_percent: ecoe.passing_reference_percent,
           status: targetStatus,
         },
@@ -204,10 +204,10 @@ export default function ECOEDetailPage() {
           <hr className="my-4 border-slate-100" />
 
           <div className="grid gap-4 md:grid-cols-2">
-            <DetailItem label="Total de estaciones" value={String(ecoe.total_stations)} />
+            <DetailItem label="Estaciones" value={String(ecoe.total_stations)} />
             <DetailItem label="Minutos por estación" value={`${ecoe.station_time_minutes} min`} />
             <DetailItem label="Minutos de transición" value={`${ecoe.transition_time_minutes} min`} />
-            <DetailItem label="Total de estudiantes" value={String(ecoe.total_students)} />
+            <DetailItem label="Estudiantes activos" value={String(ecoe.total_students)} />
             <DetailItem label="Total de grupos" value={String(ecoe.total_groups)} />
             <DetailItem label="% Aprobación" value={`${ecoe.passing_reference_percent}%`} />
           </div>

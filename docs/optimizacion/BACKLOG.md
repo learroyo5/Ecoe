@@ -25,7 +25,7 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 | OPT-9 | Endurecer `/live/control` | H-vivo-8 | baja | 500 con id inválido; "Iniciar" reinicia reloj sin confirmar | S | en-verificación | — (quick win, sin plan formal) |
 | OPT-10 | Empty-state para cuenta sin eventos accesibles | H-roles-usuario-4 | baja | caso borde: error técnico en vez de estado vacío | XS · solo frontend | en-verificación | — (quick win, sin plan formal) |
 | OPT-11 | Limpieza de campos decorativos y código muerto | H-admin-ecoe-5, H-admin-ecoe-6 | baja | expectativas falsas + mantenibilidad | S | en-verificación | — (quick win, sin plan formal) |
-| OPT-11b | Quitar (o derivar) `total_stations`/`total_students` del backend | H-admin-ecoe-5 (residuo de OPT-11) | baja | la pantalla de detalle sigue mostrando "Total de estaciones: 8" junto a 6 reales | S · opción (b) sin migración / opción (a) con `drop_column` ×2 | en-plan | `PLANES/OPT-11b__quitar-campos-decorativos.md` |
+| OPT-11b | Quitar (o derivar) `total_stations`/`total_students` del backend | H-admin-ecoe-5 (residuo de OPT-11) | baja | la pantalla de detalle sigue mostrando "Total de estaciones: 8" junto a 6 reales | S · opción (b) sin migración / opción (a) con `drop_column` ×2 | en-verificación | `PLANES/OPT-11b__quitar-campos-decorativos.md` |
 | OPT-12 | Consistencia de forma de API (`ecoe_event_id` en body) | H-admin-ecoe-7 | baja | solo consistencia; frontend ya lo maneja | S · toca contrato de 3 endpoints | descartado | — |
 | OPT-13 | Correcciones a la matriz de permisos (documentación) | H-roles-usuario-2 | baja | doc induce a error | XS · solo `.md` | en-verificación | — (aplicado en `P0_MATRIZ_PERMISOS.md`) |
 | OPT-14 | Backplane para `LiveTimerManager` multi-worker | H-vivo-7 | baja (latente) | n/a hoy (1 worker); riesgo pre-escalado | L | diferido | — |
@@ -403,7 +403,14 @@ ignora las claves extra → clientes viejos no rompen), exponerlos en `ECOEEvent
 migración, sin churn de los ~15 tests de constructor (sólo ~7 asserts de respuesta de `POST /ecoe`).
 **Recomendación: (b)** — elimina la falsa-expectativa igual, sin migración, con el mínimo churn. (a) queda como
 limpieza de schema opcional posterior. Decisión abierta: `total_students` ¿sólo `is_active`? (recomendado sí).
-**Estado**: `en-plan` — `PLANES/OPT-11b__quitar-campos-decorativos.md`.
+**Implementado (opción b, `total_students` = sólo `is_active`)**: `ECOEEventBase` ya no lleva los 2 campos
+(`ECOEEventCreate`/`Update` los ignoran); `ECOEEventRead` los expone derivados por `_with_counts` /
+`_with_counts_bulk` (`GROUP BY`, sin N+1) en los 6 handlers de `ecoe.py`. Columnas de `ecoe_events` intactas
+(sin migración), marcadas como legadas en el modelo; `duplicate_ecoe` y el seed dejan de setearlas. Frontend:
+sin inputs de estimados, detalle renombrado a «Estaciones» / «Estudiantes activos». Tests:
+`tests/test_ecoe_counts_opt11b.py` (7 casos, incl. negativos de contrato); ningún test existente requirió
+cambios (columnas ORM presentes, Pydantic ignora extras, ningún assert sobre el valor de respuesta).
+**Estado**: `en-verificación` — `PLANES/OPT-11b__quitar-campos-decorativos.md`.
 
 ### OPT-12 · Consistencia de forma de API (`ecoe_event_id` en body)
 **Confirmado** (`app/api/routes/stations.py:60-64,84-90,116-121` — `ecoe_event_id` como query param en el POST,
