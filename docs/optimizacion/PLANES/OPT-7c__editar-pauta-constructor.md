@@ -172,10 +172,35 @@ El implementador de OPT-7 lo marcó "invasivo" con razón.
 
 ## Verificación
 
-- [ ] `cd frontend && npm run lint && npm run build`
-- [ ] `npx vitest run src/app/\(app\)/stations/builder`
-- [ ] `./scripts/run_e2e.sh --grep "constructor"` si el flujo dorado cubre el
-      wizard de pautas (requiere Docker; sobre el stack de ramas)
+- [x] `cd frontend && npm run lint` — OK (solo 2 warnings preexistentes en `media-preview.tsx`)
+- [x] `cd frontend && npm run build` — OK (compiled + TypeScript OK)
+- [x] `npx vitest run src/app/\(app\)/stations/builder` — 5 passed (`instrument-edit.test.tsx`)
+- [x] `npx vitest run` (suite completa) — 66 passed (10 archivos)
+- [x] `cd backend && python3 -m pytest -q` (sanity, no se tocó backend) — 359 passed
+- [ ] `./scripts/run_e2e.sh --grep "constructor"` — no corrido (requiere Docker; sin cambios de contrato)
+
+## Estado de implementación (rama `opt/OPT-7c-editar-pauta`, desde `opt/followups`)
+
+- [x] `shared.tsx`: `AssessmentMode` gana `"edit"`; `InstrumentDraftItem` gana `id?: number`.
+      `createBuilderSnapshot` ya serializa `instrumentDraft` entero (JSON.stringify) → captura el `id`.
+- [x] `lib/api.ts`: el `Error` lanzado por `request()` ahora lleva `.status` (HTTP) para
+      distinguir el 409 sin parsear el `detail`.
+- [x] `page.tsx`: estado `loadedTool` + `useEffect` sobre `selectedAssessmentToolId` que hace
+      `api.instrument(eventId, id)` (con guard por `loadedToolIdRef` para no recargar). No cambia el
+      modo — `applyStationLikeData` sigue síncrona y entra en `"existing"`.
+- [x] `page.tsx`: `startEditingInstrument()` puebla `instrumentDraft` desde `loadedTool.items`
+      (con `id`) y entra en `"edit"`. `buildInstrumentPayload(mode)` incluye `id` por ítem solo en
+      `"edit"`. `saveInstrumentDraft(mode)` → `persistInstrumentDraft`: `"edit"` hace
+      `api.updateInstrument` (PATCH, sin re-apuntar), `"create"` hace `api.createInstrument` (POST +
+      re-apuntar). El 409 en `"edit"` enciende `instrumentConflict`.
+- [x] `page.tsx`: efecto de `max_score` recalcula en `create` **y** `edit`; los dos call-sites de
+      guardado de estación llaman `saveInstrumentDraft` en `create || edit`.
+- [x] `instrument-step.tsx`: botón "Editar esta pauta" (visible con `selectedAssessmentToolId &&
+      loadedTool`), copy de edición, aviso `reference_count > 1`, y bloque de fallback 409 con
+      "Guardar como copia nueva" (`saveInstrumentAsCopy` → POST).
+- [x] Tests vitest: `stations/builder/__tests__/instrument-edit.test.tsx` — carga de ítems al abrir,
+      PATCH con `id` preservados y sin POST, 409 → fallback copia (POST sin `id`), `create` sigue
+      POST, y no ofrece "Editar" sin tool.
 
 ## Decisiones para el usuario
 
@@ -190,4 +215,6 @@ El implementador de OPT-7 lo marcó "invasivo" con razón.
 ## Estado de aprobación
 
 - Propuesto por: optimizador — 2026-08-29
-- Aprobado por usuario: ⬜ pendiente
+- **Aprobado por usuario: ✅ 2026-08-29** (decisiones: UX optimista del 409, modo por defecto
+  `"existing"` al abrir una estación con pauta).
+- Implementado — 2026-08-29 — rama `opt/OPT-7c-editar-pauta`. `en-verificación`.
