@@ -39,7 +39,7 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 | OPT-7b | CRUD de plantillas (`StationTemplate`) y pacientes simulados (`SimulatedPatient`) | H-admin-ecoe-4 §6 | baja | mismo patrón solo-creación; sin riesgo de trazabilidad ni huérfanas de alto volumen | S · migración (columnas ×2 + `ondelete` ×4) · UPDATE libre + soft-delete | en-plan | `PLANES/OPT-7b__crud-plantillas-pacientes.md` |
 | OPT-7c | Modo "editar esta pauta" en el Constructor de estaciones | OPT-7 §Decisión 5 (pendiente) | baja–media | el Constructor sigue creando una pauta nueva al "corregir" → huérfanas | M · solo frontend · sin migración | en-plan | `PLANES/OPT-7c__editar-pauta-constructor.md` |
 | OPT-15 | Cola del corrector (núcleo: pauta de referencia, autoavance, progreso, empty-states) | H-corr-5, H-corr-6 | media | corrección diferida a escala; gap vs. diseño FASE1 §Decisión 4 | M · sin migración · sin endpoints nuevos | **en-verificación** (backend + frontend + tests; suite SQLite y Postgres verde) | `PLANES/OPT-15__cola-corrector.md` |
-| OPT-15b | Corrector: bulk "puntuar 0 los blancos" + "Reasignar" in-place para correctores | H-corr-5 §C, auditoría OPT-15 §4/§6 | baja | residuo de fricción; hoy delete+recreate para cambiar estaciones de un corrector | S–M · sin migración (`api.updateStaff` ya lo soporta; bulk = endpoint nuevo) | en-plan | `PLANES/OPT-15b__correccion-bulk-y-reasignacion.md` |
+| OPT-15b | Corrector: bulk "puntuar 0 los blancos" + "Reasignar" in-place para correctores | H-corr-5 §C, auditoría OPT-15 §4/§6 | baja | residuo de fricción; hoy delete+recreate para cambiar estaciones de un corrector | S–M · sin migración (`api.updateStaff` ya lo soporta; bulk = endpoint nuevo) | **en-verificación** (backend + frontend + tests; suite SQLite y Postgres verde) | `PLANES/OPT-15b__correccion-bulk-y-reasignacion.md` |
 | OPT-20 | Cronómetro sincrónico único + autoguardado/autoenvío (absorbe OPT-6) | mini-auditoría OPT-20 (H-opt20-1..6, D1–D8) + H-vivo-3 | media (capacidad + carga operativa) | día del examen: el buzzer no garantiza captura; cada pausa dispara reingresos por contingencia; el registro del evaluador a medio llenar se pierde | XL · 4 fases (M + L + M–L + M) · 2 migraciones (F2/F3; F4 sin migración) — gate humano · cambia comportamiento observable (D2) | **en-verificación** (F1–F4 completas —backend + frontend—; solo falta el e2e con Docker, pendiente global sobre el stack de ramas) | `PLANES/OPT-20__cronometro-sincronico.md` |
 
 ## Grupo C — Capacidad de análisis de datos (Fase 2 — features grandes, requieren dimensionamiento y definición metodológica del usuario)
@@ -477,7 +477,14 @@ hoy — el plan replica ese invariante). (2) Extender las columnas "Estación pr
 `frontend/src/app/(app)/evaluators/page.tsx:526-604` a `role_code === "corrector"` con `<select multiple>` ligado
 a `api.updateStaff` — hoy cortan con "No aplica" para todo `!== "evaluador"` (`:531,:546-548`); PATCH ya lo soporta
 (`update_staff` → `_resolve_staff_station_ids`, `single=False` para corrector). **Sin migración.**
-**Estado**: `en-plan` — `PLANES/OPT-15b__correccion-bulk-y-reasignacion.md`. Las dos partes son independientes.
+**Estado**: `en-verificación` — implementado en `opt/OPT-15b-bulk-reasignacion` (desde `opt/followups`).
+Commits: `feat(grading): puntuar 0 los autoenvíos en blanco de una estación en bloque (OPT-15b)` (endpoint +
+`tests/test_grading_bulk_opt15b.py` con negativos + reasignación en `test_deferred_grading.py`),
+`feat(grading): botón "puntuar 0 los blancos" por estación en /grading (OPT-15b)`,
+`feat(evaluators): reasignar estaciones de un corrector in-place (OPT-15b)`.
+Suite SQLite (371) y Postgres verde; `npm run lint && build && vitest` (65) verde. Sin migración.
+Pendiente para cerrar: revisión del usuario + e2e (`./scripts/run_e2e.sh --grep "grading"`); merge/deploy.
+Las dos partes son independientes. Plan: `PLANES/OPT-15b__correccion-bulk-y-reasignacion.md`.
 
 ### OPT-16 a OPT-19 · Capacidad de análisis de datos — **Fase 2**
 **Confirmados** todos (ver `PLANES/FASE2_ANALISIS_DATOS__scoping.md` para el detalle de evidencia por item).
