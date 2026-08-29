@@ -171,10 +171,10 @@ class TestKioskSubmit:
         finally:
             _set_event_status(1, original_status)
 
-    def test_submit_survives_rotation_race_within_window(self, client):
-        """The evaluator confirmed the next student (closing the previous
-        check-in) but the previous student's window is still open: the
-        auto-submit must land on the ORIGINAL check-in's identity."""
+    def test_submit_rejects_previous_checkin_after_rotation(self, client):
+        """OPT-8: el evaluador ya confirmó al siguiente estudiante (cerrando
+        el ingreso anterior). El kiosco NO debe aceptar un envío atribuido al
+        ingreso previo aunque su ventana siga abierta: va por contingencia."""
         original_status = _event_status(1)
         try:
             _set_event_status(1, ECOEStatus.en_ejecucion.value)
@@ -182,16 +182,48 @@ class TestKioskSubmit:
             closed_checkin_id = _create_checkin(
                 station_id=5, student_id=6, minutes_ago=2, status="cerrado"
             )
-            _create_checkin(station_id=5, student_id=7)  # next student, active
+            active_checkin_id = _create_checkin(station_id=5, student_id=7)  # siguiente, activo
+            rejected = client.post(
+                "/api/kiosk/submit",
+                headers=_kiosk_headers(token),
+                json={"checkin_id": closed_checkin_id, "answers": {"q1": "tarde"}},
+            )
+            assert rejected.status_code == 409, rejected.text
+            assert "ingreso activo" in rejected.json()["detail"]
+            with TestingSessionLocal() as db:
+                assert db.scalar(
+                    select(StudentResponse).where(StudentResponse.student_id == 6)
+                ) is None
+            # El ingreso vigente sí es aceptado.
+            accepted = client.post(
+                "/api/kiosk/submit",
+                headers=_kiosk_headers(token),
+                json={"checkin_id": active_checkin_id, "answers": {"q1": "a tiempo"}},
+            )
+            assert accepted.status_code == 200, accepted.text
+            with TestingSessionLocal() as db:
+                saved = db.get(StudentResponse, accepted.json()["response_id"])
+                assert saved.student_id == 7
+        finally:
+            _set_event_status(1, original_status)
+
+    def test_submit_rejected_once_a_newer_checkin_is_confirmed(self, client):
+        """Tras confirmar un nuevo check-in, el anterior (que sí fue el
+        vigente) deja de aceptar envíos por el kiosco."""
+        original_status = _event_status(1)
+        try:
+            _set_event_status(1, ECOEStatus.en_ejecucion.value)
+            token = _issue_token(client, 6)
+            first_checkin_id = _create_checkin(station_id=6, student_id=9, minutes_ago=1)
+            # Nuevo ingreso confirmado: cierra el anterior en el flujo real,
+            # aquí basta con que sea el más reciente `confirmado`.
+            _create_checkin(station_id=6, student_id=10)
             response = client.post(
                 "/api/kiosk/submit",
                 headers=_kiosk_headers(token),
-                json={"checkin_id": closed_checkin_id, "answers": {"q1": "tarde pero válido"}},
+                json={"checkin_id": first_checkin_id, "answers": {}},
             )
-            assert response.status_code == 200, response.text
-            with TestingSessionLocal() as db:
-                saved = db.get(StudentResponse, response.json()["response_id"])
-                assert saved.student_id == 6
+            assert response.status_code == 409, response.text
         finally:
             _set_event_status(1, original_status)
 

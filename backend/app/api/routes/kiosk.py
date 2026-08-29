@@ -188,13 +188,27 @@ def kiosk_submit(
     ecoe_event = db.get(ECOEEvent, kiosk.ecoe_event_id)
     session_mode = ensure_submission_stage(ecoe_event)
     station = db.get(Station, kiosk.station_id)
-    # Lookup by id without status filter: if the evaluator already confirmed
-    # the next student, the previous check-in is "cerrado" but its answer is
-    # still valid while its own time window holds (identity is fixed by the
-    # check-in row, so nothing can be submitted on someone else's behalf).
     checkin = db.get(StationCheckIn, payload.checkin_id)
     if not checkin or checkin.station_id != kiosk.station_id:
         raise HTTPException(status_code=400, detail="El check-in no corresponde a esta estación")
+    # El kiosco solo acepta el ingreso `confirmado` vigente de la estación.
+    # Si la rotación ya avanzó (el evaluador confirmó al siguiente estudiante,
+    # cerrando este ingreso), el envío tardío del estudiante anterior va por
+    # contingencia, no por el kiosco (ver docs/OPERACION_DIA_EXAMEN.md). Así
+    # una request armada a mano no puede atribuir respuestas a un estudiante
+    # previo cuya ventana de tiempo siga abierta (OPT-8 / H-vivo-5).
+    active_checkin = db.scalar(
+        select(StationCheckIn)
+        .where(
+            StationCheckIn.station_id == kiosk.station_id,
+            StationCheckIn.status == "confirmado",
+        )
+        .order_by(StationCheckIn.confirmed_at.desc(), StationCheckIn.id.desc())
+    )
+    if not active_checkin or active_checkin.id != payload.checkin_id:
+        raise HTTPException(
+            status_code=409, detail="No hay un ingreso activo para esta estación"
+        )
     ensure_checkin_within_time(checkin, station)
     existing_response = db.scalar(
         select(StudentResponse).where(
