@@ -43,10 +43,16 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (!response.ok) {
     const text = await response.text();
     let detail = text || "No se pudo completar la solicitud";
+    let errorCode: string | undefined;
     try {
       const parsed = JSON.parse(text);
       if (typeof parsed.detail === "string") {
         detail = parsed.detail;
+      } else if (parsed.detail && typeof parsed.detail === "object" && !Array.isArray(parsed.detail)) {
+        // Detalle estructurado {code, message}: el message es para mostrar,
+        // el code lo usan los callers para decidir (p. ej. re-confirmar).
+        if (typeof parsed.detail.message === "string") detail = parsed.detail.message;
+        errorCode = typeof parsed.detail.code === "string" ? parsed.detail.code : undefined;
       } else if (Array.isArray(parsed.detail)) {
         // FastAPI validation errors arrive as a list of objects; stringifying
         // them directly renders "[object Object]".
@@ -62,8 +68,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     // Adjuntamos el status HTTP para que los callers puedan distinguir casos
     // recuperables (p. ej. 409 "pauta no editable" → ofrecer copia) sin parsear
     // el texto del mensaje. Los callers que solo leen `.message` no se afectan.
-    const error = new Error(detail) as Error & { status?: number };
+    const error = new Error(detail) as Error & { status?: number; code?: string };
     error.status = response.status;
+    error.code = errorCode;
     throw error;
   }
 
@@ -187,7 +194,7 @@ export const api = {
     request<EvaluatorContext>(
       `/evaluator/context/${eventId}${stationId ? `?station_id=${stationId}` : ""}`,
     ),
-  confirmStationCheckin: (payload: { ecoe_event_id: number; station_id: number; ecoe_number: string }) =>
+  confirmStationCheckin: (payload: { ecoe_event_id: number; station_id: number; ecoe_number: string; force?: boolean }) =>
     request<ConfirmCheckinResult>("/station-checkins/confirm", { method: "POST", body: JSON.stringify(payload) }),
   submitEvaluator: (payload: Record<string, unknown>) =>
     request<MutationResult>("/evaluator/submit", { method: "POST", body: JSON.stringify(payload) }),

@@ -35,6 +35,7 @@ export default function EvaluatorPage() {
   const [confirmingStudent, setConfirmingStudent] = useState(false);
   const [submittingEvaluation, setSubmittingEvaluation] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [showReconfirmCheckin, setShowReconfirmCheckin] = useState(false);
   const [itemScoreState, setItemScoreState] = useState<{
     checkinId: string;
     scores: Record<string, number>;
@@ -221,6 +222,68 @@ export default function EvaluatorPage() {
       });
   }, []);
 
+  const doCheckin = useCallback(async (force: boolean) => {
+    setMessage(null);
+    setConfirmingStudent(true);
+    try {
+      const checkin = (await api.confirmStationCheckin({
+        ecoe_event_id: eventId,
+        station_id: stationId,
+        ecoe_number: ecoeNumber,
+        force,
+      })) as Record<string, unknown>;
+      setContext((current) => ({
+        ...(current ?? {}),
+        server_now: checkin.server_now,
+        active_checkin: {
+          id: checkin.checkin_id,
+          station_id: checkin.station_id,
+          student_id: checkin.student_id,
+          student_name: checkin.student_name,
+          student_ecoe_number: checkin.student_ecoe_number,
+          station_name: checkin.station_name,
+          station_number: checkin.station_number,
+          assessment_tool: checkin.assessment_tool,
+          station_time_minutes: checkin.station_time_minutes,
+          confirmed_at: checkin.confirmed_at,
+          submission_deadline: checkin.submission_deadline,
+          evaluator_deadline: checkin.evaluator_deadline,
+          // Al forzar el check-in de un estudiante ya evaluado, el backend
+          // conserva el registro: el form debe quedar bloqueado, no editable.
+          evaluator_submission_exists: Boolean(force),
+          student_response_exists: Boolean(force),
+          status: "confirmado",
+        },
+      }));
+      setScoreObtained("0");
+      setObservation("");
+      setEcoeNumber("");
+      setItemScoreState({
+        checkinId: String(checkin.checkin_id ?? ""),
+        scores: Object.fromEntries(
+          (
+            (checkin.assessment_tool as { items?: Array<{ id?: number; order_index?: number }> } | undefined)
+              ?.items ?? []
+          ).map((item) => [String(item.id ?? item.order_index ?? ""), 0]),
+        ),
+      });
+      setNowMs(Date.now());
+      setMessage(
+        force
+          ? "Ingreso creado. El formulario de esta evaluación quedó cerrado (ya existía un registro)."
+          : "Estudiante confirmado correctamente para esta estación.",
+      );
+    } catch (error) {
+      if ((error as { code?: string }).code === "student_already_evaluated") {
+        setShowReconfirmCheckin(true);
+        return;
+      }
+      setMessage(error instanceof Error ? error.message : "No se pudo confirmar.");
+    } finally {
+      setConfirmingStudent(false);
+    }
+  }, [eventId, stationId, ecoeNumber, setContext]);
+
   const draftActive = Boolean(activeCheckin) && !submitted && !timeExpired;
   useEffect(() => {
     if (!draftActive) return;
@@ -317,19 +380,31 @@ export default function EvaluatorPage() {
             </p>
           </div>
 
-          <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Tiempo visible de la estación
-            </p>
-            <p className={`mt-2 text-3xl font-semibold tabular-nums ${TIMER_TONE_CLASSES[tone]}`}>
-              {timerLabel}
-            </p>
-            <p className="mt-2 text-sm text-slate-600">
-              {timeExpired
-                ? "El tiempo de registro ha terminado. Si necesitas ingresar esta evaluación, contacta a coordinación (registro por contingencia)."
-                : "Incluye el tiempo de transición: puedes terminar de registrar mientras el estudiante cambia de estación."}
-            </p>
-          </div>
+          {submitted ? (
+            <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4">
+              <p className="text-sm font-semibold text-slate-700">
+                Evaluación ya registrada{activeCheckin?.student_name ? ` · ${String(activeCheckin.student_name)}` : ""}
+              </p>
+              <p className="mt-1 text-sm text-slate-600">
+                Este ingreso quedó cerrado para edición. Para el siguiente estudiante,
+                ingresa su Número ECOE.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Tiempo visible de la estación
+              </p>
+              <p className={`mt-2 text-3xl font-semibold tabular-nums ${TIMER_TONE_CLASSES[tone]}`}>
+                {timerLabel}
+              </p>
+              <p className="mt-2 text-sm text-slate-600">
+                {timeExpired
+                  ? "El tiempo de registro ha terminado. Si necesitas ingresar esta evaluación, contacta a coordinación (registro por contingencia)."
+                  : "Incluye el tiempo de transición: puedes terminar de registrar mientras el estudiante cambia de estación."}
+              </p>
+            </div>
+          )}
 
           {livePaused ? (
             <div
@@ -344,63 +419,9 @@ export default function EvaluatorPage() {
           {assignedStation ? (
             <form
               className="flex flex-col gap-4"
-              onSubmit={async (event) => {
+              onSubmit={(event) => {
                 event.preventDefault();
-                setMessage(null);
-                setConfirmingStudent(true);
-                try {
-                  const checkin = (await api.confirmStationCheckin(
-                    {
-                      ecoe_event_id: eventId,
-                      station_id: stationId,
-                      ecoe_number: ecoeNumber,
-                    },
-                  )) as Record<string, unknown>;
-                  setContext((current) => ({
-                    ...(current ?? {}),
-                    server_now: checkin.server_now,
-                    active_checkin: {
-                      id: checkin.checkin_id,
-                      station_id: checkin.station_id,
-                      student_id: checkin.student_id,
-                      student_name: checkin.student_name,
-                      student_ecoe_number: checkin.student_ecoe_number,
-                      station_name: checkin.station_name,
-                      station_number: checkin.station_number,
-                      assessment_tool: checkin.assessment_tool,
-                      station_time_minutes: checkin.station_time_minutes,
-                      confirmed_at: checkin.confirmed_at,
-                      submission_deadline: checkin.submission_deadline,
-                      evaluator_deadline: checkin.evaluator_deadline,
-                      evaluator_submission_exists: false,
-                      student_response_exists: false,
-                      status: "confirmado",
-                    },
-                  }));
-                  setScoreObtained("0");
-                  setObservation("");
-                  setEcoeNumber("");
-                  setItemScoreState({
-                    checkinId: String(checkin.checkin_id ?? ""),
-                    scores: Object.fromEntries(
-                      (
-                        (
-                          checkin.assessment_tool as
-                            | {
-                                items?: Array<{ id?: number; order_index?: number }>;
-                              }
-                            | undefined
-                        )?.items ?? []
-                      ).map((item) => [String(item.id ?? item.order_index ?? ""), 0]),
-                    ),
-                  });
-                  setNowMs(Date.now());
-                  setMessage("Estudiante confirmado correctamente para esta estación.");
-                } catch (error) {
-                  setMessage(error instanceof Error ? error.message : "No se pudo confirmar.");
-                } finally {
-                  setConfirmingStudent(false);
-                }
+                void doCheckin(false);
               }}
             >
               <label className="flex flex-col gap-2">
@@ -657,6 +678,19 @@ export default function EvaluatorPage() {
           </div>
         ) : null}
       </ConfirmDialog>
+      <ConfirmDialog
+        open={showReconfirmCheckin}
+        title="Estudiante ya evaluado en esta estación"
+        message="Este estudiante ya tiene una evaluación registrada aquí. Si confirmás, se crea un ingreso nuevo con el cronómetro corriendo, pero el formulario queda cerrado para edición (la evaluación anterior no se puede modificar durante el ECOE)."
+        confirmLabel="Confirmar de todas formas"
+        severity="danger"
+        busy={confirmingStudent}
+        onConfirm={() => {
+          setShowReconfirmCheckin(false);
+          void doCheckin(true);
+        }}
+        onCancel={() => setShowReconfirmCheckin(false)}
+      />
     </SectionCard>
   );
 }

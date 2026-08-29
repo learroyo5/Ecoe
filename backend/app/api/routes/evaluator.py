@@ -223,6 +223,42 @@ def confirm_station_checkin(
     if not student:
         raise HTTPException(status_code=404, detail="No existe un estudiante activo con ese Número ECOE")
 
+    if not payload.force:
+        already_evaluated = (
+            db.scalar(
+                select(func.count()).select_from(EvaluatorRecord).where(
+                    EvaluatorRecord.ecoe_event_id == payload.ecoe_event_id,
+                    EvaluatorRecord.station_id == payload.station_id,
+                    EvaluatorRecord.student_id == student.id,
+                    EvaluatorRecord.mode == session_mode,
+                )
+            )
+            or 0
+        ) + (
+            db.scalar(
+                select(func.count()).select_from(StudentResponse).where(
+                    StudentResponse.ecoe_event_id == payload.ecoe_event_id,
+                    StudentResponse.station_id == payload.station_id,
+                    StudentResponse.student_id == student.id,
+                    StudentResponse.mode == session_mode,
+                )
+            )
+            or 0
+        )
+        if already_evaluated:
+            mode_label = "el pilotaje" if session_mode == "pilotaje" else "la ejecución"
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "student_already_evaluated",
+                    "message": (
+                        f"Este estudiante ya tiene una evaluación registrada en esta "
+                        f"estación para {mode_label}. Confirmar de todas formas crea un "
+                        f"ingreso nuevo pero el formulario queda cerrado para edición."
+                    ),
+                },
+            )
+
     existing_station_checkins = db.scalars(
         select(StationCheckIn).where(
             StationCheckIn.ecoe_event_id == payload.ecoe_event_id,

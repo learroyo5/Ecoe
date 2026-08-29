@@ -326,13 +326,13 @@ def test_checkin_mode_stamped_from_event_status(auth_client):
     try:
         _set_event_status(1, ECOEStatus.en_pilotaje.value)
         r1 = auth_client.post("/api/station-checkins/confirm", json={
-            "ecoe_event_id": 1, "station_id": 1, "ecoe_number": "E001",
+            "ecoe_event_id": 1, "station_id": 1, "ecoe_number": "E002",
         })
         assert r1.status_code == 200, r1.text
 
         _set_event_status(1, ECOEStatus.en_ejecucion.value)
         r2 = auth_client.post("/api/station-checkins/confirm", json={
-            "ecoe_event_id": 1, "station_id": 1, "ecoe_number": "E001",
+            "ecoe_event_id": 1, "station_id": 1, "ecoe_number": "E002",
         })
         assert r2.status_code == 200, r2.text
 

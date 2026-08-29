@@ -408,6 +408,9 @@ class StationCheckInCreate(BaseModel):
     ecoe_event_id: int
     station_id: int
     ecoe_number: str
+    # El evaluador confirmó "hacer el check-in igual" pese al aviso de que el
+    # estudiante ya tiene una evaluación registrada en esta estación.
+    force: bool = False
 
 
 class StudentAccessRequest(BaseModel):
