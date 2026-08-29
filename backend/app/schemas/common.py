@@ -155,6 +155,10 @@ class InvitationActivation(BaseModel):
 
 
 class AssessmentItemInput(BaseModel):
+    # `id` opcional: en el PATCH identifica un ítem existente para actualizarlo
+    # in-place (preservando la clave usada por EvaluatorRecord.answers). El POST
+    # de creación ignora cualquier `id` entrante.
+    id: int | None = None
     label: str
     score_per_item: float
     order_index: int
@@ -175,12 +179,33 @@ class AssessmentToolCreate(BaseModel):
     items: list[AssessmentItemInput]
 
 
+class AssessmentToolPatch(BaseModel):
+    """PATCH parcial de un instrumento (OPT-7).
+
+    Todos los campos son opcionales. Si ``items`` viene, reemplaza la lista con
+    semántica in-place: los ítems con ``id`` conocido se actualizan, los nuevos
+    se agregan y los ausentes se eliminan (ver ``services.instruments``).
+    """
+
+    name: str | None = None
+    tool_type: str | None = None
+    max_score: float | None = None
+    free_observation: bool | None = None
+    items: list[AssessmentItemInput] | None = None
+
+
 class AssessmentToolRead(ORMBase):
     id: int
     name: str
     tool_type: str
     max_score: float
     free_observation: bool
+    created_by: str | None = None
+    origin_event_id: int | None = None
+    archived: bool = False
+    # Cantidad de referencias (estaciones + banco de estaciones); la UI decide
+    # con esto si ofrece editar/purgar.
+    reference_count: int = 0
     items: list[AssessmentItemRead]
 
 

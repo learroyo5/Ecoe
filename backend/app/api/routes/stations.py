@@ -21,6 +21,7 @@ from app.models.entities import (
 from app.models.enums import ECOEStatus, RoleCode, StationStatus
 from app.schemas.common import (
     AssessmentToolCreate,
+    AssessmentToolPatch,
     AssessmentToolRead,
     PilotRunCreate,
     PilotRunNotesUpdate,
@@ -41,6 +42,14 @@ from app.services.authorization import (
     ADMIN_EVENT_ROLE_CODES,
     ensure_event_access,
 )
+from app.services.instruments import (
+    apply_tool_patch,
+    ensure_tool_editable,
+    ensure_tool_manage_permission,
+    reference_counts,
+    serialize_instrument,
+    tool_reference_summary,
+)
 
 router = APIRouter()
 
@@ -48,6 +57,19 @@ router = APIRouter()
 # simulated patients, station bank). Students/evaluators receive only
 # what they need through /student/access and /evaluator/context.
 CONTENT_MANAGER_ROLES = ("admin_ecoe", "coeditor_docente", "coordinador_operativo")
+
+
+def _reject_archived_tool(db: Session, assessment_tool_id: int | None) -> None:
+    """Un instrumento archivado (OPT-7) no puede asignarse a estaciones nuevas
+    ni re-asignarse; las estaciones que ya lo usan siguen funcionando."""
+    if assessment_tool_id is None:
+        return
+    tool = db.get(AssessmentTool, assessment_tool_id)
+    if tool and tool.archived:
+        raise HTTPException(
+            status_code=400,
+            detail="El instrumento seleccionado está archivado. Restáuralo o elige otro.",
+        )
 
 # ── Station Templates ───────────────────────────────────────────────────
 
@@ -76,9 +98,34 @@ def create_template(
 # ── Assessment Tools / Instruments ──────────────────────────────────────
 
 @router.get("/instruments", response_model=list[AssessmentToolRead])
-def list_instruments(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(require_roles(*CONTENT_MANAGER_ROLES))):
+def list_instruments(
+    ecoe_event_id: int,
+    include_archived: bool = False,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles(*CONTENT_MANAGER_ROLES)),
+):
     ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
-    return db.scalars(select(AssessmentTool)).all()
+    query = select(AssessmentTool)
+    if not include_archived:
+        query = query.where(AssessmentTool.archived.is_(False))
+    tools = db.scalars(query.order_by(AssessmentTool.id.desc())).all()
+    counts = reference_counts(db, [tool.id for tool in tools])
+    return [serialize_instrument(tool, counts.get(tool.id, 0)) for tool in tools]
+
+
+@router.get("/instruments/{tool_id}", response_model=AssessmentToolRead)
+def get_instrument(
+    tool_id: int,
+    ecoe_event_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles(*CONTENT_MANAGER_ROLES)),
+):
+    ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
+    tool = db.get(AssessmentTool, tool_id)
+    if not tool:
+        raise HTTPException(status_code=404, detail="Instrumento no encontrado")
+    summary = tool_reference_summary(db, tool.id)
+    return serialize_instrument(tool, summary["reference_count"])
 
 
 @router.post("/instruments", response_model=AssessmentToolRead)
@@ -95,14 +142,150 @@ def create_instrument(
         tool_type=payload.tool_type,
         max_score=payload.max_score,
         free_observation=payload.free_observation,
+        created_by=user.email,
+        origin_event_id=ecoe_event_id,
     )
     db.add(tool)
     db.flush()
     for item in payload.items:
-        db.add(AssessmentItem(tool_id=tool.id, **item.model_dump()))
+        db.add(AssessmentItem(
+            tool_id=tool.id,
+            label=item.label,
+            score_per_item=item.score_per_item,
+            order_index=item.order_index,
+        ))
+    db.add(AuditLog(
+        user_email=user.email, action="create_instrument",
+        target_type="AssessmentTool", target_id=str(tool.id),
+        payload={"ecoe_event_id": ecoe_event_id, "name": tool.name},
+    ))
     db.commit()
     db.refresh(tool)
-    return tool
+    return serialize_instrument(tool, 0)
+
+
+@router.patch("/instruments/{tool_id}", response_model=AssessmentToolRead)
+def patch_instrument(
+    tool_id: int,
+    payload: AssessmentToolPatch,
+    ecoe_event_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
+):
+    """Editar una pauta preservando ``AssessmentItem.id``.
+
+    El banco es compartido: la edición afecta a toda estación que apunte al
+    tool. El gate ``ensure_tool_editable`` lo acota a eventos aún en
+    diseño/config (``EDIT_BLOCKING_STATUSES``), donde un cambio compartido es
+    esperado. Un tool usado por un ECOE en pilotaje/publicado/ejecución/cerrado
+    devuelve 409: hay que duplicar la pauta.
+    """
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    tool = db.get(AssessmentTool, tool_id)
+    if not tool:
+        raise HTTPException(status_code=404, detail="Instrumento no encontrado")
+    summary = tool_reference_summary(db, tool.id)
+    ensure_tool_manage_permission(db, user, tool, summary)
+    ensure_tool_editable(db, tool, summary)
+    apply_tool_patch(db, tool, payload)
+    db.add(AuditLog(
+        user_email=user.email, action="patch_instrument",
+        target_type="AssessmentTool", target_id=str(tool.id),
+        payload={"ecoe_event_id": ecoe_event_id},
+    ))
+    db.commit()
+    db.refresh(tool)
+    summary = tool_reference_summary(db, tool.id)
+    return serialize_instrument(tool, summary["reference_count"])
+
+
+@router.delete("/instruments/{tool_id}", response_model=AssessmentToolRead)
+def archive_instrument(
+    tool_id: int,
+    ecoe_event_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
+):
+    """Soft-delete: ``archived = True``. Idempotente."""
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    tool = db.get(AssessmentTool, tool_id)
+    if not tool:
+        raise HTTPException(status_code=404, detail="Instrumento no encontrado")
+    summary = tool_reference_summary(db, tool.id)
+    ensure_tool_manage_permission(db, user, tool, summary)
+    if not tool.archived:
+        ensure_tool_editable(db, tool, summary)
+        tool.archived = True
+        db.add(AuditLog(
+            user_email=user.email, action="archive_instrument",
+            target_type="AssessmentTool", target_id=str(tool.id),
+            payload={"ecoe_event_id": ecoe_event_id},
+        ))
+        db.commit()
+        db.refresh(tool)
+    return serialize_instrument(tool, summary["reference_count"])
+
+
+@router.post("/instruments/{tool_id}/restore", response_model=AssessmentToolRead)
+def restore_instrument(
+    tool_id: int,
+    ecoe_event_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
+):
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    tool = db.get(AssessmentTool, tool_id)
+    if not tool:
+        raise HTTPException(status_code=404, detail="Instrumento no encontrado")
+    summary = tool_reference_summary(db, tool.id)
+    ensure_tool_manage_permission(db, user, tool, summary)
+    if tool.archived:
+        tool.archived = False
+        db.add(AuditLog(
+            user_email=user.email, action="restore_instrument",
+            target_type="AssessmentTool", target_id=str(tool.id),
+            payload={"ecoe_event_id": ecoe_event_id},
+        ))
+        db.commit()
+        db.refresh(tool)
+    return serialize_instrument(tool, summary["reference_count"])
+
+
+@router.delete("/instruments/{tool_id}/purge")
+def purge_instrument(
+    tool_id: int,
+    ecoe_event_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("admin_ecoe")),
+):
+    """Hard-delete. Solo ``admin_ecoe`` / ``admin_global`` y solo si el tool
+    tiene 0 referencias en ``stations`` y ``station_bank`` (si no → 409)."""
+    ensure_event_access(db, user, ecoe_event_id, RoleCode.admin_ecoe.value)
+    tool = db.get(AssessmentTool, tool_id)
+    if not tool:
+        raise HTTPException(status_code=404, detail="Instrumento no encontrado")
+    summary = tool_reference_summary(db, tool.id)
+    ensure_tool_manage_permission(db, user, tool, summary, require_admin=True)
+    if summary["reference_count"] > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "No se puede eliminar definitivamente: el instrumento está "
+                f"referenciado por {len(summary['station_ids'])} estación(es) y "
+                f"{len(summary['bank_ids'])} entrada(s) del banco. Archívalo."
+            ),
+        )
+    db.add(AuditLog(
+        user_email=user.email, action="purge_instrument",
+        target_type="AssessmentTool", target_id=str(tool.id),
+        payload={"ecoe_event_id": ecoe_event_id, "name": tool.name},
+    ))
+    db.delete(tool)
+    db.commit()
+    return {"deleted": True}
 
 
 # ── Simulated Patients ─────────────────────────────────────────────────
@@ -146,6 +329,7 @@ def create_station_bank(
 ):
     ensure_event_access(db, user, ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    _reject_archived_tool(db, payload.assessment_tool_id)
     bank_station = StationBank(**payload.model_dump())
     db.add(bank_station)
     db.commit()
@@ -166,6 +350,9 @@ def update_station_bank(
     bank_station = db.get(StationBank, bank_station_id)
     if not bank_station:
         raise HTTPException(status_code=404, detail="Estación de banco no encontrada")
+    if (payload.assessment_tool_id is not None
+            and payload.assessment_tool_id != bank_station.assessment_tool_id):
+        _reject_archived_tool(db, payload.assessment_tool_id)
     for field, value in payload.model_dump().items():
         setattr(bank_station, field, value)
     db.add(bank_station)
@@ -213,6 +400,7 @@ def create_station(
     ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
     if not ecoe_event:
         raise HTTPException(status_code=404, detail="ECOE no encontrado")
+    _reject_archived_tool(db, payload.assessment_tool_id)
     next_station_number = (
         db.scalar(
             select(func.max(Station.station_number)).where(Station.ecoe_event_id == payload.ecoe_event_id)
@@ -250,6 +438,9 @@ def update_station(
     ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
     if not ecoe_event:
         raise HTTPException(status_code=404, detail="ECOE no encontrado")
+    if (payload.assessment_tool_id is not None
+            and payload.assessment_tool_id != station.assessment_tool_id):
+        _reject_archived_tool(db, payload.assessment_tool_id)
     for field, value in payload.model_dump(exclude={"ecoe_event_id"}).items():
         setattr(station, field, value)
     station.station_time_minutes = ecoe_event.station_time_minutes
