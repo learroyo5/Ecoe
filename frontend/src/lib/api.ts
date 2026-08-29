@@ -58,7 +58,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
         if (messages.length > 0) detail = messages.join(" · ");
       }
     } catch { /* not JSON, use raw text */ }
-    throw new Error(detail);
+    // Adjuntamos el status HTTP para que los callers puedan distinguir casos
+    // recuperables (p. ej. 409 "pauta no editable" → ofrecer copia) sin parsear
+    // el texto del mensaje. Los callers que solo leen `.message` no se afectan.
+    const error = new Error(detail) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
   }
 
   const contentType = response.headers.get("content-type") ?? "";
