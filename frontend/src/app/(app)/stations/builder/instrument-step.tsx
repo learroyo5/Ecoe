@@ -1,5 +1,7 @@
 "use client";
 
+import type { AssessmentTool } from "@/lib/types";
+
 import {
   BuilderSection,
   FieldBlock,
@@ -34,6 +36,10 @@ export function InstrumentStep({
   addInstrumentItem,
   removeInstrumentItem,
   saveInstrumentDraft,
+  loadedTool,
+  startEditingInstrument,
+  instrumentConflict,
+  saveInstrumentAsCopy,
   selectedPatientId,
   setSelectedPatientId,
   patients,
@@ -61,7 +67,11 @@ export function InstrumentStep({
   updateInstrumentItem: (index: number, field: keyof InstrumentDraftItem, value: string) => void;
   addInstrumentItem: () => void;
   removeInstrumentItem: (index: number) => void;
-  saveInstrumentDraft: () => Promise<Record<string, unknown>>;
+  saveInstrumentDraft: (mode?: AssessmentMode) => Promise<Record<string, unknown>>;
+  loadedTool: AssessmentTool | null;
+  startEditingInstrument: () => void;
+  instrumentConflict: boolean;
+  saveInstrumentAsCopy: () => Promise<void>;
   selectedPatientId: string;
   setSelectedPatientId: (value: string) => void;
   patients: Record<string, unknown>[] | null;
@@ -141,6 +151,15 @@ export function InstrumentStep({
               >
                 Crear pauta en esta estación
               </button>
+              {selectedAssessmentToolId && loadedTool ? (
+                <button
+                  type="button"
+                  className={assessmentMode === "edit" ? "btn-primary" : "btn-secondary"}
+                  onClick={startEditingInstrument}
+                >
+                  Editar esta pauta
+                </button>
+              ) : null}
             </div>
 
             {assessmentMode === "existing" ? (
@@ -178,11 +197,14 @@ export function InstrumentStep({
                 <div className="flex items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-white/80 p-4">
                   <div className="space-y-1">
                     <p className="text-sm font-semibold text-slate-800">
-                      Construye aquí la pauta exacta que verá el evaluador en esta estación.
+                      {assessmentMode === "edit"
+                        ? "Editas la pauta ya asociada a esta estación. Los cambios se guardan sobre la misma pauta."
+                        : "Construye aquí la pauta exacta que verá el evaluador en esta estación."}
                     </p>
                     <p className="text-xs leading-5 text-slate-500">
-                      Esta pauta se guardará en el banco de instrumentos para que después puedas
-                      reutilizarla o editarla con más calma.
+                      {assessmentMode === "edit"
+                        ? "Se conservan los identificadores de cada criterio, así el desglose de evaluaciones ya registradas sigue cuadrando."
+                        : "Esta pauta se guardará en el banco de instrumentos para que después puedas reutilizarla o editarla con más calma."}
                     </p>
                   </div>
                   <button
@@ -192,11 +214,24 @@ export function InstrumentStep({
                       setAssessmentMode("existing");
                       setInstrumentMessage(null);
                     }}
-                    aria-label="Cerrar creación de pauta"
+                    aria-label={
+                      assessmentMode === "edit"
+                        ? "Cerrar edición de pauta"
+                        : "Cerrar creación de pauta"
+                    }
                   >
                     X
                   </button>
                 </div>
+
+                {assessmentMode === "edit" &&
+                loadedTool &&
+                (loadedTool.reference_count ?? 0) > 1 ? (
+                  <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">
+                    Esta pauta la usan {loadedTool.reference_count} estaciones o eventos; los
+                    cambios se aplican a todas.
+                  </p>
+                ) : null}
 
                 <FieldBlock
                   label="Nombre de la pauta"
@@ -332,12 +367,39 @@ export function InstrumentStep({
                       }
                     }}
                   >
-                    Guardar pauta
+                    {assessmentMode === "edit" ? "Guardar cambios en la pauta" : "Guardar pauta"}
                   </button>
                   <p className="text-sm text-slate-600">
-                    Este paso guarda la pauta y la deja seleccionada para la estación.
+                    {assessmentMode === "edit"
+                      ? "Actualiza la pauta en su lugar, sin crear una copia nueva."
+                      : "Este paso guarda la pauta y la deja seleccionada para la estación."}
                   </p>
                 </div>
+                {instrumentConflict ? (
+                  <div className="space-y-2 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    <p>
+                      Esta pauta ya no se puede editar en sitio. Puedes guardar tus cambios como
+                      una pauta nueva y dejar la estación apuntando a ella.
+                    </p>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={async () => {
+                        try {
+                          await saveInstrumentAsCopy();
+                        } catch (error) {
+                          setInstrumentMessage(
+                            error instanceof Error
+                              ? error.message
+                              : "No se pudo guardar la copia de la pauta.",
+                          );
+                        }
+                      }}
+                    >
+                      Guardar como copia nueva
+                    </button>
+                  </div>
+                ) : null}
                 {instrumentMessage ? (
                   <p className="text-sm text-slate-700">{instrumentMessage}</p>
                 ) : null}
@@ -368,8 +430,8 @@ export function InstrumentStep({
         <FieldBlock
           label={fieldConfig.max_score.label}
           description={
-            assessmentMode === "create" && capabilities.requiresEvaluator
-              ? "Este puntaje se calcula automáticamente según la suma de los criterios de la pauta que estás creando."
+            assessmentMode !== "existing" && capabilities.requiresEvaluator
+              ? "Este puntaje se calcula automáticamente según la suma de los criterios de la pauta."
               : fieldConfig.max_score.description
           }
         >
@@ -377,9 +439,9 @@ export function InstrumentStep({
             placeholder={fieldConfig.max_score.placeholder}
             value={maxScore}
             onChange={(event) => updateField("max_score", event.target.value)}
-            readOnly={assessmentMode === "create" && capabilities.requiresEvaluator}
+            readOnly={assessmentMode !== "existing" && capabilities.requiresEvaluator}
             className={
-              assessmentMode === "create" && capabilities.requiresEvaluator
+              assessmentMode !== "existing" && capabilities.requiresEvaluator
                 ? "bg-slate-100 text-slate-600"
                 : ""
             }
