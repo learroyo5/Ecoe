@@ -168,7 +168,7 @@ def confirm_station_checkin(
                         RoleCode.coordinador_operativo.value,
                         RoleCode.evaluador.value)
     ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
-    ensure_submission_stage(ecoe_event)
+    session_mode = ensure_submission_stage(ecoe_event)
     station = db.get(Station, payload.station_id)
     if not station or station.ecoe_event_id != payload.ecoe_event_id:
         raise HTTPException(status_code=404, detail="Estación no encontrada")
@@ -214,6 +214,7 @@ def confirm_station_checkin(
         evaluator_email=normalize_email(user.email),
         evaluator_name=user.full_name,
         status="confirmado",
+        mode=session_mode,
     )
     db.add(checkin)
     db.flush()

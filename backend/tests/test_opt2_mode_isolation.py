@@ -137,7 +137,7 @@ def _add_student_response(ctx: dict, *, mode: str, score_obtained=6.0, max_score
         return response.id
 
 
-def _add_checkin(ctx: dict, *, status: str = "confirmado") -> int:
+def _add_checkin(ctx: dict, *, status: str = "confirmado", mode: str = SessionMode.ejecucion.value) -> int:
     with TestingSessionLocal() as db:
         checkin = StationCheckIn(
             ecoe_event_id=ctx["event_id"],
@@ -146,12 +146,21 @@ def _add_checkin(ctx: dict, *, status: str = "confirmado") -> int:
             evaluator_email="eval@example.edu",
             evaluator_name="Evaluador Test",
             status=status,
+            mode=mode,
             confirmed_at=_utcnow_naive(),
         )
         db.add(checkin)
         db.commit()
         db.refresh(checkin)
         return checkin.id
+
+
+def _set_event_status(event_id: int, status: str) -> None:
+    with TestingSessionLocal() as db:
+        event = db.get(ECOEEvent, event_id)
+        event.status = status
+        db.add(event)
+        db.commit()
 
 
 def _trace_row(event_id: int, student_id: int) -> tuple[dict, dict]:
@@ -304,3 +313,67 @@ def test_entering_execution_closes_open_pilotage_checkins(monkeypatch):
             )
         ).all()
         assert still_open == []
+
+
+# ── Parte 2: columna `mode` en station_checkins ──────────────────────
+
+def test_checkin_mode_stamped_from_event_status(auth_client):
+    """`confirm_station_checkin` estampa el modo resuelto del evento."""
+    login(auth_client, ADMIN)
+    original = None
+    with TestingSessionLocal() as db:
+        original = str(db.get(ECOEEvent, 1).status)
+    try:
+        _set_event_status(1, ECOEStatus.en_pilotaje.value)
+        r1 = auth_client.post("/api/station-checkins/confirm", json={
+            "ecoe_event_id": 1, "station_id": 1, "ecoe_number": "E001",
+        })
+        assert r1.status_code == 200, r1.text
+
+        _set_event_status(1, ECOEStatus.en_ejecucion.value)
+        r2 = auth_client.post("/api/station-checkins/confirm", json={
+            "ecoe_event_id": 1, "station_id": 1, "ecoe_number": "E001",
+        })
+        assert r2.status_code == 200, r2.text
+
+        with TestingSessionLocal() as db:
+            modes = {
+                (c.status, str(c.mode))
+                for c in db.scalars(
+                    select(StationCheckIn).where(
+                        StationCheckIn.ecoe_event_id == 1,
+                        StationCheckIn.station_id == 1,
+                    )
+                ).all()
+            }
+        assert ("confirmado", "ejecucion") in modes
+        assert any(m == "pilotaje" for _, m in modes)
+    finally:
+        with TestingSessionLocal() as db:
+            db.query(StationCheckIn).filter(
+                StationCheckIn.ecoe_event_id == 1, StationCheckIn.station_id == 1
+            ).delete()
+            event = db.get(ECOEEvent, 1)
+            event.status = original
+            db.add(event)
+            db.commit()
+
+
+def test_traceability_ignores_pilotage_checkins():
+    """Negativo: un check-in de pilotaje no cuenta en la trazabilidad real."""
+    ctx = _build_event()
+    _add_checkin(ctx, mode=SessionMode.pilotaje.value)
+
+    row, summary = _trace_row(ctx["event_id"], ctx["student_id"])
+    assert row["completion_status"] == "sin actividad"
+    assert row["checkins_confirmed"] == 0
+    assert summary["confirmed_checkins"] == 0
+
+
+def test_traceability_counts_execution_checkins():
+    ctx = _build_event()
+    _add_checkin(ctx, mode=SessionMode.ejecucion.value)
+
+    row, summary = _trace_row(ctx["event_id"], ctx["student_id"])
+    assert row["checkins_confirmed"] == 1
+    assert summary["confirmed_checkins"] == 1

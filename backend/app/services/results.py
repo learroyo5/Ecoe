@@ -198,7 +198,10 @@ def build_traceability_report(
         .order_by(Station.station_number.asc(), Station.id.asc())
     ).all()
     checkins = db.scalars(
-        select(StationCheckIn).where(StationCheckIn.ecoe_event_id == ecoe_event_id)
+        select(StationCheckIn).where(
+            StationCheckIn.ecoe_event_id == ecoe_event_id,
+            StationCheckIn.mode == SessionMode.ejecucion.value,
+        )
         .order_by(StationCheckIn.confirmed_at.desc(), StationCheckIn.id.desc())
     ).all()
     # Trazabilidad y checklist de cierre son sobre la EJECUCIÓN REAL: los
@@ -388,7 +391,7 @@ def build_traceability_report(
             "timestamp": checkin.confirmed_at.isoformat(), "type": "checkin",
             "label": "Ingreso confirmado",
             "detail": f"{student.ecoe_number} - {student.name} {student.last_name} en estación {station.station_number}: {station.name}.",
-            "actor": checkin.evaluator_name, "mode": "ejecucion",
+            "actor": checkin.evaluator_name, "mode": checkin.mode,
         })
     for record in evaluator_records:
         student = students_by_id.get(record.student_id)

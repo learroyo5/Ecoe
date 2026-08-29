@@ -454,6 +454,13 @@ class StationCheckIn(Base, TimestampMixin):
     evaluator_email: Mapped[str] = mapped_column(String(255), nullable=False)
     evaluator_name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="confirmado")
+    # pilotaje / ejecucion: estampado al confirmar con el modo resuelto del
+    # evento, para que activity_log y los conteos de cierre distingan un
+    # check-in de ensayo de uno real sin inferir por fecha.
+    mode: Mapped[SessionMode] = mapped_column(
+        String(32), nullable=False, server_default=SessionMode.ejecucion.value,
+        default=SessionMode.ejecucion,
+    )
     confirmed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive)
 
 
