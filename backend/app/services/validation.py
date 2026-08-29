@@ -325,7 +325,19 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
                 None if timer_ready else "Los tiempos oficiales del ECOE no son validos.",
                 None if all_stations_ready else "Hay estaciones con faltantes operativos que impiden pilotar o publicar.",
                 None if pilot_count > 0 else "Aún no se ha registrado ningún pilotaje.",
-                None if has_live_session > 0 else "No existe una sesión en vivo creada para la ejecución real.",
+                # La LiveSession solo se crea en la transición a `publicado`,
+                # así que antes de publicar SIEMPRE falta y este bloqueo era
+                # irresoluble para el usuario (aparecía junto a "Listo para
+                # publicar"). El gate real de la ejecución en vivo lo cubre
+                # `can_start_live` + el ítem "Sesión en vivo creada" de
+                # `live_checks`; aquí solo se reporta una vez publicado.
+                None if (
+                    has_live_session > 0
+                    or ecoe_event.status not in {
+                        ECOEStatus.publicado.value,
+                        ECOEStatus.en_ejecucion.value,
+                    }
+                ) else "No existe una sesión en vivo creada para la ejecución real.",
             ] if item
         ],
         "pilot_checks": [
