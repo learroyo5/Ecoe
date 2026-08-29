@@ -101,9 +101,19 @@ El ciclo de vida del ECOE (`borrador → en_configuracion → listo_para_pilotaj
 - `resolve_session_mode(ecoe_event)`: no-raising, para scoping de lecturas (duplicados, exists).
 - `ensure_submission_stage(ecoe_event)`: autoritativo para escrituras (check-ins, evaluaciones, respuestas). Solo acepta `en_pilotaje` o `en_ejecucion`; cualquier otro estado devuelve 409. Esto es lo que impide que un registro de ensayo contamine resultados reales o que se grabe algo mientras el evento está "publicado" pero aún no en ejecución.
 
+El barrido de autoenvío server-side (`services/live_sweep.py::sweep_expired_phases`, OPT-20 F2) respeta este gate: nunca inserta nada fuera de `en_pilotaje`/`en_ejecucion` ni tras `cerrado`/`archivado` (re-lee el estado al arrancar para acotar la carrera contra la transición de cierre), y estampa el modo del evento en cada `StudentResponse` que crea. Las respuestas llevan `submission_kind` (`manual` / `auto` / `contingency`) — lo pone el servidor, nunca el cliente; un `auto` en blanco suma 0 pero queda marcado para la trazabilidad (D4).
+
 ### Deadlines autoritativos del servidor
 
-El cronómetro central es autoridad de servidor, no de cliente: `compute_remaining_seconds` (en `helpers.py`) calcula el tiempo restante a partir de `phase_started_at` y el reloj del servidor (`app/utils/clock.py::utcnow_naive`, wrapper de `datetime.now(timezone.utc)` naive) en vez de confiar en el timer del navegador del evaluador/estudiante. Los endpoints de contingencia auditan envíos fuera de ventana en vez de simplemente rechazarlos, porque el día del examen algunas situaciones (pausa de cronómetro que no extiende la ventana de una rotación en curso) se resuelven operativamente, no técnicamente — ver `docs/OPERACION_DIA_EXAMEN.md`.
+El cronómetro central es autoridad de servidor, no de cliente: `compute_remaining_seconds` (en `helpers.py`) calcula el tiempo restante a partir de `phase_started_at` y el reloj del servidor (`app/utils/clock.py::utcnow_naive`, wrapper de `datetime.now(timezone.utc)` naive) en vez de confiar en el timer del navegador del evaluador/estudiante.
+
+Desde OPT-20 F2 el **deadline de envío de cualquier pantalla operativa se deriva de la fase del `LiveSession`**, no de `confirmed_at + station_time`. `helpers.py::resolve_submission_deadline(db, ecoe_event, checkin, station, *, for_evaluator=False)` es la única fuente:
+- `running` → fin de la fase de estación (`phase_started_at + remaining_seconds`); para el evaluador, `+` la duración de la transición (en `transition` real, hasta el fin de esa fase).
+- `paused` → `None`: sin deadline efectivo, los envíos se aceptan hasta reanudar (D2: el que entra tarde hereda menos tiempo).
+- sin `LiveSession` o `idle`/`ready` (pilotaje sin operador) → **fallback al Reloj B** (`checkin_submission_deadline`, comportamiento histórico).
+`ensure_checkin_within_time` (los 3 call-sites: kiosko, estudiante, evaluador) usa ese helper; contingencia sigue saltándose la ventana. El servidor cierra las ventanas vencidas él mismo (`services/live_sweep.py`), disparado por `/live/control` (`start`/`next_transition`/`reset`/`expire_phase` — esta última es el buzzer: finaliza la fase sin avanzar de estación) y como red de seguridad por un barrido perezoso en los context endpoints operativos que el circuito pollea. El cliente pasa a ser "mejor esfuerzo": empuja su borrador al servidor (`PUT /student/draft`, `PUT /kiosk/draft` → tabla `station_response_drafts`) y trata "ya enviada" como éxito.
+
+Los endpoints de contingencia auditan envíos fuera de ventana en vez de simplemente rechazarlos, porque el día del examen algunas situaciones (un envío que se venció antes de alcanzar a pausar, papel tras una caída de red) se resuelven operativamente, no técnicamente — ver `docs/OPERACION_DIA_EXAMEN.md`.
 
 ### Modo kiosco
 

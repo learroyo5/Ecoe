@@ -15,19 +15,21 @@ from app.models.entities import (
     StudentResponse,
 )
 from app.models.enums import RoleCode
-from app.schemas.common import StudentAccessRequest, StudentResponseCreate
+from app.schemas.common import StudentAccessRequest, StudentDraftUpsert, StudentResponseCreate
 from app.services.dependencies import get_current_user, require_roles
 from app.services.authorization import ensure_event_access
+from app.services.drafts import discard_checkin_draft, upsert_checkin_draft
 from app.services.grading import apply_auto_grading
 from app.utils.helpers import (
-    checkin_submission_deadline,
     ensure_checkin_within_time,
     ensure_submission_stage,
     get_active_checkin,
+    isoformat_or_none,
     live_phase_snapshot,
     normalize_ecoe_lookup,
     normalize_email,
     resolve_session_mode,
+    resolve_submission_deadline,
     utcnow_naive,
 )
 from app.utils.serializers import serialize_media_asset
@@ -59,6 +61,13 @@ def student_access_context(
         raise HTTPException(status_code=403,
                             detail="El Número ECOE ingresado no corresponde a tu cuenta para este evento")
 
+    ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
+    # NB: the expired-phase sweep is NOT triggered here. This screen only sees
+    # one student / one station, so it cannot finalize the circuit, and closing
+    # this student's own check-in mid-poll would flip them back to "waiting for
+    # confirmation". The kiosk / evaluator / live-panel polls and `expire_phase`
+    # cover every form station.
+
     checkin = db.scalar(
         select(StationCheckIn)
         .where(
@@ -77,7 +86,6 @@ def student_access_context(
         .where(MediaAsset.station_id == station.id, MediaAsset.target_viewer == "estudiante")
         .order_by(MediaAsset.created_at.asc(), MediaAsset.id.asc())
     ).all()
-    ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
     # Scoped by mode: a pilotaje submission must not mark the station as
     # already answered during the real execution.
     student_response_exists = db.scalar(
@@ -103,7 +111,9 @@ def student_access_context(
         "media_assets": [serialize_media_asset(asset) for asset in student_media_assets],
         "station_time_minutes": station.station_time_minutes,
         "confirmed_at": checkin.confirmed_at.isoformat(),
-        "submission_deadline": checkin_submission_deadline(checkin, station).isoformat(),
+        "submission_deadline": isoformat_or_none(
+            resolve_submission_deadline(db, ecoe_event, checkin, station)
+        ),
         "server_now": utcnow_naive().isoformat(),
         "student_response_exists": student_response_exists,
         # OPT-20 F1: live-clock snapshot for the first paint + no-WS fallback.
@@ -147,7 +157,7 @@ def submit_student_response(
     station = db.get(Station, payload.station_id)
     if not station or station.ecoe_event_id != payload.ecoe_event_id:
         raise HTTPException(status_code=400, detail="La estación no pertenece al ECOE indicado")
-    ensure_checkin_within_time(checkin, station)
+    ensure_checkin_within_time(db, ecoe_event, checkin, station)
     # Duplicates are scoped by mode: a pilotaje response must not block the
     # same student/station during the real execution.
     existing_response = db.scalar(
@@ -165,10 +175,12 @@ def submit_student_response(
         **payload.model_dump(exclude={"checkin_id", "mode", "by_contingency"}),
         mode=session_mode,
         by_contingency=False,
+        submission_kind="manual",
     )
     apply_auto_grading(response, station.student_form_definition)
     db.add(response)
     db.flush()
+    discard_checkin_draft(db, checkin.id)
     db.add(
         AuditLog(
             user_email=user.email,
@@ -181,3 +193,40 @@ def submit_student_response(
     db.commit()
     db.refresh(response)
     return {"saved": True, "response_id": response.id}
+
+
+@router.put("/student/draft")
+def upsert_student_draft(
+    payload: StudentDraftUpsert,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("estudiante", "coordinador_operativo", "admin_ecoe")),
+):
+    """Best-effort server-side autosave of the student's in-progress answers."""
+    event_roles = ensure_event_access(db, user, payload.ecoe_event_id,
+                        RoleCode.admin_ecoe.value,
+                        RoleCode.coordinador_operativo.value,
+                        RoleCode.estudiante.value)
+    ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
+    ensure_submission_stage(ecoe_event)
+    if not event_roles & {RoleCode.admin_ecoe.value, RoleCode.coordinador_operativo.value}:
+        student = db.scalar(
+            select(Student).where(
+                Student.ecoe_event_id == payload.ecoe_event_id,
+                func.lower(Student.email) == normalize_email(user.email),
+                Student.is_active.is_(True),
+            )
+        )
+        if not student or student.id != payload.student_id:
+            raise HTTPException(status_code=403,
+                                detail="Tu cuenta no puede responder por otro estudiante en este ECOE")
+    checkin = get_active_checkin(db, payload.ecoe_event_id, payload.station_id,
+                                 payload.student_id, payload.checkin_id)
+    if not checkin:
+        raise HTTPException(
+            status_code=400,
+            detail="El borrador solo puede guardarse después de que el evaluador confirme tu ingreso a la estación",
+        )
+    draft = upsert_checkin_draft(db, checkin, payload.answers)
+    db.commit()
+    db.refresh(draft)
+    return {"saved": True, "updated_at": isoformat_or_none(draft.updated_at)}

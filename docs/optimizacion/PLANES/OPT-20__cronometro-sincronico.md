@@ -248,6 +248,40 @@ cambia todavía la semántica del deadline ni toca migraciones. Riesgo bajo.
 de la fase del `LiveSession`; el servidor cierra las ventanas vencidas. **Cambia
 comportamiento observable el día del examen** (D2).
 
+> **Estado 2026-08-29 — núcleo server-side implementado, en-verificación** (rama `opt/OPT-20-F2`).
+> - [x] Backend a) `helpers.py::resolve_submission_deadline` (running / transition / paused /
+>   fallback Reloj B en pilotaje) + `ensure_checkin_within_time` recableado (3 call-sites,
+>   contingencia sigue saltándose la ventana); context endpoints emiten `submission_deadline` /
+>   `evaluator_deadline` con el helper nuevo (`None` en pausa).
+> - [x] Backend b) migración `l2m3n4o5p6q7` (tabla `station_response_drafts` + columna
+>   `student_responses.submission_kind` con backfill `by_contingency → 'contingency'`) + modelo
+>   `StationResponseDraft` + `services/drafts.py` + `PUT /student/draft` y `PUT /kiosk/draft`
+>   (upsert por check-in activo, pasan por `ensure_submission_stage`).
+> - [x] Backend c) `services/live_sweep.py::sweep_expired_phases` — `StudentResponse` en blanco
+>   `locked` / `submission_kind="auto"` (answers = borrador o `{}`), `apply_auto_grading`, cierra
+>   el check-in y descarta el borrador; idempotente (`begin_nested` + captura `IntegrityError`);
+>   nunca tras `cerrado`/`archivado` (re-lee el estado). Solo el ocupante vigente de una estación
+>   de formulario. Evaluador: no crea registro (D3 → F3).
+> - [x] Backend d) acción `expire_phase` en `TimerAction` (valida contra `TIMER_ACTIONS`, no toca
+>   el grafo del ECOE) + barrido disparado en `start`/`reset`/`next_transition` (grace normal) y
+>   `expire_phase` (forzado, grace 0); barrido perezoso en `/kiosk/context`,
+>   `/evaluator/context/{id}`, `/live/{id}`, `/student/access`.
+> - [x] Tests: `tests/test_opt20_f2_deadline_and_sweep.py` (18, con negativos) · `python3 -m pytest`
+>   SQLite y Postgres verdes (249) · alembic upgrade/downgrade/upgrade desde base limpia OK ·
+>   ningún test previo debilitado.
+> - [ ] **Frontend e)**: `/student`, `/kiosk` empujan el borrador con debounce (cada cambio + ~10s)
+>   además del `localStorage`; tratar 409 "ya enviada" como éxito (re-fetch → pantalla enviado);
+>   verificar que el `submission_deadline` del REST y el `current_phase_ends_at` del WS no se
+>   contradigan. **Vitest `test_client_autosubmit_conflict_is_treated_as_success` pendiente.**
+> - [ ] `./scripts/run_e2e.sh` — escenario de autoenvío server-side (sandbox sin Docker).
+
+**Decisión de implementación (2026-08-29):** el barrido disparado por
+`start`/`reset`/`next_transition` es **time-gated** (respeta el grace de 30 s), no
+forzado — así una `next_transition` pulsada antes de tiempo no finaliza ventanas
+que aún no vencieron, y durante la transición real (2 min) el barrido perezoso de
+los context endpoints captura a los que no enviaron una vez pasado el grace. El
+único camino forzado (grace 0) es `expire_phase` (el buzzer).
+
 ### Backend
 
 1. **Helper nuevo** en `app/utils/helpers.py`:

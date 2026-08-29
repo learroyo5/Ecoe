@@ -19,17 +19,19 @@ from app.models.enums import RoleCode
 from app.schemas.common import EvaluatorSubmission, StationCheckInCreate
 from app.services.dependencies import get_current_user, require_roles
 from app.services.authorization import ensure_event_access
+from app.services.live_sweep import sweep_expired_phases
 from app.utils.helpers import (
-    checkin_submission_deadline,
     ensure_checkin_within_time,
     ensure_primary_station_assignment,
     ensure_submission_stage,
     find_student_by_ecoe_number,
+    isoformat_or_none,
     live_phase_snapshot,
     get_active_checkin,
     normalize_email,
     resolve_session_mode,
     resolve_station_max_score,
+    resolve_submission_deadline,
     utcnow_naive,
 )
 from app.utils.serializers import serialize_assessment_tool
@@ -102,10 +104,25 @@ def evaluator_context(
             .order_by(StationCheckIn.confirmed_at.desc(), StationCheckIn.id.desc())
         )
 
+    ecoe_event = db.get(ECOEEvent, ecoe_event_id)
+    # OPT-20 F2 safety net: finalize expired student phases before reporting
+    # the evaluator's window. Idempotent; never touches evaluator records.
+    if sweep_expired_phases(db, ecoe_event).get("closed_checkins"):
+        # A swept check-in may have been this station's active one.
+        if focus_station:
+            active_checkin = db.scalar(
+                select(StationCheckIn)
+                .where(
+                    StationCheckIn.ecoe_event_id == ecoe_event_id,
+                    StationCheckIn.station_id == focus_station.id,
+                    StationCheckIn.status == "confirmado",
+                )
+                .order_by(StationCheckIn.confirmed_at.desc(), StationCheckIn.id.desc())
+            )
+
     student = db.get(Student, active_checkin.student_id) if active_checkin else None
     station = db.get(Station, active_checkin.station_id) if active_checkin else None
     assessment_tool = serialize_assessment_tool(db, station.assessment_tool_id if station else None)
-    ecoe_event = db.get(ECOEEvent, ecoe_event_id)
     # Scoped by the current session mode: a submission recorded during the
     # pilotaje must not mark the station as "already sent" for the real run.
     current_mode = resolve_session_mode(ecoe_event)
@@ -146,11 +163,14 @@ def evaluator_context(
             "evaluator_instruction": station.evaluator_instruction if station else "",
             "confirmed_at": active_checkin.confirmed_at.isoformat(),
             "station_time_minutes": station.station_time_minutes if station else 0,
-            "submission_deadline": checkin_submission_deadline(active_checkin, station).isoformat(),
-            "evaluator_deadline": checkin_submission_deadline(
-                active_checkin, station,
-                extra_minutes=float(station.transition_time_minutes or 0),
-            ).isoformat(),
+            "submission_deadline": isoformat_or_none(
+                resolve_submission_deadline(db, ecoe_event, active_checkin, station)
+            ),
+            "evaluator_deadline": isoformat_or_none(
+                resolve_submission_deadline(
+                    db, ecoe_event, active_checkin, station, for_evaluator=True
+                )
+            ),
             "evaluator_submission_exists": evaluator_submission_exists,
             "student_response_exists": student_response_exists,
         } if active_checkin and student and station else None,
@@ -248,11 +268,14 @@ def confirm_station_checkin(
         "assessment_tool": serialize_assessment_tool(db, station.assessment_tool_id),
         "station_time_minutes": station.station_time_minutes,
         "confirmed_at": checkin.confirmed_at.isoformat(),
-        "submission_deadline": checkin_submission_deadline(checkin, station).isoformat(),
-        "evaluator_deadline": checkin_submission_deadline(
-            checkin, station,
-            extra_minutes=float(station.transition_time_minutes or 0),
-        ).isoformat(),
+        "submission_deadline": isoformat_or_none(
+            resolve_submission_deadline(db, ecoe_event, checkin, station)
+        ),
+        "evaluator_deadline": isoformat_or_none(
+            resolve_submission_deadline(
+                db, ecoe_event, checkin, station, for_evaluator=True
+            )
+        ),
         "server_now": utcnow_naive().isoformat(),
         "evaluator_submission_exists": False,
         "student_response_exists": False,
@@ -282,10 +305,8 @@ def submit_evaluator_record(
     if not station or station.ecoe_event_id != payload.ecoe_event_id:
         raise HTTPException(status_code=400, detail="La estación no pertenece al ECOE indicado")
     # The evaluator records after the student leaves, so the window also
-    # includes the transition time.
-    ensure_checkin_within_time(
-        checkin, station, extra_minutes=float(station.transition_time_minutes or 0)
-    )
+    # spans the transition phase (see resolve_submission_deadline).
+    ensure_checkin_within_time(db, ecoe_event, checkin, station, for_evaluator=True)
     if not event_roles & {
         RoleCode.admin_ecoe.value,
         RoleCode.coordinador_operativo.value,

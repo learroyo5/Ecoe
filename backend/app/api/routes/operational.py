@@ -46,9 +46,16 @@ from app.services.media import (
     safe_media_filename,
     validate_media_type,
 )
-from app.utils.helpers import compute_remaining_seconds, utcnow_naive
+from app.utils.helpers import SUBMISSION_GRACE_SECONDS, compute_remaining_seconds, utcnow_naive
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginate_query
+from app.services.live_sweep import sweep_expired_phases
 from app.services.websocket import live_timer
+
+# Timer actions accepted by POST /live/control. `expire_phase` (OPT-20 F2)
+# ends the current phase without advancing the station index — the buzzer,
+# and the trigger for the server-side auto-submit sweep (H-opt20-6 / H-vivo-8).
+TIMER_ACTIONS = {"start", "pause", "resume", "reset", "next_transition", "expire_phase"}
+_SWEEP_TIMER_ACTIONS = {"start", "reset", "next_transition", "expire_phase"}
 
 logger = logging.getLogger("ecoe.operational")
 
@@ -153,6 +160,12 @@ def get_live_panel(ecoe_event_id: int, db: Session = Depends(get_db), user=Depen
     session = db.scalar(select(LiveSession).where(LiveSession.ecoe_event_id == ecoe_event_id).limit(1))
     if not session:
         raise HTTPException(status_code=404, detail="Sesión en vivo no encontrada")
+    # OPT-20 F2 safety net: the live panel is polled continuously, so use it to
+    # finalize any expired phase. Idempotent, no-op while the phase is open.
+    ecoe_event = db.get(ECOEEvent, ecoe_event_id)
+    if ecoe_event is not None:
+        sweep_expired_phases(db, ecoe_event)
+    db.refresh(session)
     return live_session_state(session)
 
 
@@ -167,11 +180,13 @@ def control_timer(
                         RoleCode.admin_ecoe.value,
                         RoleCode.coordinador_operativo.value,
                         RoleCode.cronometrador.value)
+    if payload.action not in TIMER_ACTIONS:
+        raise HTTPException(status_code=400, detail="Acción no soportada")
+    ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
     session = db.scalar(
         select(LiveSession).where(LiveSession.ecoe_event_id == payload.ecoe_event_id).limit(1)
     )
     if not session:
-        ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
         session = LiveSession(
             ecoe_event_id=payload.ecoe_event_id,
             station_time_seconds=max(1, round(ecoe_event.station_time_minutes * 60)),
@@ -203,9 +218,25 @@ def control_timer(
         session.remaining_seconds = session.transition_time_seconds
         session.current_station_index += 1
         session.phase_started_at = now
-    else:
-        raise HTTPException(status_code=400, detail="Acción no soportada")
+    elif payload.action == "expire_phase":
+        # Buzzer: end the current phase now, WITHOUT advancing the station
+        # index. The countdown freezes at 0 and the sweep below finalizes the
+        # check-ins whose phase just ended.
+        session.remaining_seconds = 0
+        session.phase_started_at = None
     db.add(session)
+    db.flush()
+
+    if payload.action in _SWEEP_TIMER_ACTIONS and ecoe_event is not None:
+        forced = payload.action == "expire_phase"
+        sweep_expired_phases(
+            db,
+            ecoe_event,
+            force=forced,
+            grace_seconds=0 if forced else SUBMISSION_GRACE_SECONDS,
+            commit=False,
+        )
+
     db.commit()
     db.refresh(session)
 

@@ -143,6 +143,7 @@ def submit_student_response_by_contingency(
         **payload.model_dump(exclude={"checkin_id", "mode", "by_contingency"}),
         mode=session_mode,
         by_contingency=True,
+        submission_kind="contingency",
     )
     apply_auto_grading(response, station.student_form_definition)
     db.add(response)
