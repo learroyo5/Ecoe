@@ -19,12 +19,12 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 | OPT-4 | Blocker fantasma "No existe sesión en vivo" antes de publicar | H-admin-ecoe-3, H-vivo-2 | media | fricción-UX en `/validation` y `/publication` | XS · sin migración | en-verificación | `PLANES/OPT-4__blocker-fantasma-sesion-vivo.md` |
 | OPT-5 | Alta individual de evaluador sin estación (coherencia UI/endpoint) | H-admin-ecoe-2 | media | fricción en setup de staff | XS–S | en-verificación | `PLANES/OPT-5__evaluador-sin-estacion.md` |
 | OPT-8 | `/kiosk/submit` debe exigir el check-in confirmado vigente | H-vivo-5 | baja (integridad/permiso) | atribución de respuesta a check-in previo en ventana | XS–S | en-verificación | `PLANES/OPT-8__kiosk-submit-checkin-activo.md` |
-| OPT-9 | Endurecer `/live/control` | H-vivo-8 | baja | 500 con id inválido; "Iniciar" reinicia reloj sin confirmar | S | triado | — (pendiente de aprobación) |
-| OPT-10 | Empty-state para cuenta sin eventos accesibles | H-roles-usuario-4 | baja | caso borde: error técnico en vez de estado vacío | XS · solo frontend | triado | — |
-| OPT-11 | Limpieza de campos decorativos y código muerto | H-admin-ecoe-5, H-admin-ecoe-6 | baja | expectativas falsas + mantenibilidad | S | triado | — |
-| OPT-12 | Consistencia de forma de API (`ecoe_event_id` en body) | H-admin-ecoe-7 | baja | solo consistencia; frontend ya lo maneja | S · toca contrato de 3 endpoints | triado | — (candidato a descartar) |
+| OPT-9 | Endurecer `/live/control` | H-vivo-8 | baja | 500 con id inválido; "Iniciar" reinicia reloj sin confirmar | S | en-verificación | — (quick win, sin plan formal) |
+| OPT-10 | Empty-state para cuenta sin eventos accesibles | H-roles-usuario-4 | baja | caso borde: error técnico en vez de estado vacío | XS · solo frontend | en-verificación | — (quick win, sin plan formal) |
+| OPT-11 | Limpieza de campos decorativos y código muerto | H-admin-ecoe-5, H-admin-ecoe-6 | baja | expectativas falsas + mantenibilidad | S | en-verificación | — (quick win, sin plan formal) |
+| OPT-12 | Consistencia de forma de API (`ecoe_event_id` en body) | H-admin-ecoe-7 | baja | solo consistencia; frontend ya lo maneja | S · toca contrato de 3 endpoints | descartado | — |
 | OPT-13 | Correcciones a la matriz de permisos (documentación) | H-roles-usuario-2 | baja | doc induce a error | XS · solo `.md` | en-verificación | — (aplicado en `P0_MATRIZ_PERMISOS.md`) |
-| OPT-14 | Backplane para `LiveTimerManager` multi-worker | H-vivo-7 | baja (latente) | n/a hoy (1 worker); riesgo pre-escalado | L | triado | — (diferir) |
+| OPT-14 | Backplane para `LiveTimerManager` multi-worker | H-vivo-7 | baja (latente) | n/a hoy (1 worker); riesgo pre-escalado | L | diferido | — |
 
 ## Grupo B — Fricción operativa / de rol (dimensionar)
 
@@ -302,6 +302,12 @@ solo `checkin.station_id == kiosk.station_id`, no que sea el check-in `confirmad
 - **Factibilidad**: S. (a) `if not ecoe_event: raise 404`. (c) confirmación en el frontend + tope de índice.
   (b) opcional. Sin migración.
 - **Prioridad**: P2.
+- **Estado 2026-08-29**: **en-verificación** (rama `opt/grupo-a-quickwins`, quick win sin plan formal
+  aprobado en bloque por el usuario). Backend: 404 explícito si el ECOE no existe; `next_transition` con tope
+  contra el número de estaciones (`distinct station_number`) → 409 en la última. Frontend (`/live`): "Iniciar"
+  pide confirmación (`ConfirmDialog`) si la rotación ya está en curso / pausada / en transición / más allá de
+  la estación 1. Tests negativos: evento inexistente → 404, `next_transition` fuera de tope → 409. (b) se dejó
+  sin cambios a propósito. Suite backend + Postgres + lint + build + vitest verdes.
 
 ### OPT-10 · Empty-state para cuenta sin eventos accesibles
 **Confirmado** (`frontend/src/lib/auth.tsx:40-44,61-64,74-92` — `eventId` arranca en `1`, solo se corrige si
@@ -312,6 +318,11 @@ solo `checkin.station_id == kiosk.station_id`, no que sea el check-in `confirmad
   de invitación crea el `StaffAssignment` junto con la cuenta). Ve error técnico rojo.
 - **Factibilidad**: XS. Solo frontend: si `list.length === 0`, empty-state dedicado y no llamar `loadECOEData`.
 - **Prioridad**: P2.
+- **Estado 2026-08-29**: **en-verificación** (rama `opt/grupo-a-quickwins`). `lib/auth` expone
+  `noAccessibleEvents` cuando `listECOE` viene vacía; `refreshECOE` salta el load de datos y `AppShell`
+  muestra un estado vacío ("Todavía no tenés acceso a ningún ECOE. Pedile a un coordinador que te asigne a
+  uno") con botón de cerrar sesión. Test vitest: `listECOE` vacía → `noAccessibleEvents=true` y `api.ecoe` no
+  se llama.
 
 ### OPT-11 · Limpieza de campos decorativos y código muerto
 **Confirmado** (`frontend/src/components/ecoe-form.tsx:168-178` — "Total de estaciones/estudiantes" con
@@ -323,6 +334,12 @@ de 9 estados sin guardas, nunca se pasa `true`; `frontend/src/lib/api.ts:163` �
 - **Factibilidad**: S. Renombrar los campos a "estimado" con ayuda, o derivarlos de las filas reales; eliminar
   `includeStatus` y el `<select>`; eliminar `api.createStaff` (y evaluar el endpoint `create_staff`).
 - **Prioridad**: P2/P3.
+- **Estado 2026-08-29**: **en-verificación** (rama `opt/grupo-a-quickwins`). Frontend: eliminados `includeStatus`
+  + su `<select>` de estados + `STATUS_OPTIONS`; eliminado `api.createStaff` (sin llamadores). Campos "Total de
+  estaciones/estudiantes" relabelados a "estimadas" con ayuda explícita de que la validación usa los conteos
+  reales de filas. **Pendiente / fuera de este lote**: quitar `total_stations`/`total_students` del schema/DB
+  del backend — se consumen en create/update/duplicate/detalle/`types.ts` y requeriría migración; el endpoint
+  `POST /staff` se mantiene (lo usan varios tests + el import masivo).
 
 ### OPT-12 · Consistencia de forma de API (`ecoe_event_id` en body)
 **Confirmado** (`app/api/routes/stations.py:60-64,84-90,116-121` — `ecoe_event_id` como query param en el POST,
@@ -332,6 +349,8 @@ a diferencia del resto del dominio que lo lleva en body). El frontend ya lo mane
   el `ecoe_event_id` tras el gate de permiso.
 - **Factibilidad**: S, pero toca el contrato de 3 endpoints + frontend; relación beneficio/riesgo baja.
 - **Prioridad**: P3 — **candidato a descartar** salvo que se toque esa zona por OPT-7.
+- **Estado 2026-08-29**: **descartado** (decisión del usuario). El frontend ya maneja `ecoe_event_id` en query
+  param; nadie bloqueado; el costo de cambiar el contrato de 3 endpoints no se justifica.
 
 ### OPT-13 · Correcciones a la matriz de permisos (documentación)
 **Confirmado** (`docs/architecture/P0_MATRIZ_PERMISOS.md:44` marca "Lectura" / "Lectura necesaria" de
@@ -350,6 +369,8 @@ instrumentos/plantillas/pacientes para evaluador y estudiante; `app/api/routes/s
 - **Factibilidad**: L (Redis pub/sub o similar). **Explícitamente fuera de alcance P0**
   (`P0_PLAN_CORE_INSTITUCIONAL.md` §"Fuera de alcance": "Redis/broker para WebSocket multi-replica").
 - **Prioridad**: DIFERIDO — anotar como riesgo conocido pre-escalado horizontal.
+- **Estado 2026-08-29**: **diferido** (decisión del usuario). Riesgo latente sólo con >1 worker; se retoma
+  si/cuando se escale horizontalmente, atado a la infra de OPT-20 F1.
 
 ### OPT-15 · Fricción del corrector
 **Confirmado** (`frontend/src/app/(app)/grading/page.tsx`; `app/api/routes/grading.py:60-104`). Lista FIFO
