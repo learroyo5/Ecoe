@@ -330,6 +330,12 @@ def upsert_evaluator_draft(
                         RoleCode.evaluador.value)
     ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
     session_mode = ensure_submission_stage(ecoe_event)
+    station = db.get(Station, payload.station_id)
+    if not station or station.ecoe_event_id != payload.ecoe_event_id:
+        raise HTTPException(status_code=400, detail="La estación no pertenece al ECOE indicado")
+    _ensure_station_assigned_to_evaluator(
+        db, user, event_roles, payload.ecoe_event_id, payload.station_id
+    )
     checkin = get_active_checkin(db, payload.ecoe_event_id, payload.station_id,
                                  payload.student_id, payload.checkin_id)
     if not checkin:
@@ -337,12 +343,6 @@ def upsert_evaluator_draft(
             status_code=400,
             detail="El borrador solo puede guardarse para un estudiante confirmado en esta estación",
         )
-    station = db.get(Station, payload.station_id)
-    if not station or station.ecoe_event_id != payload.ecoe_event_id:
-        raise HTTPException(status_code=400, detail="La estación no pertenece al ECOE indicado")
-    _ensure_station_assigned_to_evaluator(
-        db, user, event_roles, payload.ecoe_event_id, payload.station_id
-    )
     ensure_checkin_within_time(db, ecoe_event, checkin, station, for_evaluator=True)
     authoritative_max = resolve_station_max_score(db, station)
     if authoritative_max <= 0:
