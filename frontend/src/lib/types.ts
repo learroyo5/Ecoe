@@ -269,6 +269,13 @@ export type ActiveCheckin = {
   evaluator_instruction: string;
   confirmed_at: string;
   station_time_minutes: number;
+  /** OPT-20 F2: deadline autoritativo derivado de la fase del LiveSession
+   *  (fin de la fase de estación en curso); `null` mientras el reloj central
+   *  está en pausa. */
+  submission_deadline?: string | null;
+  /** OPT-20 F2: deadline del evaluador — incluye la fase de transición en
+   *  curso; `null` en pausa. */
+  evaluator_deadline?: string | null;
   evaluator_submission_exists: boolean;
   student_response_exists: boolean;
 };
@@ -289,6 +296,15 @@ export type StudentAccessContext = {
   station_time_minutes: number;
   confirmed_at: string;
   student_response_exists: boolean;
+  server_now?: string;
+  /** OPT-20 F2: deadline autoritativo derivado de la fase del LiveSession;
+   *  `null` mientras el reloj central está en pausa. */
+  submission_deadline?: string | null;
+  /** OPT-20 F1: snapshot del reloj central para la primera pintura y el
+   *  fallback sin WebSocket. */
+  live_status?: string | null;
+  current_phase_ends_at?: string | null;
+  paused?: boolean;
 };
 
 export type TraceabilityReport = {
