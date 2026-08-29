@@ -22,6 +22,10 @@ type ECOEContextValue = {
   loading: boolean;
   /** Last failure loading the ECOE list/dashboard, surfaced by AppShell. */
   loadError: string | null;
+  /** true when the account authenticated fine but has no ECOE it can reach
+   *  (no ECOEPermission / StaffAssignment / enrollment). AppShell renders a
+   *  dedicated empty-state instead of a technical error. */
+  noAccessibleEvents: boolean;
   setEventId: (value: number) => void;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
@@ -41,6 +45,7 @@ export function ECOEProvider({ children }: { children: React.ReactNode }) {
   const [ecoeEvent, setECOEEvent] = useState<ECOEEvent | null>(null);
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [noAccessibleEvents, setNoAccessibleEvents] = useState(false);
 
   const [eventId, setEventIdState] = useState<number>(() => {
     if (typeof window === "undefined") return 1;
@@ -54,11 +59,12 @@ export function ECOEProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const loadECOEList = useCallback(async () => {
-    if (!authenticated) return;
+  const loadECOEList = useCallback(async (): Promise<ECOEEvent[] | null> => {
+    if (!authenticated) return null;
     try {
       const list = await api.listECOE();
       setECOEList(list);
+      setNoAccessibleEvents(list.length === 0);
       // Do NOT clear loadError here: loadECOEData runs right after this in
       // refreshECOE, and clearing on this call's success would hide a
       // failure from loadECOEList once loadECOEData succeeds. Both callers
@@ -67,12 +73,14 @@ export function ECOEProvider({ children }: { children: React.ReactNode }) {
       if (!exists && list.length > 0) {
         setEventId(list[0].id);
       }
+      return list;
     } catch (err) {
       setLoadError(
         err instanceof Error
           ? `No se pudo cargar la lista de ECOE: ${err.message}`
           : "No se pudo cargar la lista de ECOE.",
       );
+      return null;
     }
   }, [authenticated, eventId, setEventId]);
 
@@ -104,7 +112,11 @@ export function ECOEProvider({ children }: { children: React.ReactNode }) {
 
   const refreshECOE = useCallback(async () => {
     setLoadError(null);
-    await loadECOEList();
+    const list = await loadECOEList();
+    // An account with no accessible ECOE would only hit api.ecoe(1) → 403 and
+    // surface a technical error. Skip the data load and let AppShell show the
+    // empty-state (H-roles-usuario-4 / OPT-10).
+    if (list && list.length === 0) return;
     await loadECOEData();
   }, [loadECOEList, loadECOEData]);
 
@@ -159,6 +171,7 @@ export function ECOEProvider({ children }: { children: React.ReactNode }) {
     setEventRoles([]);
     setEventRolesLoaded(false);
     setDashboard(null);
+    setNoAccessibleEvents(false);
     setReady(true);
     if (typeof window !== "undefined") {
       window.location.href = "/login";
@@ -167,10 +180,10 @@ export function ECOEProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(
     () => ({
-      ecoeList, ecoeEvent, dashboard, authenticated, user, eventRoles, eventRolesLoaded, ready, eventId, loading, loadError,
+      ecoeList, ecoeEvent, dashboard, authenticated, user, eventRoles, eventRolesLoaded, ready, eventId, loading, loadError, noAccessibleEvents,
       setEventId, login, logout, refreshECOE,
     }),
-    [ecoeList, ecoeEvent, dashboard, authenticated, user, eventRoles, eventRolesLoaded, ready, eventId, loading, loadError, setEventId, login, logout, refreshECOE],
+    [ecoeList, ecoeEvent, dashboard, authenticated, user, eventRoles, eventRolesLoaded, ready, eventId, loading, loadError, noAccessibleEvents, setEventId, login, logout, refreshECOE],
   );
 
   return <ECOEContext.Provider value={value}>{children}</ECOEContext.Provider>;

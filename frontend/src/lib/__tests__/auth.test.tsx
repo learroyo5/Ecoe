@@ -19,13 +19,14 @@ vi.mock("@/lib/api", () => ({
 const mockedApi = vi.mocked(api);
 
 function Probe() {
-  const { ready, authenticated, user, loadError } = useECOE();
+  const { ready, authenticated, user, loadError, noAccessibleEvents } = useECOE();
   return (
     <div>
       <span data-testid="ready">{String(ready)}</span>
       <span data-testid="authenticated">{String(authenticated)}</span>
       <span data-testid="user-email">{user?.email ?? ""}</span>
       <span data-testid="load-error">{loadError ?? ""}</span>
+      <span data-testid="no-accessible-events">{String(noAccessibleEvents)}</span>
     </div>
   );
 }
@@ -73,6 +74,29 @@ describe("ECOEProvider", () => {
     await waitFor(() => expect(screen.getByTestId("authenticated").textContent).toBe("true"));
     expect(screen.getByTestId("user-email").textContent).toBe("admin@ecoe.cl");
     await waitFor(() => expect(mockedApi.listECOE).toHaveBeenCalled());
+  });
+
+  it("flags noAccessibleEvents and skips the ECOE data load when the list is empty", async () => {
+    mockedApi.me.mockResolvedValue({
+      id: 9,
+      email: "sin-eventos@ecoe.cl",
+      full_name: "Sin Eventos",
+      role: "miembro",
+    });
+    mockedApi.listECOE.mockResolvedValue([]);
+    mockedApi.ecoe.mockResolvedValue({ id: 1, name: "no debería pedirse" } as never);
+
+    render(
+      <ECOEProvider>
+        <Probe />
+      </ECOEProvider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("no-accessible-events").textContent).toBe("true"),
+    );
+    expect(mockedApi.ecoe).not.toHaveBeenCalled();
+    expect(screen.getByTestId("load-error").textContent).toBe("");
   });
 
   it("surfaces a loadError instead of silently failing when listECOE rejects", async () => {
