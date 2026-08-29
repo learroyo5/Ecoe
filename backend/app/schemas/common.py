@@ -320,6 +320,19 @@ class EvaluatorSubmission(BaseModel):
     by_contingency: bool = False
 
 
+class EvaluatorDraftUpsert(BaseModel):
+    """Partial, server-side autosave of an evaluator record (OPT-20 F3, D3)."""
+
+    checkin_id: int | None = None
+    ecoe_event_id: int
+    station_id: int
+    student_id: int
+    evaluator_name: str
+    score_obtained: float = 0
+    observation: str = ""
+    answers: dict[str, Any] = {}
+
+
 class StudentResponseCreate(BaseModel):
     checkin_id: int | None = None
     ecoe_event_id: int

@@ -21,8 +21,12 @@ has no definitive ``StudentResponse`` for the event's mode, the sweep:
 - auto-grades it (``apply_auto_grading``),
 - closes the check-in and discards the draft.
 
-Evaluator records are deliberately left untouched: D3 (persist a half-filled
-``EvaluatorRecord`` as a draft on the buzzer) lands in F3.
+Evaluator records are deliberately left untouched (D3, OPT-20 F3): the
+evaluator screen autosaves its own ``is_draft=True`` row via
+``PUT /evaluator/draft`` while filling it in, so when the phase expires that
+draft simply stays a draft — the sweep neither promotes it nor creates a
+blank one. A station with no evaluator draft at all shows up in the
+traceability report as a missing evaluation, to be resolved by contingency.
 
 The sweep never runs once the event is ``cerrado`` / ``archivado``
 (``FROZEN_RESULT_STATUSES``); the close transition already consolidates and
