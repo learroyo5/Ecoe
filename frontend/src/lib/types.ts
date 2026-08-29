@@ -123,6 +123,10 @@ export type StationTemplate = {
   category: string;
   description: string;
   default_configuration: Record<string, unknown>;
+  created_by?: string | null;
+  origin_event_id?: number | null;
+  archived?: boolean;
+  reference_count?: number;
 };
 
 export type SimulatedPatient = {
@@ -133,6 +137,10 @@ export type SimulatedPatient = {
   key_answers: string;
   emotional_tone: string;
   special_instructions: string;
+  created_by?: string | null;
+  origin_event_id?: number | null;
+  archived?: boolean;
+  reference_count?: number;
 };
 
 export type StationBank = {
@@ -351,6 +359,14 @@ export type GradingListResult = {
   pending_count: number;
   scope: GradingScope;
   pending_by_station: PendingByStation;
+};
+
+export type GradingZeroBlankResult = {
+  /** Cuántas respuestas automáticas en blanco quedaron puntuadas 0. */
+  zeroed: number;
+  response_ids: number[];
+  /** Pendientes que quedan en el scope del actor tras el bulk. */
+  pending_remaining: number;
 };
 
 export type GradeResponseResult = {

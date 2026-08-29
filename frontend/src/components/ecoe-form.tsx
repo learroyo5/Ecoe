@@ -63,11 +63,6 @@ export function validateECOEPayload(values: Record<string, string>): Record<stri
     errors.contact_email = "Ingresa un correo electrónico válido";
   }
 
-  const stations = Number(values.total_stations);
-  if (Number.isNaN(stations) || stations < 1) {
-    errors.total_stations = "Debe ser al menos 1";
-  }
-
   const stationTime = Number(values.station_time_minutes);
   if (Number.isNaN(stationTime) || stationTime < 0.1) {
     errors.station_time_minutes = "Debe ser al menos 0.1 minutos";
@@ -158,17 +153,12 @@ export function ECOEFormFields({
         })()}
       </FormField>
 
-      <FormField label="Estaciones estimadas" description="Estimación para planificación. La validación de completitud usa el número real de estaciones construidas, no este valor." error={errors.total_stations}>
-        <input type="number" min="1" value={values.total_stations ?? ""} onChange={update("total_stations")} />
-      </FormField>
-
       <FormField label="Total de grupos" description="Cantidad de grupos de estudiantes que rotarán en paralelo." error={errors.total_groups}>
         <input type="number" min="1" value={values.total_groups ?? ""} onChange={update("total_groups")} />
       </FormField>
 
-      <FormField label="Estudiantes estimados" description="Estimación para planificación. La nómina real se carga en la sección Estudiantes; este valor no la reemplaza.">
-        <input type="number" min="0" value={values.total_students ?? ""} onChange={update("total_students")} />
-      </FormField>
+      {/* Las estaciones y los estudiantes ya no se estiman aquí: la sección
+          Estaciones y la nómina real son la única fuente (OPT-11b). */}
 
       {/* ── Parámetros de tiempo y evaluación ── */}
       <FormSection
@@ -201,10 +191,8 @@ export function buildECOEPayload(values: Record<string, string>) {
     responsible_teacher: values.responsible_teacher,
     contact_email: values.contact_email,
     circuit_mode: values.circuit_mode,
-    total_stations: Number(values.total_stations),
     station_time_minutes: Number(values.station_time_minutes),
     transition_time_minutes: Number(values.transition_time_minutes),
-    total_students: Number(values.total_students),
     total_groups: Number(values.total_groups),
     passing_reference_percent: Number(values.passing_reference_percent),
   };
@@ -221,10 +209,8 @@ export function toEditableValues(ecoeEvent: Record<string, unknown> | null): Rec
     responsible_teacher: String(ecoeEvent.responsible_teacher ?? ""),
     contact_email: String(ecoeEvent.contact_email ?? ""),
     circuit_mode: String(ecoeEvent.circuit_mode ?? ""),
-    total_stations: String(ecoeEvent.total_stations ?? 0),
     station_time_minutes: String(ecoeEvent.station_time_minutes ?? 0),
     transition_time_minutes: String(ecoeEvent.transition_time_minutes ?? 0),
-    total_students: String(ecoeEvent.total_students ?? 0),
     total_groups: String(ecoeEvent.total_groups ?? 1),
     passing_reference_percent: String(ecoeEvent.passing_reference_percent ?? 60),
     status: String(ecoeEvent.status ?? "borrador"),

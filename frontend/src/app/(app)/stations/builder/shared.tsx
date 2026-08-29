@@ -52,9 +52,17 @@ export const defaultForm = {
 };
 
 export type FormKey = keyof typeof defaultForm;
-export type AssessmentMode = "existing" | "create";
+// "existing": reutiliza una pauta del banco tal cual (sin escritura).
+// "create":   POST de una pauta nueva y re-apunta la estación.
+// "edit":     PATCH in-place sobre la pauta ya referenciada, preservando los
+//             AssessmentItem.id (OPT-7c). Solo se ofrece con un tool cargado.
+export type AssessmentMode = "existing" | "create" | "edit";
 
 export type InstrumentDraftItem = {
+  // Presente solo en modo "edit" para los ítems que ya existen en la BD: el
+  // PATCH los actualiza in-place. Los ítems nuevos van sin `id` (alta) y los
+  // omitidos se eliminan.
+  id?: number;
   label: string;
   score_per_item: string;
 };

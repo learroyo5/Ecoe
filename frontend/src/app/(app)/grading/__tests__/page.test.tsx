@@ -13,6 +13,7 @@ vi.mock("@/lib/api", () => ({
   api: {
     gradingList: vi.fn(),
     gradeResponse: vi.fn(),
+    gradingZeroBlank: vi.fn(),
   },
 }));
 
@@ -53,6 +54,15 @@ function pendingRow(id: number, overrides = {}) {
     assessment_tool: null,
     ...overrides,
   };
+}
+
+function blankAutoRow(id: number, overrides = {}) {
+  return pendingRow(id, {
+    submission_kind: "auto",
+    answers: {},
+    grading: { question_1: { kind: "manual", earned: null, max: 6, answered: false } },
+    ...overrides,
+  });
 }
 
 beforeEach(() => {
@@ -155,6 +165,51 @@ describe("GradingPage — OPT-15 cola del corrector", () => {
     // La fila 2 quedó abierta (su input de puntaje visible) y la 1 pasó a corregidas.
     await waitFor(() => expect(screen.getByRole("spinbutton")).toBeInTheDocument());
     expect(screen.getByText("5 / 6 pts")).toBeInTheDocument();
+  });
+
+  it("ofrece 'puntuar 0 los blancos' por estación y muta las filas sin re-fetch", async () => {
+    mockedApi.gradingList.mockResolvedValue({
+      responses: [blankAutoRow(1), pendingRow(2)],
+      pending_count: 2,
+      scope: OPEN_SCOPE,
+      pending_by_station: {
+        "7": { station_number: 3, station_name: "Informe", pending: 2, total: 2 },
+      },
+    } as never);
+    mockedApi.gradingZeroBlank.mockResolvedValue({
+      zeroed: 1,
+      response_ids: [1],
+      pending_remaining: 1,
+    } as never);
+
+    render(<GradingPage />);
+
+    const zeroButton = await screen.findByRole("button", {
+      name: /puntuar 0 los blancos \(1\)/i,
+    });
+    fireEvent.click(zeroButton);
+    fireEvent.click(screen.getByRole("button", { name: "Puntuar 0" }));
+
+    await waitFor(() => expect(mockedApi.gradingZeroBlank).toHaveBeenCalledWith(1, 7));
+    // El bulk no re-fetchea la lista: solo se pidió al montar.
+    expect(mockedApi.gradingList).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.getByText("0 / 6 pts")).toBeInTheDocument());
+  });
+
+  it("no ofrece el bulk-0 cuando no hay autoenvíos en blanco", async () => {
+    mockedApi.gradingList.mockResolvedValue({
+      responses: [pendingRow(1)],
+      pending_count: 1,
+      scope: OPEN_SCOPE,
+      pending_by_station: {
+        "7": { station_number: 3, station_name: "Informe", pending: 1, total: 1 },
+      },
+    } as never);
+
+    render(<GradingPage />);
+
+    await screen.findAllByRole("button", { name: "Corregir" });
+    expect(screen.queryByTestId("grading-zero-blank")).not.toBeInTheDocument();
   });
 
   it("muestra el panel de pauta solo cuando la fila trae assessment_tool", async () => {

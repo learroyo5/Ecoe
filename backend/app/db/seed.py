@@ -120,10 +120,8 @@ def seed_data(db: Session) -> None:
         responsible_teacher="Admin ECOE",
         contact_email="ecoe@universidad.cl",
         circuit_mode="paralelo_espejo",
-        total_stations=6,
         station_time_minutes=8,
         transition_time_minutes=2,
-        total_students=10,
         total_groups=2,
         passing_reference_percent=60,
         # en_ejecucion: el gate de envios solo acepta registros operativos en

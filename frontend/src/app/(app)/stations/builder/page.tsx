@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { api } from "@/lib/api";
+import type { AssessmentTool } from "@/lib/types";
 import { useECOE } from "@/lib/auth";
 import { canEditStations } from "@/lib/permissions";
 import { defaultRouteForRole } from "@/lib/routes";
@@ -95,6 +96,15 @@ export default function StationBuilderPage() {
   const [form, setForm] = useState(defaultForm);
   const [assessmentMode, setAssessmentMode] = useState<AssessmentMode>("existing");
   const [selectedAssessmentToolId, setSelectedAssessmentToolId] = useState("");
+  // Pauta completa (con items[].id y reference_count) de la que hoy referencia
+  // la estación. Se carga sin cambiar de modo: habilita el botón "Editar esta
+  // pauta" (OPT-7c). null = sin tool seleccionado o no se pudo cargar.
+  const [loadedTool, setLoadedTool] = useState<AssessmentTool | null>(null);
+  const loadedToolIdRef = useRef<number | null>(null);
+  // Se enciende cuando un PATCH de pauta devuelve 409 (la pauta ya no es
+  // editable porque un ECOE que la usa está en etapa avanzada). Dispara el
+  // fallback "Guardar como copia nueva" en el paso de instrumento.
+  const [instrumentConflict, setInstrumentConflict] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [instrumentDraft, setInstrumentDraft] = useState<InstrumentDraft>(defaultInstrumentDraft);
@@ -340,9 +350,16 @@ export default function StationBuilderPage() {
     );
   };
 
-  const buildInstrumentPayload = () => {
+  // `mode` explícito para que los handlers que primero llaman a
+  // `setAssessmentMode` (p. ej. "guardar como copia") no dependan del estado
+  // que aún no se refrescó en este render.
+  const buildInstrumentPayload = (mode: AssessmentMode = assessmentMode) => {
     const cleanItems = instrumentDraft.items
       .map((item, index) => ({
+        // El PATCH in-place identifica los ítems existentes por `id`; los
+        // nuevos van sin `id` (alta) y los que se quitaron del draft no se
+        // envían (baja). En "create" el backend ignora cualquier `id`.
+        ...(mode === "edit" && typeof item.id === "number" ? { id: item.id } : {}),
         label: item.label.trim(),
         score_per_item: Number(item.score_per_item),
         order_index: index + 1,
@@ -366,25 +383,91 @@ export default function StationBuilderPage() {
     };
   };
 
-  const saveInstrumentDraft = async () => {
-    const createdInstrument = (await api.createInstrument(
-      eventId,
-      buildInstrumentPayload(),
-    )) as Record<string, unknown>;
-
+  const upsertInstrumentInList = (tool: Record<string, unknown>) => {
     setInstruments((current) => {
       const existing = current ?? [];
-      if (existing.some((instrument) => Number(instrument.id) === Number(createdInstrument.id))) {
+      if (existing.some((instrument) => Number(instrument.id) === Number(tool.id))) {
         return existing.map((instrument) =>
-          Number(instrument.id) === Number(createdInstrument.id) ? createdInstrument : instrument,
+          Number(instrument.id) === Number(tool.id) ? tool : instrument,
         );
       }
-      return [...existing, createdInstrument];
+      return [...existing, tool];
     });
+  };
+
+  // Carga los ítems reales del tool en el editor de pauta y entra en modo
+  // "edit". El usuario lo pide explícitamente con "Editar esta pauta".
+  const startEditingInstrument = () => {
+    if (!loadedTool) {
+      return;
+    }
+    setInstrumentDraft({
+      name: loadedTool.name,
+      tool_type: loadedTool.tool_type,
+      free_observation: loadedTool.free_observation,
+      items: (loadedTool.items ?? [])
+        .slice()
+        .sort((a, b) => a.order_index - b.order_index)
+        .map((item) => ({
+          id: item.id,
+          label: item.label,
+          score_per_item: String(item.score_per_item),
+        })),
+    });
+    setInstrumentConflict(false);
+    setInstrumentMessage(null);
+    setAssessmentMode("edit");
+  };
+
+  const persistInstrumentDraft = async (mode: AssessmentMode) => {
+    if (mode === "edit" && selectedAssessmentToolId) {
+      const updated = (await api.updateInstrument(
+        eventId,
+        Number(selectedAssessmentToolId),
+        buildInstrumentPayload("edit"),
+      )) as Record<string, unknown>;
+      upsertInstrumentInList(updated);
+      setLoadedTool(updated as unknown as AssessmentTool);
+      loadedToolIdRef.current = Number(updated.id);
+      setInstrumentConflict(false);
+      setAssessmentMode("existing");
+      setInstrumentMessage(
+        "Pauta actualizada. El cambio se aplica a todas las estaciones que la usan.",
+      );
+      return updated;
+    }
+
+    const createdInstrument = (await api.createInstrument(
+      eventId,
+      buildInstrumentPayload("create"),
+    )) as Record<string, unknown>;
+    upsertInstrumentInList(createdInstrument);
     setSelectedAssessmentToolId(String(createdInstrument.id));
+    setInstrumentConflict(false);
     setAssessmentMode("existing");
     setInstrumentMessage("Pauta guardada correctamente y asociada a esta estación.");
     return createdInstrument;
+  };
+
+  const saveInstrumentDraft = async (mode: AssessmentMode = assessmentMode) => {
+    try {
+      return await persistInstrumentDraft(mode);
+    } catch (error) {
+      if (
+        mode === "edit" &&
+        (error as { status?: number }).status === 409
+      ) {
+        // La pauta dejó de ser editable entre que se abrió y se guardó. Se
+        // ofrece crear una copia (POST) con los ítems ya cargados.
+        setInstrumentConflict(true);
+      }
+      throw error;
+    }
+  };
+
+  const saveInstrumentAsCopy = async () => {
+    setInstrumentMessage(null);
+    await saveInstrumentDraft("create");
   };
 
   const renderTextField = (key: FormKey) => {
@@ -523,6 +606,7 @@ export default function StationBuilderPage() {
       usesSimulatedPatient: Boolean(station.uses_simulated_patient),
     };
     setAssessmentMode("existing");
+    setInstrumentConflict(false);
     const rawQuestions = (
       station.student_form_definition as { questions?: Record<string, unknown>[] } | undefined
     )?.questions;
@@ -632,7 +716,9 @@ export default function StationBuilderPage() {
   }, [nextStationNumber]);
 
   useEffect(() => {
-    if (assessmentMode !== "create") {
+    // Se recalcula el puntaje máximo mientras se construye la pauta (crear o
+    // editar in-place); en "existing" el puntaje lo manda el campo.
+    if (assessmentMode === "existing") {
       return;
     }
 
@@ -646,6 +732,38 @@ export default function StationBuilderPage() {
       max_score: totalScore > 0 ? String(totalScore) : current.max_score,
     }));
   }, [assessmentMode, instrumentDraft.items]);
+
+  // Carga la pauta referenciada por la estación (o la recién elegida en el
+  // <select>) para tener sus items[].id disponibles si el usuario decide
+  // "Editar esta pauta". No cambia el modo: seguir en "existing" hasta que el
+  // usuario lo pida explícitamente (OPT-7c, decisión del usuario).
+  useEffect(() => {
+    const toolId = Number(selectedAssessmentToolId);
+    if (!selectedAssessmentToolId || !Number.isFinite(toolId) || toolId <= 0) {
+      loadedToolIdRef.current = null;
+      setLoadedTool(null);
+      return;
+    }
+    if (loadedToolIdRef.current === toolId) {
+      return;
+    }
+    loadedToolIdRef.current = toolId;
+    let cancelled = false;
+    api
+      .instrument(eventId, toolId)
+      .then((tool) => {
+        if (!cancelled) setLoadedTool(tool as AssessmentTool);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          loadedToolIdRef.current = null;
+          setLoadedTool(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAssessmentToolId, eventId]);
 
   useEffect(() => {
     if (!isEditing || !stations?.length || builderScope !== "ecoe") {
@@ -838,11 +956,16 @@ export default function StationBuilderPage() {
           setIsSaving(true);
           try {
             let newInstrumentId: number | null = null;
-            // If creating a new instrument, save it first automatically
-            if (assessmentMode === "create") {
-              setMessage("Guardando la pauta de evaluación primero...");
-              const created = await saveInstrumentDraft();
-              newInstrumentId = Number(created.id);
+            // Si se está construyendo la pauta (crear una nueva o editar la
+            // referenciada in-place), se persiste antes que la estación.
+            if (assessmentMode === "create" || assessmentMode === "edit") {
+              setMessage(
+                assessmentMode === "edit"
+                  ? "Guardando los cambios de la pauta primero..."
+                  : "Guardando la pauta de evaluación primero...",
+              );
+              const saved = await saveInstrumentDraft();
+              newInstrumentId = Number(saved.id);
             }
 
             if (builderScope === "bank") {
@@ -975,6 +1098,10 @@ export default function StationBuilderPage() {
           addInstrumentItem={addInstrumentItem}
           removeInstrumentItem={removeInstrumentItem}
           saveInstrumentDraft={saveInstrumentDraft}
+          loadedTool={loadedTool}
+          startEditingInstrument={startEditingInstrument}
+          instrumentConflict={instrumentConflict}
+          saveInstrumentAsCopy={saveInstrumentAsCopy}
           selectedPatientId={selectedPatientId}
           setSelectedPatientId={setSelectedPatientId}
           patients={patients}
@@ -1065,7 +1192,7 @@ export default function StationBuilderPage() {
               onClick={async () => {
                 setMessage(null);
                 try {
-                  if (assessmentMode === "create") {
+                  if (assessmentMode === "create" || assessmentMode === "edit") {
                     setMessage("Guardando la pauta primero...");
                     await saveInstrumentDraft();
                   }

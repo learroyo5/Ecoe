@@ -73,6 +73,8 @@ Los bancos de plantillas, instrumentos, pacientes simulados y estaciones son ins
 
 Instrumentos (`AssessmentTool`, OPT-7): editar/archivar/restaurar una pauta exige, ademas del contexto de evento, ser `admin_global` **o** `admin_ecoe`/`coeditor_docente` del `origin_event_id` de la pauta. Para pautas legadas sin `origin_event_id`, basta ese rol en algun evento que hoy la referencia; si no tiene ninguna referencia, solo `admin_global`. Una pauta usada por una estacion de un ECOE en `en_pilotaje`/`publicado`/`en_ejecucion`/`cerrado`/`archivado` no se puede editar ni archivar (409): hay que duplicarla. El `DELETE` es soft (`archived`); el hard-delete (`.../purge`) es solo `admin_ecoe`/`admin_global` y solo con 0 referencias.
 
+Plantillas y pacientes simulados (`StationTemplate` / `SimulatedPatient`, OPT-7b): misma regla de propiedad y gracia que los instrumentos (`admin_global` **o** rol en `origin_event_id`; para legados, rol en un evento que hoy los referencia; sin referencias, solo `admin_global`). `purge` sube el listón igual (`admin_ecoe`/`admin_global`, 0 referencias). **Diferencia con OPT-7**: no hay gate de estado — su contenido no se lee en runtime, así que el `PATCH` es UPDATE libre incluso con el ECOE en ejecución; el `DELETE` es soft (`archived`). Un registro archivado no se asigna a estaciones nuevas; las que ya lo usan siguen operativas.
+
 ## Casos negativos obligatorios P0
 
 - Usuario autenticado sin relacion con el ECOE recibe 403.
