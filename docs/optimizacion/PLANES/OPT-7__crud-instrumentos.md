@@ -289,12 +289,25 @@ oculta de la lista; "Purgar" no aparece con `reference_count > 0`).
 
 ## Verificación
 
-- [ ] `cd backend && python3 -m pytest`
-- [ ] `TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q`
-- [ ] `DATABASE_URL=sqlite:////tmp/ecoe_opt7_check.db SECRET_KEY=test-secret ENVIRONMENT=test AUTO_SEED_DEMO=false alembic upgrade head` + `downgrade -1` + `upgrade head`
-- [ ] mismo up/down contra Postgres desde base limpia (toca FKs `ondelete`)
-- [ ] `cd frontend && npm run lint && npm run build`
-- [ ] `./scripts/run_e2e.sh` si el flujo dorado toca el Constructor de pautas (opcional)
+- [x] `cd backend && python3 -m pytest` — 289 passed (SQLite)
+- [x] `TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q` — 289 passed (Postgres + migraciones Alembic)
+- [x] `DATABASE_URL=sqlite:////tmp/ecoe_opt7_check.db … alembic upgrade head` + `downgrade -1` + `upgrade head` — OK
+- [x] mismo up/down contra Postgres desde base limpia (toca FKs `ondelete`) — OK; `delete_rule` verificado (SET NULL / CASCADE)
+- [x] `cd frontend && npm run lint && npm run build` — OK; `npx vitest run` 52 passed (9 archivos)
+- [ ] `./scripts/run_e2e.sh` — no corrido (el Constructor de pautas no se tocó; ver pendiente)
+
+### Estado de implementación (rama `opt/OPT-7-crud-instrumentos`)
+
+- [x] Migración `n4o5p6q7r8s9` (down_revision `m3n4o5p6q7r8`) + modelo.
+- [x] `services/instruments.py` + endpoints PATCH/DELETE/restore/purge/GET-by-id +
+      `include_archived` en LIST + schemas + `created_by`/`origin_event_id` en el POST.
+- [x] Frontend: `api.ts`, `types.ts`, CRUD real en `/instruments` + test de página.
+- [x] `backend/scripts/purge_orphan_instruments.py` (dry-run por defecto, `--apply`,
+      `--min-age-days 90`) + tests.
+- [ ] **Pendiente**: modo "editar esta pauta" en el Constructor
+      (`stations/builder/instrument-step.tsx` + `page.tsx`). Es aditivo; sin él el
+      CRUD limpia el banco pero el Constructor sigue creando una pauta nueva al
+      "corregir" desde ahí. No bloquea el cierre del hallazgo principal (H-admin-ecoe-4).
 
 ## Decisiones registradas (producto — ya tomadas por el usuario 2026-08-29)
 
@@ -309,10 +322,12 @@ oculta de la lista; "Purgar" no aparece con `reference_count > 0`).
    sobre tools con 0 referencias en `stations` y `station_bank`.
 4. **Propiedad del banco**: `created_by` (email) + `origin_event_id` (FK nullable,
    `ondelete SET NULL`). Editar/archivar exige rol `admin_ecoe`/`coeditor_docente` en
-   `origin_event_id` **o** `admin_global`. **Regla de gracia propuesta** para tools sin
+   `origin_event_id` **o** `admin_global`. **Regla de gracia** para tools sin
    `origin_event_id`: la puede tocar quien sea `admin_ecoe`/`coeditor_docente` de algún
    evento que hoy referencia el tool; si el tool histórico tiene 0 referencias → sólo
-   `admin_global`. — _pendiente de OK técnico del usuario._
+   `admin_global`. — ✅ **confirmada e implementada** (`ensure_tool_manage_permission`,
+   cubierta por `test_historical_tool_grace_rule`). `purge` sube el listón: sólo
+   `admin_ecoe`/`admin_global` (sin coeditor).
 5. **Constructor de pautas**: modo "editar esta pauta" que hace `PATCH` cuando la estación
    ya referencia un tool editable, en vez de `POST` + re-apuntar.
 6. **Migración**: columnas nuevas en la migración; limpieza de huérfanas existentes como

@@ -11,9 +11,11 @@ Cubre los negativos obligatorios del plan
 """
 
 import secrets
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import select
+
+from app.utils.clock import utcnow_naive
 
 from app.core.security import get_password_hash
 from app.models.entities import (
@@ -416,6 +418,63 @@ def test_create_instrument_stamps_created_by_and_origin_event(auth_client):
     assert body["created_by"] == ADMIN[0]
     assert body["archived"] is False
     assert body["reference_count"] == 0
+
+
+def test_purge_orphan_command_dry_run_lists_and_apply_deletes(auth_client):
+    from scripts.purge_orphan_instruments import find_candidates, main
+
+    login(auth_client, ADMIN)
+    event_id = _event()
+
+    old_orphan = _tool(origin_event_id=event_id)
+    recent_orphan = _tool(origin_event_id=event_id)
+    referenced = _tool(origin_event_id=event_id)
+    _station(event_id, referenced)
+
+    with TestingSessionLocal() as db:
+        # envejecer el huérfano viejo por debajo del umbral de 90 días
+        tool = db.get(AssessmentTool, old_orphan)
+        tool.created_at = utcnow_naive() - timedelta(days=200)
+        db.add(tool)
+        db.commit()
+
+        cands = {c["id"] for c in find_candidates(db, min_age_days=90,
+                                                  include_archived=False)}
+    assert old_orphan in cands
+    assert recent_orphan not in cands   # demasiado nuevo
+    assert referenced not in cands      # tiene referencia
+
+    # dry-run: no borra
+    assert main(["--min-age-days", "90"]) == 0
+    assert _tool_row(old_orphan) is not None
+
+    # --apply: borra solo el candidato
+    assert main(["--min-age-days", "90", "--apply"]) == 0
+    assert _tool_row(old_orphan) is None
+    assert _tool_row(recent_orphan) is not None
+    assert _tool_row(referenced) is not None
+
+
+def test_purge_orphan_command_respects_evaluator_answer_keys(auth_client):
+    from scripts.purge_orphan_instruments import find_candidates
+
+    login(auth_client, ADMIN)
+    event_id = _event()
+    tool_id = _tool(origin_event_id=event_id)
+    item_ids = [r[0] for r in _items(tool_id)]
+
+    with TestingSessionLocal() as db:
+        tool = db.get(AssessmentTool, tool_id)
+        tool.created_at = utcnow_naive() - timedelta(days=200)
+        db.add(EvaluatorRecord(
+            ecoe_event_id=event_id, station_id=_station(event_id, None),
+            student_id=1, evaluator_name="Ev", score_obtained=1, max_score=1,
+            answers={str(item_ids[0]): 1},
+        ))
+        db.commit()
+        cands = {c["id"] for c in find_candidates(db, min_age_days=90,
+                                                  include_archived=False)}
+    assert tool_id not in cands  # un item.id sigue referenciado en answers
 
 
 def test_purge_orphan_tool_succeeds(auth_client):
