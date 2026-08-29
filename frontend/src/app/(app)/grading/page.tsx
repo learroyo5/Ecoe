@@ -20,11 +20,25 @@ import { useApi } from "@/hooks/use-api";
 import { SectionCard } from "@/components/section-card";
 import { StatusNotice } from "@/components/forms";
 import { EmptyState } from "@/components/toast";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { GradableResponse, GradingListResult, GradingScope } from "@/lib/types";
 
 /** ¿La respuesta llegó incompleta (algún ítem puntuable sin responder)? */
 function hasUnansweredItems(row: GradableResponse): boolean {
   return Object.values(row.grading ?? {}).some((item) => item?.answered === false);
+}
+
+/**
+ * ¿Es un autoenvío realmente en blanco? El servidor lo cerró al vencer el
+ * cronómetro (`submission_kind === "auto"`) y ninguna de sus preguntas
+ * manuales pendientes fue respondida. Estas son las candidatas al bulk-0.
+ */
+function isBlankAuto(row: GradableResponse): boolean {
+  return (
+    row.submission_kind === "auto" &&
+    row.pending_questions.length > 0 &&
+    row.pending_questions.every((key) => row.grading[key]?.answered === false)
+  );
 }
 
 const CLOSED_STATUSES = new Set(["cerrado", "archivado"]);
@@ -63,6 +77,8 @@ export default function GradingPage() {
   const [draftScores, setDraftScores] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [showRubric, setShowRubric] = useState(true);
+  const [confirmStation, setConfirmStation] = useState<number | null>(null);
+  const [zeroing, setZeroing] = useState(false);
 
   const [stationFilter, setStationFilter] = useState<string>("");
 
@@ -93,6 +109,35 @@ export default function GradingPage() {
       ? entries.filter((s) => String(s.station_number ?? "") === stationFilter)
       : entries;
   }, [pendingByStation, stationFilter]);
+  // Autoenvíos en blanco por estación (candidatos al bulk-0). `responses` ya
+  // viene acotado al scope del corrector desde el backend.
+  const blankAutoByStation = useMemo(() => {
+    const map = new Map<
+      number,
+      { station_number: number | null; station_name: string; count: number }
+    >();
+    for (const row of responses) {
+      if (!isBlankAuto(row)) continue;
+      const current = map.get(row.station_id) ?? {
+        station_number: row.station_number,
+        station_name: row.station_name,
+        count: 0,
+      };
+      current.count += 1;
+      map.set(row.station_id, current);
+    }
+    return [...map.entries()]
+      .map(([station_id, value]) => ({ station_id, ...value }))
+      .sort((a, b) => Number(a.station_number ?? 0) - Number(b.station_number ?? 0));
+  }, [responses]);
+  const visibleBlankAuto = stationFilter
+    ? blankAutoByStation.filter((s) => String(s.station_number ?? "") === stationFilter)
+    : blankAutoByStation;
+  const confirmTarget =
+    confirmStation !== null
+      ? blankAutoByStation.find((s) => s.station_id === confirmStation) ?? null
+      : null;
+
   const totalAll = stationProgress.reduce((acc, s) => acc + s.total, 0);
   const pendingAll = stationProgress.reduce((acc, s) => acc + s.pending, 0);
   const gradedAll = Math.max(0, totalAll - pendingAll);
@@ -185,6 +230,61 @@ export default function GradingPage() {
       }
     },
     [draftScores, openResponse, responses, saving, scope.is_corrector, setData],
+  );
+
+  const zeroBlanks = useCallback(
+    async (stationId: number) => {
+      if (zeroing) return;
+      setMessage(null);
+      setZeroing(true);
+      try {
+        const result = await api.gradingZeroBlank(eventId, stationId);
+        const affected = new Set(result.response_ids);
+        // Mutar las filas afectadas + contadores en vez de re-fetchear la lista.
+        setData((prev) => {
+          if (!prev) return prev;
+          const nextResponses = prev.responses.map((item) =>
+            affected.has(item.response_id)
+              ? {
+                  ...item,
+                  score_obtained: 0,
+                  pending_questions: [],
+                  graded_by_email: item.graded_by_email ?? "manual",
+                }
+              : item,
+          );
+          const key = String(stationId);
+          const bucket = prev.pending_by_station[key];
+          const nextByStation = bucket
+            ? {
+                ...prev.pending_by_station,
+                [key]: { ...bucket, pending: Math.max(0, bucket.pending - result.zeroed) },
+              }
+            : prev.pending_by_station;
+          return {
+            ...prev,
+            responses: nextResponses,
+            pending_by_station: nextByStation,
+            pending_count: result.pending_remaining,
+          };
+        });
+        setMessage(
+          result.zeroed > 0
+            ? `Se puntuaron 0 ${result.zeroed} respuesta(s) automática(s) en blanco. Ya suman al consolidado.`
+            : "No había autoenvíos en blanco pendientes en esa estación.",
+        );
+      } catch (zeroError) {
+        setMessage(
+          zeroError instanceof Error
+            ? zeroError.message
+            : "No se pudo puntuar los autoenvíos en blanco.",
+        );
+      } finally {
+        setZeroing(false);
+        setConfirmStation(null);
+      }
+    },
+    [eventId, zeroing, setData],
   );
 
   const renderResponseCard = (row: GradableResponse, gradable: boolean) => {
@@ -400,6 +500,32 @@ export default function GradingPage() {
           </div>
         ) : null}
 
+        {!noStations && visibleBlankAuto.length > 0 ? (
+          <div
+            data-testid="grading-zero-blank"
+            className="mt-3 space-y-2 rounded-2xl border border-amber-200 bg-amber-50/60 p-3"
+          >
+            <p className="text-sm font-semibold text-amber-900">Autoenvíos en blanco</p>
+            <p className="text-xs leading-5 text-amber-800">
+              Respuestas que el servidor cerró al vencer el cronómetro sin ningún ítem
+              respondido. Podés puntuarlas 0 en bloque por estación.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {visibleBlankAuto.map((s) => (
+                <button
+                  key={s.station_id}
+                  type="button"
+                  className="btn-secondary"
+                  disabled={zeroing}
+                  onClick={() => setConfirmStation(s.station_id)}
+                >
+                  Estación {s.station_number}: puntuar 0 los blancos ({s.count})
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         {stationChoices.length > 1 ? (
           <label className="mt-3 flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-700">
             Estación
@@ -467,6 +593,22 @@ export default function GradingPage() {
           </SectionCard>
         </>
       )}
+
+      <ConfirmDialog
+        open={confirmStation !== null}
+        title="Puntuar 0 los autoenvíos en blanco"
+        message={
+          confirmTarget
+            ? `Se asignará 0 a ${confirmTarget.count} respuesta(s) automática(s) sin contenido de la Estación ${confirmTarget.station_number}. Suman al consolidado de inmediato.`
+            : undefined
+        }
+        confirmLabel="Puntuar 0"
+        busy={zeroing}
+        onConfirm={() => {
+          if (confirmStation !== null) void zeroBlanks(confirmStation);
+        }}
+        onCancel={() => setConfirmStation(null)}
+      />
     </div>
   );
 }

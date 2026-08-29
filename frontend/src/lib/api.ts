@@ -6,6 +6,7 @@ import type {
   EvaluatorDraftRow,
   GradeResponseResult,
   GradingListResult,
+  GradingZeroBlankResult,
   Incident,
   LiveSession,
   MediaAsset,
@@ -336,6 +337,11 @@ export const api = {
     request<GradeResponseResult>(
       `/grading/responses/${responseId}`,
       { method: "POST", body: JSON.stringify({ scores }) },
+    ),
+  gradingZeroBlank: (eventId: number, stationId: number) =>
+    request<GradingZeroBlankResult>(
+      `/grading/${eventId}/stations/${stationId}/zero-blank`,
+      { method: "POST" },
     ),
 
   // Live

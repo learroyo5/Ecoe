@@ -228,4 +228,30 @@ local (~S). Parte 2: sólo UI, dos columnas de un `DataTable` + estado multi-dra
 ## Estado de aprobación
 
 - Propuesto por: optimizador — 2026-08-29
-- Aprobado por usuario: ⬜ pendiente
+- Aprobado por usuario: ✅ 2026-08-29 (decisiones: Bulk-0 = espejo de `grade_response`,
+  solo bloquea `cerrado`/`archivado`, sin tocar `grade_response`; reasignación de
+  correctores puramente UI).
+- **Implementado: ✅ 2026-08-29** — rama `opt/OPT-15b-bulk-reasignacion` (desde
+  `opt/followups`). Commits:
+  - `feat(grading): puntuar 0 los autoenvíos en blanco de una estación en bloque (OPT-15b)`
+    — `POST /api/grading/{event}/stations/{station_id}/zero-blank`,
+    `tests/test_grading_bulk_opt15b.py` (negativos + positivos), reasignación in-place
+    en `tests/test_deferred_grading.py`.
+  - `feat(grading): botón "puntuar 0 los blancos" por estación en /grading (OPT-15b)`
+    — `api.gradingZeroBlank`, `GradingZeroBlankResult`, botón + `ConfirmDialog`,
+    mutación local sin refetch; vitest de la página.
+  - `feat(evaluators): reasignar estaciones de un corrector in-place (OPT-15b)`
+    — columnas "Estación principal" / "Reasignar" para `corrector` (multi-select +
+    `api.updateStaff`); `evaluators/__tests__/page.test.tsx` nuevo.
+  - `docs(optimizacion): OPT-15b → en-verificación`.
+  **Estado: en-verificación** — suite SQLite (371) y Postgres verde;
+  `npm run lint && build && vitest` (65) verde; `alembic upgrade head` sin migración.
+  Falta revisión del usuario + e2e + merge/deploy.
+
+## Verificación registrada
+
+- [x] `cd backend && python3 -m pytest` → 371 passed (SQLite)
+- [x] `TEST_DATABASE_URL=postgresql+psycopg://…/ecoe_test python3 -m pytest -q` → verde (Postgres + migraciones)
+- [x] `cd backend && alembic upgrade head` desde base limpia → OK, sin migración nueva
+- [x] `cd frontend && npm run lint && npm run build && npx vitest run` → lint sin errores, build ok, 65 tests verdes
+- [ ] `./scripts/run_e2e.sh --grep "grading"` sobre el stack de ramas (Docker) — pendiente
