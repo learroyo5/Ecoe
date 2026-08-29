@@ -406,6 +406,30 @@ def test_evaluator_draft_rejected_when_final_record_exists(client):
             db.commit()
 
 
+def test_pending_evaluator_drafts_listing(client):
+    checkin_id = _seed_evaluator_checkin(1, 2, minutes_ago=1)
+    try:
+        login(client, EVALUATOR)
+        client.put("/api/evaluator/draft", json={
+            "ecoe_event_id": 1, "station_id": 1, "student_id": 2,
+            "checkin_id": checkin_id, "evaluator_name": "Camila Soto",
+            "score_obtained": 7, "observation": "a medias", "answers": {},
+        })
+        # Negativo: un evaluador no puede leer la lista de coordinación.
+        assert client.get("/api/contingency/evaluator-drafts/1").status_code == 403
+
+        login(client, COORDINATOR)
+        r = client.get("/api/contingency/evaluator-drafts/1")
+        assert r.status_code == 200, r.text
+        drafts = r.json()["drafts"]
+        assert len(drafts) == 1
+        assert drafts[0]["student_id"] == 2
+        assert drafts[0]["station_number"] == 1
+        assert drafts[0]["score_obtained"] == 7
+    finally:
+        _cleanup_event_1_records((2,))
+
+
 def test_contingency_finalizes_evaluator_draft(client):
     checkin_id = _seed_evaluator_checkin(1, 2, minutes_ago=1)
     try:

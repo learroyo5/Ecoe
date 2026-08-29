@@ -22,7 +22,7 @@ from app.models.entities import (
     Student,
     StudentResponse,
 )
-from app.models.enums import RoleCode
+from app.models.enums import RoleCode, SessionMode
 from app.schemas.common import EvaluatorSubmission, StudentResponseCreate
 from app.services.dependencies import require_roles
 from app.services.authorization import ensure_event_access
@@ -60,6 +60,53 @@ def _validated_contingency_target(
             ),
         )
     return session_mode, station
+
+
+@router.get("/contingency/evaluator-drafts/{ecoe_event_id}")
+def list_pending_evaluator_drafts(
+    ecoe_event_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles(*CONTINGENCY_ROLES)),
+):
+    """Evaluator records left as a draft (OPT-20 F3 / D3), for coordination to
+    finalize in the contingency window."""
+    ensure_event_access(db, user, ecoe_event_id, *CONTINGENCY_ROLES)
+    rows = db.scalars(
+        select(EvaluatorRecord)
+        .where(
+            EvaluatorRecord.ecoe_event_id == ecoe_event_id,
+            EvaluatorRecord.mode == SessionMode.ejecucion.value,
+            EvaluatorRecord.is_draft.is_(True),
+        )
+        .order_by(EvaluatorRecord.station_id.asc(), EvaluatorRecord.updated_at.desc())
+    ).all()
+    stations = {
+        s.id: s
+        for s in db.scalars(select(Station).where(Station.ecoe_event_id == ecoe_event_id)).all()
+    }
+    students = {
+        s.id: s
+        for s in db.scalars(select(Student).where(Student.ecoe_event_id == ecoe_event_id)).all()
+    }
+    result = []
+    for row in rows:
+        station = stations.get(row.station_id)
+        student = students.get(row.student_id)
+        result.append({
+            "record_id": row.id,
+            "station_id": row.station_id,
+            "station_number": station.station_number if station else None,
+            "station_name": station.name if station else "",
+            "student_id": row.student_id,
+            "student_ecoe_number": student.ecoe_number if student else "",
+            "student_name": f"{student.name} {student.last_name}" if student else "",
+            "score_obtained": row.score_obtained,
+            "max_score": row.max_score,
+            "evaluator_name": row.evaluator_name,
+            "observation": row.observation,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        })
+    return {"drafts": result}
 
 
 @router.post("/contingency/evaluator-record")
