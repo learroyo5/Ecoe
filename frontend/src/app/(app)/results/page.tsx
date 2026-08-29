@@ -84,9 +84,15 @@ export default function ResultsPage() {
             target="_blank"
             rel="noreferrer"
           >
-            Exportar PDF contingencia
+            Descargar respaldo de contingencia (PDF)
           </a>
         </div>
+        <p className="mt-3 text-xs leading-5 text-slate-500">
+          El Excel consolidado es el que contiene los resultados (puntajes, porcentaje y nota por
+          estudiante). El PDF de contingencia <strong>no</strong> trae resultados: es la hoja
+          imprimible con instrucciones, materiales y listado de estaciones para operar el examen si
+          se cae la plataforma.
+        </p>
       </SectionCard>
       <SectionCard title="Consolidado por estudiante" subtitle="Vista tipo ficha de resultados, pensada para una lectura académica clara y una exportación segura.">
         {loading ? (
