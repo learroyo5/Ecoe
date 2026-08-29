@@ -6,6 +6,7 @@ El `optimizador` agrega y triage. El **usuario** cambia a `aprobado` / `descarta
 
 Triage: 2026-08-28, sobre las 4 tandas de hallazgos (`auditor-admin-ecoe`, `auditor-roles-usuario`,
 `auditor-operacion-vivo`, `auditor-correccion-resultados`). 27 hallazgos → 19 items.
+Ampliación 2026-08-28: mini-auditoría de tiempo (`auditor-operacion-vivo__OPT-20`) → OPT-20, que absorbe OPT-6.
 Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL (>2 sem).
 
 ## Grupo A — Estabilización (fixes acotados, candidatos a hacer ya)
@@ -29,9 +30,10 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 
 | ID | Título | Origen (hallazgo) | Severidad | Impacto | Factibilidad | Estado | Plan |
 |----|--------|-------------------|-----------|---------|--------------|--------|------|
-| OPT-6 | Visibilidad de pausa del cronómetro en evaluador y kiosko | H-vivo-3 | media | carga operativa: 1 contingencia por estudiante del circuito por cada pausa | M–L · decisión de enfoque | triado | — |
+| OPT-6 | Visibilidad de pausa del cronómetro en evaluador y kiosko | H-vivo-3 | media | carga operativa: 1 contingencia por estudiante del circuito por cada pausa | M–L · decisión de enfoque | **absorbido por OPT-20** | `PLANES/OPT-20__cronometro-sincronico.md` (F1) |
 | OPT-7 | CRUD de instrumentos / plantillas / pacientes simulados | H-admin-ecoe-4 | media | banco institucional se llena de pautas muertas; no se corrige una pauta con error | M · impacto cross-event | triado | — |
 | OPT-15 | Fricción del corrector (cola personal, siguiente-pendiente, rúbrica de referencia) | H-corr-5, H-corr-6 | media | corrección diferida a escala; gap vs. diseño FASE1 §Decisión 4 | M · sin migración | triado | — |
+| OPT-20 | Cronómetro sincrónico único + autoguardado/autoenvío (absorbe OPT-6) | mini-auditoría OPT-20 (H-opt20-1..6, D1–D8) + H-vivo-3 | media (capacidad + carga operativa) | día del examen: el buzzer no garantiza captura; cada pausa dispara reingresos por contingencia; el registro del evaluador a medio llenar se pierde | XL · 4 fases (M + L + M–L + M) · 3 migraciones (F2/F3/F4) — gate humano · cambia comportamiento observable (D2) | aprobado (F1–F4) | `PLANES/OPT-20__cronometro-sincronico.md` |
 
 ## Grupo C — Capacidad de análisis de datos (Fase 2 — features grandes, requieren dimensionamiento y definición metodológica del usuario)
 
@@ -179,6 +181,47 @@ auditada — **no es bug de datos**, es carga operativa.
   (cambio de semántica: la pausa extiende explícitamente las ventanas de los check-ins abiertos) = **gate
   humano** y más riesgo de regresión. Confirmación del comportamiento WS real pendiente del usuario.
 - **Prioridad**: P1/P2 — **el usuario debe elegir enfoque** (señal visual pasiva vs. extensión de ventanas).
+
+**ACTUALIZACIÓN 2026-08-28: OPT-6 queda absorbido por OPT-20.** La mini-auditoría de tiempo confirmó que
+OPT-6 y OPT-20 comparten causa raíz (los dos relojes que no se comunican) y que resolver OPT-20 resuelve
+OPT-6 "gratis". El usuario decidió el enfoque: **el `LiveSession` es la autoridad única de tiempo y la pausa
+congela para todos** (D1/D7 — es la alternativa de "cambio de semántica", ya no la señal visual pasiva). La
+**Fase 1 de OPT-20** (WS operativo + propagación de pausa + suspensión del autoenvío en `paused`) es
+exactamente el entregable de OPT-6. No hacer OPT-6 por separado.
+
+### OPT-20 · Cronómetro sincrónico único + autoguardado/autoenvío
+**Confirmado** por la mini-auditoría `hallazgos/auditor-operacion-vivo__OPT-20__2026-08-28.md` (código leído:
+`helpers.py:94-157`, `operational.py:58-199`, `websocket.py`, `kiosk.py`, `evaluator.py`, `student_access.py`,
+`contingency.py`, `results.py:50-107,188-434`, `grading.py`, `entities.py:270-514`, y las 3 pantallas
+frontend). Plan redactado: `PLANES/OPT-20__cronometro-sincronico.md`.
+
+- **Causa raíz**: `checkin_submission_deadline` (Reloj B, ancla `confirmed_at + station.station_time_minutes`)
+  y `compute_remaining_seconds` (Reloj A, `LiveSession`) no se miran entre sí. Solo `/live` abre WebSocket;
+  kiosko/evaluador/estudiante cuentan client-side con `Date.now()`. No hay ningún trigger server-side de
+  autoenvío (sin scheduler en `backend/app/`). El evaluador no autoenvía nada. `/ws/live/{id}` rechaza
+  evaluador/estudiante y no admite token de kiosko.
+- **Decisiones de producto tomadas por el usuario** (2026-08-28), sobre las que se construye el plan:
+  D1 reloj global único (`LiveSession` = autoridad de deadline); D2 el check-in tardío pierde ese tiempo;
+  D3 evaluador autoguarda **borrador** server-side, no envía; D4 marcar "sin respuesta" explícito (migración).
+- **Factibilidad**: XL, dividido en 4 fases por dependencia/riesgo:
+  - **F1** (M) — WS operativo para kiosko/evaluador/estudiante + auth (token de kiosko en WS) + propagación de
+    `paused` + suspensión del autoenvío en pausa. Aditivo, sin migración. **Cierra OPT-6.**
+  - **F2** (L) — deadline derivado de la fase del `LiveSession` + barrido/autoenvío autoritativo server-side
+    (híbrido lazy + `/live/control`, sin scheduler) + persistencia server-side del borrador. Migración:
+    tabla `station_response_drafts`. **Cambia comportamiento observable el día del examen (D2)** → actualizar
+    `docs/OPERACION_DIA_EXAMEN.md` y CLAUDE.md.
+  - **F3** (M–L) — borrador del `EvaluatorRecord` (`is_draft`) + finalización por contingencia + filtro en
+    `compute_results`/trazabilidad. Migración: `evaluator_records.is_draft`.
+  - **F4** (M) — `submission_kind` en `student_responses` y `evaluator_records` + flag `answered` por pregunta
+    + marcado en trazabilidad/export. Migración: 2 columnas.
+- **Toca**: máquina de estados (efecto colateral nuevo en `/live/control`, acción `expire_phase`; **no** el
+  grafo `ALLOWED_STATUS_TRANSITIONS`), 3 migraciones (F2/F3/F4 — **gate humano**), auth de WebSocket (F1 —
+  **tests negativos obligatorios**), aritmética de `compute_results` (F3 — filtro `is_draft`).
+- **Prioridad**: P1 para **F1** (cierra OPT-6, alto valor operativo, bajo riesgo, desbloquea el resto).
+  F2–F4 son P2, secuenciales. **9 decisiones de implementación abiertas** listadas en el plan (trigger del
+  autoenvío, almacén del borrador, transporte del token de kiosko en WS, fallback de pilotaje, etc.).
+- **Prerequisito operativo de F1**: el `nginx` público real necesita los headers `Upgrade`/`Connection` en
+  `location /api/` (ya en la copia de referencia del repo; el server real requiere el cambio manual).
 
 ### OPT-7 · CRUD de instrumentos / plantillas / pacientes simulados
 **Confirmado** (`app/api/routes/stations.py:54-129` — solo GET y POST para `/templates`, `/instruments`,
