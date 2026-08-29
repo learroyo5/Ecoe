@@ -12,6 +12,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -213,12 +214,28 @@ class StationTemplate(Base, TimestampMixin):
 
 class AssessmentTool(Base, TimestampMixin):
     __tablename__ = "assessment_tools"
+    __table_args__ = (
+        Index("ix_assessment_tools_archived", "archived"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     tool_type: Mapped[InstrumentType] = mapped_column(String(64), nullable=False)
     max_score: Mapped[float] = mapped_column(Float, nullable=False)
     free_observation: Mapped[bool] = mapped_column(Boolean, default=True)
+    # OPT-7: propiedad y ciclo de vida del banco institucional.
+    # `created_by` guarda el correo del actor del POST; los tools históricos
+    # quedan NULL. `origin_event_id` es el evento de contexto en que se creó
+    # (FK con ondelete SET NULL: si el evento se borra, el tool sobrevive como
+    # legado). `archived` es el soft-delete (patrón PilotRun.archived): un tool
+    # archivado no sale del LIST por defecto ni se asigna a estaciones nuevas.
+    created_by: Mapped[str | None] = mapped_column(String(255))
+    origin_event_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ecoe_events.id", ondelete="SET NULL")
+    )
+    archived: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=false(), default=False
+    )
     items: Mapped[list["AssessmentItem"]] = relationship(
         back_populates="tool", cascade="all, delete-orphan"
     )
@@ -232,7 +249,9 @@ class AssessmentItem(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    tool_id: Mapped[int] = mapped_column(ForeignKey("assessment_tools.id"), nullable=False)
+    tool_id: Mapped[int] = mapped_column(
+        ForeignKey("assessment_tools.id", ondelete="CASCADE"), nullable=False
+    )
     label: Mapped[str] = mapped_column(String(255), nullable=False)
     score_per_item: Mapped[float] = mapped_column(Float, nullable=False)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -278,7 +297,9 @@ class Station(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     ecoe_event_id: Mapped[int] = mapped_column(ForeignKey("ecoe_events.id"), nullable=False)
     template_id: Mapped[int | None] = mapped_column(ForeignKey("station_templates.id"))
-    assessment_tool_id: Mapped[int | None] = mapped_column(ForeignKey("assessment_tools.id"))
+    assessment_tool_id: Mapped[int | None] = mapped_column(
+        ForeignKey("assessment_tools.id", ondelete="SET NULL")
+    )
     simulated_patient_id: Mapped[int | None] = mapped_column(ForeignKey("simulated_patients.id"))
     station_number: Mapped[int] = mapped_column(Integer, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -318,7 +339,9 @@ class StationBank(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     template_id: Mapped[int | None] = mapped_column(ForeignKey("station_templates.id"))
-    assessment_tool_id: Mapped[int | None] = mapped_column(ForeignKey("assessment_tools.id"))
+    assessment_tool_id: Mapped[int | None] = mapped_column(
+        ForeignKey("assessment_tools.id", ondelete="SET NULL")
+    )
     simulated_patient_id: Mapped[int | None] = mapped_column(ForeignKey("simulated_patients.id"))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     station_type: Mapped[str] = mapped_column(String(64), nullable=False)
