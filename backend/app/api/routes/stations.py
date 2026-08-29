@@ -27,6 +27,7 @@ from app.schemas.common import (
     PilotRunNotesUpdate,
     PilotRunRead,
     SimulatedPatientCreate,
+    SimulatedPatientPatch,
     SimulatedPatientRead,
     StationBankCreate,
     StationBankRead,
@@ -34,6 +35,7 @@ from app.schemas.common import (
     StationCreate,
     StationRead,
     StationTemplateCreate,
+    StationTemplatePatch,
     StationTemplateRead,
 )
 from app.services.dependencies import get_current_user, require_roles
@@ -42,6 +44,7 @@ from app.services.authorization import (
     ADMIN_EVENT_ROLE_CODES,
     ensure_event_access,
 )
+from app.services import content_bank
 from app.services.instruments import (
     apply_tool_patch,
     ensure_tool_editable,
@@ -71,12 +74,63 @@ def _reject_archived_tool(db: Session, assessment_tool_id: int | None) -> None:
             detail="El instrumento seleccionado está archivado. Restáuralo o elige otro.",
         )
 
+
+def _reject_archived_template(db: Session, template_id: int | None) -> None:
+    """Una plantilla archivada (OPT-7b) no puede asignarse a estaciones nuevas
+    ni re-asignarse; las estaciones que ya la usan siguen funcionando."""
+    if template_id is None:
+        return
+    template = db.get(StationTemplate, template_id)
+    if template and template.archived:
+        raise HTTPException(
+            status_code=400,
+            detail="La plantilla seleccionada está archivada. Restáurala o elige otra.",
+        )
+
+
+def _reject_archived_patient(db: Session, simulated_patient_id: int | None) -> None:
+    """Una ficha de paciente simulado archivada (OPT-7b) no puede asignarse a
+    estaciones nuevas ni re-asignarse."""
+    if simulated_patient_id is None:
+        return
+    patient = db.get(SimulatedPatient, simulated_patient_id)
+    if patient and patient.archived:
+        raise HTTPException(
+            status_code=400,
+            detail="El paciente simulado seleccionado está archivado. Restáuralo o elige otro.",
+        )
+
 # ── Station Templates ───────────────────────────────────────────────────
 
 @router.get("/templates", response_model=list[StationTemplateRead])
-def list_templates(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(require_roles(*CONTENT_MANAGER_ROLES))):
+def list_templates(
+    ecoe_event_id: int,
+    include_archived: bool = False,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles(*CONTENT_MANAGER_ROLES)),
+):
     ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
-    return db.scalars(select(StationTemplate)).all()
+    query = select(StationTemplate)
+    if not include_archived:
+        query = query.where(StationTemplate.archived.is_(False))
+    templates = db.scalars(query.order_by(StationTemplate.id.desc())).all()
+    counts = content_bank.reference_counts(db, "template", [t.id for t in templates])
+    return [content_bank.serialize_template(t, counts.get(t.id, 0)) for t in templates]
+
+
+@router.get("/templates/{template_id}", response_model=StationTemplateRead)
+def get_template(
+    template_id: int,
+    ecoe_event_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles(*CONTENT_MANAGER_ROLES)),
+):
+    ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
+    template = db.get(StationTemplate, template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Plantilla no encontrada")
+    summary = content_bank.summary_for(db, template)
+    return content_bank.serialize_template(template, summary["reference_count"])
 
 
 @router.post("/templates", response_model=StationTemplateRead)
@@ -88,11 +142,140 @@ def create_template(
 ):
     ensure_event_access(db, user, ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
-    template = StationTemplate(**payload.model_dump())
+    template = StationTemplate(
+        **payload.model_dump(),
+        created_by=user.email,
+        origin_event_id=ecoe_event_id,
+    )
     db.add(template)
+    db.flush()
+    db.add(AuditLog(
+        user_email=user.email, action="create_template",
+        target_type="StationTemplate", target_id=str(template.id),
+        payload={"ecoe_event_id": ecoe_event_id, "name": template.name},
+    ))
     db.commit()
     db.refresh(template)
-    return template
+    return content_bank.serialize_template(template, 0)
+
+
+@router.patch("/templates/{template_id}", response_model=StationTemplateRead)
+def patch_template(
+    template_id: int,
+    payload: StationTemplatePatch,
+    ecoe_event_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
+):
+    """UPDATE libre (sin gate de estado): el contenido no llega a runtime. La
+    edición afecta a lo que verá el próximo diseñador que aplique la plantilla,
+    no a las estaciones ya creadas (el Constructor copió los campos al aplicarla).
+    """
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    template = db.get(StationTemplate, template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Plantilla no encontrada")
+    summary = content_bank.summary_for(db, template)
+    content_bank.ensure_content_manage_permission(db, user, template, summary)
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(template, field, value)
+    db.add(AuditLog(
+        user_email=user.email, action="patch_template",
+        target_type="StationTemplate", target_id=str(template.id),
+        payload={"ecoe_event_id": ecoe_event_id},
+    ))
+    db.commit()
+    db.refresh(template)
+    summary = content_bank.summary_for(db, template)
+    return content_bank.serialize_template(template, summary["reference_count"])
+
+
+@router.delete("/templates/{template_id}", response_model=StationTemplateRead)
+def archive_template(
+    template_id: int,
+    ecoe_event_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
+):
+    """Soft-delete: ``archived = True``. Idempotente."""
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    template = db.get(StationTemplate, template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Plantilla no encontrada")
+    summary = content_bank.summary_for(db, template)
+    content_bank.ensure_content_manage_permission(db, user, template, summary)
+    if not template.archived:
+        template.archived = True
+        db.add(AuditLog(
+            user_email=user.email, action="archive_template",
+            target_type="StationTemplate", target_id=str(template.id),
+            payload={"ecoe_event_id": ecoe_event_id},
+        ))
+        db.commit()
+        db.refresh(template)
+    return content_bank.serialize_template(template, summary["reference_count"])
+
+
+@router.post("/templates/{template_id}/restore", response_model=StationTemplateRead)
+def restore_template(
+    template_id: int,
+    ecoe_event_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
+):
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    template = db.get(StationTemplate, template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Plantilla no encontrada")
+    summary = content_bank.summary_for(db, template)
+    content_bank.ensure_content_manage_permission(db, user, template, summary)
+    if template.archived:
+        template.archived = False
+        db.add(AuditLog(
+            user_email=user.email, action="restore_template",
+            target_type="StationTemplate", target_id=str(template.id),
+            payload={"ecoe_event_id": ecoe_event_id},
+        ))
+        db.commit()
+        db.refresh(template)
+    return content_bank.serialize_template(template, summary["reference_count"])
+
+
+@router.delete("/templates/{template_id}/purge")
+def purge_template(
+    template_id: int,
+    ecoe_event_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("admin_ecoe")),
+):
+    """Hard-delete. Solo ``admin_ecoe`` / ``admin_global`` y solo si la plantilla
+    tiene 0 referencias en ``stations`` y ``station_bank`` (si no → 409)."""
+    ensure_event_access(db, user, ecoe_event_id, RoleCode.admin_ecoe.value)
+    template = db.get(StationTemplate, template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Plantilla no encontrada")
+    summary = content_bank.summary_for(db, template)
+    content_bank.ensure_content_manage_permission(db, user, template, summary, require_admin=True)
+    if summary["reference_count"] > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "No se puede eliminar definitivamente: la plantilla está "
+                f"referenciada por {len(summary['station_ids'])} estación(es) y "
+                f"{len(summary['bank_ids'])} entrada(s) del banco. Archívala."
+            ),
+        )
+    db.add(AuditLog(
+        user_email=user.email, action="purge_template",
+        target_type="StationTemplate", target_id=str(template.id),
+        payload={"ecoe_event_id": ecoe_event_id, "name": template.name},
+    ))
+    db.delete(template)
+    db.commit()
+    return {"deleted": True}
 
 
 # ── Assessment Tools / Instruments ──────────────────────────────────────
@@ -291,9 +474,34 @@ def purge_instrument(
 # ── Simulated Patients ─────────────────────────────────────────────────
 
 @router.get("/simulated-patients", response_model=list[SimulatedPatientRead])
-def list_patients(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(require_roles(*CONTENT_MANAGER_ROLES))):
+def list_patients(
+    ecoe_event_id: int,
+    include_archived: bool = False,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles(*CONTENT_MANAGER_ROLES)),
+):
     ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
-    return db.scalars(select(SimulatedPatient)).all()
+    query = select(SimulatedPatient)
+    if not include_archived:
+        query = query.where(SimulatedPatient.archived.is_(False))
+    patients = db.scalars(query.order_by(SimulatedPatient.id.desc())).all()
+    counts = content_bank.reference_counts(db, "patient", [p.id for p in patients])
+    return [content_bank.serialize_patient(p, counts.get(p.id, 0)) for p in patients]
+
+
+@router.get("/simulated-patients/{patient_id}", response_model=SimulatedPatientRead)
+def get_patient(
+    patient_id: int,
+    ecoe_event_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles(*CONTENT_MANAGER_ROLES)),
+):
+    ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
+    patient = db.get(SimulatedPatient, patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Paciente simulado no encontrado")
+    summary = content_bank.summary_for(db, patient)
+    return content_bank.serialize_patient(patient, summary["reference_count"])
 
 
 @router.post("/simulated-patients", response_model=SimulatedPatientRead)
@@ -305,11 +513,137 @@ def create_patient(
 ):
     ensure_event_access(db, user, ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
-    patient = SimulatedPatient(**payload.model_dump())
+    patient = SimulatedPatient(
+        **payload.model_dump(),
+        created_by=user.email,
+        origin_event_id=ecoe_event_id,
+    )
     db.add(patient)
+    db.flush()
+    db.add(AuditLog(
+        user_email=user.email, action="create_simulated_patient",
+        target_type="SimulatedPatient", target_id=str(patient.id),
+        payload={"ecoe_event_id": ecoe_event_id, "character_name": patient.character_name},
+    ))
     db.commit()
     db.refresh(patient)
-    return patient
+    return content_bank.serialize_patient(patient, 0)
+
+
+@router.patch("/simulated-patients/{patient_id}", response_model=SimulatedPatientRead)
+def patch_patient(
+    patient_id: int,
+    payload: SimulatedPatientPatch,
+    ecoe_event_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
+):
+    """UPDATE libre (sin gate de estado): la ficha no entra al cálculo de notas."""
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    patient = db.get(SimulatedPatient, patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Paciente simulado no encontrado")
+    summary = content_bank.summary_for(db, patient)
+    content_bank.ensure_content_manage_permission(db, user, patient, summary)
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(patient, field, value)
+    db.add(AuditLog(
+        user_email=user.email, action="patch_simulated_patient",
+        target_type="SimulatedPatient", target_id=str(patient.id),
+        payload={"ecoe_event_id": ecoe_event_id},
+    ))
+    db.commit()
+    db.refresh(patient)
+    summary = content_bank.summary_for(db, patient)
+    return content_bank.serialize_patient(patient, summary["reference_count"])
+
+
+@router.delete("/simulated-patients/{patient_id}", response_model=SimulatedPatientRead)
+def archive_patient(
+    patient_id: int,
+    ecoe_event_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
+):
+    """Soft-delete: ``archived = True``. Idempotente."""
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    patient = db.get(SimulatedPatient, patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Paciente simulado no encontrado")
+    summary = content_bank.summary_for(db, patient)
+    content_bank.ensure_content_manage_permission(db, user, patient, summary)
+    if not patient.archived:
+        patient.archived = True
+        db.add(AuditLog(
+            user_email=user.email, action="archive_simulated_patient",
+            target_type="SimulatedPatient", target_id=str(patient.id),
+            payload={"ecoe_event_id": ecoe_event_id},
+        ))
+        db.commit()
+        db.refresh(patient)
+    return content_bank.serialize_patient(patient, summary["reference_count"])
+
+
+@router.post("/simulated-patients/{patient_id}/restore", response_model=SimulatedPatientRead)
+def restore_patient(
+    patient_id: int,
+    ecoe_event_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
+):
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    patient = db.get(SimulatedPatient, patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Paciente simulado no encontrado")
+    summary = content_bank.summary_for(db, patient)
+    content_bank.ensure_content_manage_permission(db, user, patient, summary)
+    if patient.archived:
+        patient.archived = False
+        db.add(AuditLog(
+            user_email=user.email, action="restore_simulated_patient",
+            target_type="SimulatedPatient", target_id=str(patient.id),
+            payload={"ecoe_event_id": ecoe_event_id},
+        ))
+        db.commit()
+        db.refresh(patient)
+    return content_bank.serialize_patient(patient, summary["reference_count"])
+
+
+@router.delete("/simulated-patients/{patient_id}/purge")
+def purge_patient(
+    patient_id: int,
+    ecoe_event_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("admin_ecoe")),
+):
+    """Hard-delete. Solo ``admin_ecoe`` / ``admin_global`` y solo si la ficha
+    tiene 0 referencias en ``stations`` y ``station_bank`` (si no → 409)."""
+    ensure_event_access(db, user, ecoe_event_id, RoleCode.admin_ecoe.value)
+    patient = db.get(SimulatedPatient, patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Paciente simulado no encontrado")
+    summary = content_bank.summary_for(db, patient)
+    content_bank.ensure_content_manage_permission(db, user, patient, summary, require_admin=True)
+    if summary["reference_count"] > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "No se puede eliminar definitivamente: el paciente simulado está "
+                f"referenciado por {len(summary['station_ids'])} estación(es) y "
+                f"{len(summary['bank_ids'])} entrada(s) del banco. Archívalo."
+            ),
+        )
+    db.add(AuditLog(
+        user_email=user.email, action="purge_simulated_patient",
+        target_type="SimulatedPatient", target_id=str(patient.id),
+        payload={"ecoe_event_id": ecoe_event_id, "character_name": patient.character_name},
+    ))
+    db.delete(patient)
+    db.commit()
+    return {"deleted": True}
 
 
 # ── Station Bank ────────────────────────────────────────────────────────
@@ -330,6 +664,8 @@ def create_station_bank(
     ensure_event_access(db, user, ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     _reject_archived_tool(db, payload.assessment_tool_id)
+    _reject_archived_template(db, payload.template_id)
+    _reject_archived_patient(db, payload.simulated_patient_id)
     bank_station = StationBank(**payload.model_dump())
     db.add(bank_station)
     db.commit()
@@ -353,6 +689,12 @@ def update_station_bank(
     if (payload.assessment_tool_id is not None
             and payload.assessment_tool_id != bank_station.assessment_tool_id):
         _reject_archived_tool(db, payload.assessment_tool_id)
+    if (payload.template_id is not None
+            and payload.template_id != bank_station.template_id):
+        _reject_archived_template(db, payload.template_id)
+    if (payload.simulated_patient_id is not None
+            and payload.simulated_patient_id != bank_station.simulated_patient_id):
+        _reject_archived_patient(db, payload.simulated_patient_id)
     for field, value in payload.model_dump().items():
         setattr(bank_station, field, value)
     db.add(bank_station)
@@ -401,6 +743,8 @@ def create_station(
     if not ecoe_event:
         raise HTTPException(status_code=404, detail="ECOE no encontrado")
     _reject_archived_tool(db, payload.assessment_tool_id)
+    _reject_archived_template(db, payload.template_id)
+    _reject_archived_patient(db, payload.simulated_patient_id)
     next_station_number = (
         db.scalar(
             select(func.max(Station.station_number)).where(Station.ecoe_event_id == payload.ecoe_event_id)
@@ -441,6 +785,12 @@ def update_station(
     if (payload.assessment_tool_id is not None
             and payload.assessment_tool_id != station.assessment_tool_id):
         _reject_archived_tool(db, payload.assessment_tool_id)
+    if (payload.template_id is not None
+            and payload.template_id != station.template_id):
+        _reject_archived_template(db, payload.template_id)
+    if (payload.simulated_patient_id is not None
+            and payload.simulated_patient_id != station.simulated_patient_id):
+        _reject_archived_patient(db, payload.simulated_patient_id)
     for field, value in payload.model_dump(exclude={"ecoe_event_id"}).items():
         setattr(station, field, value)
     station.station_time_minutes = ecoe_event.station_time_minutes

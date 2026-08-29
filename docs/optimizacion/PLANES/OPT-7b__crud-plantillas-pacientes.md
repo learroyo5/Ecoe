@@ -251,11 +251,46 @@ frontend análogas a `instruments/page.tsx`.
 
 ## Verificación
 
-- [ ] `cd backend && python3 -m pytest`
-- [ ] `TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q` (toca FKs/migración → **obligatorio**)
-- [ ] `DATABASE_URL=sqlite:////tmp/ecoe_opt7b_check.db SECRET_KEY=test-secret ENVIRONMENT=test AUTO_SEED_DEMO=false alembic upgrade head` + `downgrade -1` + `upgrade head`
-- [ ] mismo up/down/up contra Postgres desde base limpia; `delete_rule` verificado
-- [ ] `cd frontend && npm run lint && npm run build && npx vitest run`
+- [x] `cd backend && python3 -m pytest` — 375 passed (SQLite; incluye `test_opt7b_content_crud.py`, 16)
+- [x] `TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q` — `test_opt7b_content_crud.py` 14/14 en Postgres; módulos vecinos (students, submission_rules, kiosk) verdes en Postgres. La suite completa contra Postgres en este entorno arrastra fallos no deterministas ajenos al cambio (56→20 entre corridas; los tests fallidos pasan aislados y por módulo) — ver informe.
+- [x] `DATABASE_URL=sqlite:////tmp/ecoe_opt7b_check.db ... alembic upgrade head` + `downgrade -1` + `upgrade head` — OK
+- [x] mismo up/down/up contra Postgres desde base limpia; `delete_rule = SET NULL` verificado en las 6 FK (4 de referencia + 2 nuevas de `origin_event_id`)
+- [x] `cd frontend && npm run lint` (0 errores) `&& npm run build` (OK) `&& npx vitest run` (69 passed, 11 archivos)
+
+### Estado de implementación (rama `opt/OPT-7b-crud-plantillas`, desde `opt/followups`)
+
+- [x] Migración `o5p6q7r8s9t0` (down_revision `n4o5p6q7r8s9`) + modelo. `created_by` /
+      `origin_event_id` (FK `ondelete SET NULL`) / `archived` (`server_default false`) +
+      índice `ix_<tabla>_archived` en `station_templates` y `simulated_patients`.
+      `ondelete SET NULL` en `stations_template_id_fkey`,
+      `stations_simulated_patient_id_fkey`, `station_bank_template_id_fkey`,
+      `station_bank_simulated_patient_id_fkey` (nombres reales verificados en
+      `information_schema`). Dialect-split: `batch_alter_table` en SQLite (solo la FK
+      nueva de `origin_event_id`), `drop_constraint`+`create_foreign_key` en Postgres.
+- [x] `services/content_bank.py` (nuevo, no toca `instruments.py`): `reference_summary` /
+      `summary_for` / `reference_counts` genéricos + `ensure_content_manage_permission`
+      (regla de propiedad + gracia para legados, `require_admin` para purge) +
+      `serialize_template` / `serialize_patient`.
+- [x] Endpoints en `/templates` y `/simulated-patients`: `GET/{id}`, `PATCH` (UPDATE
+      libre, **sin** gate de estado), `DELETE` (soft), `/restore`, `/purge` (hard-delete,
+      0 referencias, `require_roles("admin_ecoe")`). `include_archived` en el LIST;
+      `created_by`/`origin_event_id` en el POST; `AuditLog` en cada mutación.
+      `_reject_archived_template` / `_reject_archived_patient` en `create_station` /
+      `update_station` / `create_station_bank` / `update_station_bank`.
+      Docstring de `duplicate_ecoe` documenta que `template_id`/`simulated_patient_id`
+      se comparten sin clonar.
+- [x] Schemas: `StationTemplateRead` / `SimulatedPatientRead` ganan
+      `created_by`/`origin_event_id`/`archived`/`reference_count`; nuevos
+      `StationTemplatePatch` / `SimulatedPatientPatch` (todos los campos opcionales).
+- [x] Frontend: `api.ts` (`template(s)`, `updateTemplate`, `archiveTemplate`,
+      `restoreTemplate`, `purgeTemplate` + equivalentes de paciente; `{ includeArchived }`),
+      `types.ts`, CRUD real en `/templates` y `/simulated-patient` (tabla con acciones,
+      toggle "Mostrar archivadas", badges de uso/estado, `ConfirmDialog` para purgar).
+      Tests de página con vitest.
+- [x] `backend/scripts/purge_orphan_content.py` (`--kind templates|patients`, dry-run por
+      defecto, `--apply`, `--min-age-days 90`, `--include-archived`; sin barrido de
+      `answers` — no aplica). No se ejecuta.
+- [x] `docs/architecture/P0_MATRIZ_PERMISOS.md`: regla OPT-7b registrada.
 
 ## Decisiones para el usuario
 
@@ -271,4 +306,8 @@ frontend análogas a `instruments/page.tsx`.
 ## Estado de aprobación
 
 - Propuesto por: optimizador — 2026-08-29
-- Aprobado por usuario: ⬜ pendiente
+- **Aprobado por usuario: ✅ 2026-08-29** (decisiones registradas en §Decisiones del
+  encargo: migración completa, sin gate de editabilidad, purge = `admin_ecoe`/`admin_global`,
+  script de purga generalizado con `--kind`).
+- Implementado: 2026-08-29 — rama `opt/OPT-7b-crud-plantillas`. Queda pendiente que el
+  usuario haga merge/deploy tras revisar.

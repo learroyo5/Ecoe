@@ -36,7 +36,7 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 |----|--------|-------------------|-----------|---------|--------------|--------|------|
 | OPT-6 | Visibilidad de pausa del cronómetro en evaluador y kiosko | H-vivo-3 | media | carga operativa: 1 contingencia por estudiante del circuito por cada pausa | M–L · decisión de enfoque | **absorbido por OPT-20** (su entregable = F1, en-verificación) | `PLANES/OPT-20__cronometro-sincronico.md` (F1) |
 | OPT-7 | CRUD de instrumentos (`AssessmentTool`) | H-admin-ecoe-4 | media | banco institucional se llena de pautas muertas; no se corrige una pauta con error | M · migración (columnas + `ondelete`) · impacto cross-event | **en-verificación** (backend + migración + CRUD real en `/instruments` + script de purga + modo "editar pauta" del Constructor vía OPT-7c → 100% completo) | `PLANES/OPT-7__crud-instrumentos.md` |
-| OPT-7b | CRUD de plantillas (`StationTemplate`) y pacientes simulados (`SimulatedPatient`) | H-admin-ecoe-4 §6 | baja | mismo patrón solo-creación; sin riesgo de trazabilidad ni huérfanas de alto volumen | S · migración (columnas ×2 + `ondelete` ×4) · UPDATE libre + soft-delete | en-plan | `PLANES/OPT-7b__crud-plantillas-pacientes.md` |
+| OPT-7b | CRUD de plantillas (`StationTemplate`) y pacientes simulados (`SimulatedPatient`) | H-admin-ecoe-4 §6 | baja | mismo patrón solo-creación; sin riesgo de trazabilidad ni huérfanas de alto volumen | S · migración (columnas ×2 + `ondelete` ×4) · UPDATE libre + soft-delete | **en-verificación** (migración `o5p6q7r8s9t0` + `services/content_bank.py` + CRUD en `/templates` y `/simulated-patients` + CRUD real en ambas pantallas + `scripts/purge_orphan_content.py`) | `PLANES/OPT-7b__crud-plantillas-pacientes.md` |
 | OPT-7c | Modo "editar esta pauta" en el Constructor de estaciones | OPT-7 §Decisión 5 (pendiente) | baja–media | el Constructor sigue creando una pauta nueva al "corregir" → huérfanas | M · solo frontend · sin migración | **en-verificación** (tercer modo `"edit"` con PATCH in-place + carga de ítems al abrir + fallback 409 "guardar como copia"; con esto OPT-7 queda 100%) | `PLANES/OPT-7c__editar-pauta-constructor.md` |
 | OPT-15 | Cola del corrector (núcleo: pauta de referencia, autoavance, progreso, empty-states) | H-corr-5, H-corr-6 | media | corrección diferida a escala; gap vs. diseño FASE1 §Decisión 4 | M · sin migración · sin endpoints nuevos | **en-verificación** (backend + frontend + tests; suite SQLite y Postgres verde) | `PLANES/OPT-15__cola-corrector.md` |
 | OPT-15b | Corrector: bulk "puntuar 0 los blancos" + "Reasignar" in-place para correctores | H-corr-5 §C, auditoría OPT-15 §4/§6 | baja | residuo de fricción; hoy delete+recreate para cambiar estaciones de un corrector | S–M · sin migración (`api.updateStaff` ya lo soporta; bulk = endpoint nuevo) | **en-verificación** (backend + frontend + tests; suite SQLite y Postgres verde) | `PLANES/OPT-15b__correccion-bulk-y-reasignacion.md` |
@@ -310,8 +310,13 @@ soft-delete** (`archived`), **sin** el gate `EDIT_BLOCKING_STATUSES` de OPT-7 (v
 llega a runtime). Reusa la infraestructura de OPT-7 (regla de propiedad `ensure_tool_manage_permission`,
 comando de purga). **Migración sí**: 3 columnas (`created_by`/`origin_event_id`/`archived`) ×2 tablas +
 `ondelete="SET NULL"` en las 4 FK (`stations`/`station_bank` × `template_id`/`simulated_patient_id`,
-anónimas en el baseline). **Estado**: `en-plan` — `PLANES/OPT-7b__crud-plantillas-pacientes.md`.
-Decisión abierta para el usuario: ¿gate de editabilidad (no recomendado) y OK de schema para la migración?
+anónimas en el baseline). **Estado**: `en-verificación` — rama `opt/OPT-7b-crud-plantillas`. Migración
+`o5p6q7r8s9t0` (down_revision `n4o5p6q7r8s9`) verificada up/down/up y `delete_rule=SET NULL` en SQLite y
+Postgres. `services/content_bank.py` concentra la regla de propiedad/gracia (genérica) + resumen de
+referencias; endpoints PATCH (UPDATE libre, sin gate de estado) / DELETE(soft) / restore / purge / GET-by-id
+en `/templates` y `/simulated-patients`; `include_archived` en el LIST; `_reject_archived_template/_patient`
+en creación de estación/banco. Frontend: CRUD real en ambas pantallas. `scripts/purge_orphan_content.py`
+(`--kind templates|patients`, dry-run por defecto). Tests: `tests/test_opt7b_content_crud.py`.
 
 ### OPT-7c · Modo "editar esta pauta" en el Constructor
 El implementador de OPT-7 lo dejó pendiente marcándolo invasivo
