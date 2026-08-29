@@ -75,6 +75,12 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
   coincide con `EVALUACION_DIFERIDA_FASE1.md` §Alcance y CLAUDE.md "congelando la operación") o **permitida** como
   caso operativo re-disparando `persist_results`?
 - **Prioridad**: P0 inmediata. Primer item del lote.
+- **Estado 2026-08-28**: **completo (backend + frontend)**. Backend A/B/C/D en su rama (`read_results` +
+  `frozen`/`consolidated_at` en `/results`, 409 en `grade_response`/`apply_manual_scores` sobre
+  `cerrado`/`archivado`, `AuditLog` de consolidación). Frontend diferido cerrado en
+  `opt/OPT-1b-frontend-inmutabilidad`: chip "Resultados consolidados el {fecha}" en `/results`, aviso "ECOE
+  cerrado" que oculta la cola en `/grading`, `frozen`/`consolidated_at` en `ResultsResponse`, tests de página.
+  Falta solo la corrida en Postgres del backend (sin Postgres en el entorno de implementación).
 
 ### OPT-2 · Aislamiento pilotaje/ejecución en trazabilidad, cierre y corrección
 **Confirmado** (`app/services/results.py:119-152` y `:295-335`; `app/api/routes/grading.py:52-64`;

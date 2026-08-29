@@ -98,9 +98,15 @@ Test scratch del auditor (verificado): evento `cerrado` con `ECOEResult=(0,0)` �
       llega a `k1f2a3b4c5d6` sin migración nueva (OPT-1 es sin migración).
 - [ ] `TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q`
       (no toca constraints, pero se cambió lógica de resultados) — pendiente: sin Postgres en el entorno de implementación.
-- [ ] `cd frontend && npm run lint && npm run build` — no aplica: OPT-1 se implementó **solo backend**
-      (A/B/C/D). Los ajustes de UI del plan (chip "Resultados consolidados" en `/results`, aviso "ECOE cerrado"
-      en `/grading`, test frontend) quedan como seguimiento; el backend ya es autoridad (409 + `frozen` en el payload).
+- [x] `cd frontend && npm run lint && npm run build && npx vitest run` — verde (rama
+      `opt/OPT-1b-frontend-inmutabilidad`, 2026-08-28). Frontend diferido implementado: chip "Resultados
+      consolidados el {fecha}" en `/results` cuando `frozen === true` (más ajuste de copy que ya no promete
+      recálculo en vivo); `/grading` oculta la cola de corrección y muestra el aviso "ECOE cerrado — los
+      resultados están consolidados. Para rectificar una nota, reabrí el evento." cuando el ECOE activo está
+      `cerrado`/`archivado` (y ni siquiera pide la lista al backend). `ResultsResponse` en `lib/types.ts` ahora
+      declara `frozen` y `consolidated_at`. Tests: `src/app/(app)/results/__tests__/page.test.tsx` y
+      `src/app/(app)/grading/__tests__/page.test.tsx` (5 casos, incluye los negativos "no frozen" / "en
+      ejecución"). Con esto OPT-1 queda completo: backend (A/B/C/D) + frontend.
 
 ## Decisión de producto pendiente (bloquea el detalle del plan)
 
