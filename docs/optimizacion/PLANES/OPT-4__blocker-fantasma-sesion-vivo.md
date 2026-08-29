@@ -44,8 +44,12 @@ transición a `publicado` (`validation.py:433-444`), así que en `borrador … p
 
 ## Verificación
 
-- [ ] `cd backend && python3 -m pytest tests/test_validation*.py -v`
-- [ ] `cd backend && python3 -m pytest`
+- [x] `cd backend && python3 -m pytest tests/test_validation*.py -v`
+- [x] `cd backend && python3 -m pytest`
+
+Nota: se implementó la alternativa "condicionar a `status in {publicado, en_ejecucion}`" (no la
+eliminación total), para conservar la señal si un ECOE ya publicado pierde su `LiveSession`.
+Tests en `tests/test_validation_warnings.py`.
 
 ## Estado de aprobación
 

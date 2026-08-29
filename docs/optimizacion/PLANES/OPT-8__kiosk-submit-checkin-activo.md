@@ -54,8 +54,13 @@ someone else's behalf") subestima este borde.
 
 ## Verificación
 
-- [ ] `cd backend && python3 -m pytest tests/test_kiosk*.py -v`
-- [ ] `cd backend && python3 -m pytest`
+- [x] `cd backend && python3 -m pytest tests/test_kiosk*.py -v`
+- [x] `cd backend && python3 -m pytest`
+
+Nota: el test `test_submit_survives_rotation_race_within_window` afirmaba el comportamiento
+anterior (aceptar el envío del ingreso previo mientras su ventana siguiera abierta). Se reemplazó
+por `test_submit_rejects_previous_checkin_after_rotation` (409), según la decisión registrada en
+la sección "Riesgos / alcance" de este plan.
 
 ## Estado de aprobación
 

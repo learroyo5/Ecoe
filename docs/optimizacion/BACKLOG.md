@@ -14,15 +14,15 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 |----|--------|-------------------|-----------|---------|--------------|--------|------|
 | OPT-1 | Inmutabilidad de resultados tras el cierre | H-corr-1, H-corr-2, H-corr-3, H-dato-6 | bloqueante | integridad de resultados / acta de examen | S–M · sin migración | en-verificación | `PLANES/OPT-1__inmutabilidad-resultados.md` |
 | OPT-2 | Aislamiento pilotaje/ejecución en trazabilidad, cierre y cola de corrección | H-vivo-1, H-vivo-4, H-vivo-6, H-dato-5, H-corr-4 | alta | señal de contingencia del día del examen; trabajo perdido del corrector | M · migración opcional (gate humano) | aprobado | `PLANES/OPT-2__aislamiento-mode.md` |
-| OPT-3 | Autorización de UI por rol de evento, no por rol global | H-admin-ecoe-1, H-roles-usuario-1, H-roles-usuario-3 | alta | funcionalidad inaccesible (duplicar ECOE, editar estaciones multi-rol) | S · solo frontend | aprobado | `PLANES/OPT-3__gating-rol-evento.md` |
-| OPT-4 | Blocker fantasma "No existe sesión en vivo" antes de publicar | H-admin-ecoe-3, H-vivo-2 | media | fricción-UX en `/validation` y `/publication` | XS · sin migración | aprobado | `PLANES/OPT-4__blocker-fantasma-sesion-vivo.md` |
-| OPT-5 | Alta individual de evaluador sin estación (coherencia UI/endpoint) | H-admin-ecoe-2 | media | fricción en setup de staff | XS–S | aprobado | `PLANES/OPT-5__evaluador-sin-estacion.md` |
-| OPT-8 | `/kiosk/submit` debe exigir el check-in confirmado vigente | H-vivo-5 | baja (integridad/permiso) | atribución de respuesta a check-in previo en ventana | XS–S | aprobado | `PLANES/OPT-8__kiosk-submit-checkin-activo.md` |
+| OPT-3 | Autorización de UI por rol de evento, no por rol global | H-admin-ecoe-1, H-roles-usuario-1, H-roles-usuario-3 | alta | funcionalidad inaccesible (duplicar ECOE, editar estaciones multi-rol) | S · solo frontend | en-verificación | `PLANES/OPT-3__gating-rol-evento.md` |
+| OPT-4 | Blocker fantasma "No existe sesión en vivo" antes de publicar | H-admin-ecoe-3, H-vivo-2 | media | fricción-UX en `/validation` y `/publication` | XS · sin migración | en-verificación | `PLANES/OPT-4__blocker-fantasma-sesion-vivo.md` |
+| OPT-5 | Alta individual de evaluador sin estación (coherencia UI/endpoint) | H-admin-ecoe-2 | media | fricción en setup de staff | XS–S | en-verificación | `PLANES/OPT-5__evaluador-sin-estacion.md` |
+| OPT-8 | `/kiosk/submit` debe exigir el check-in confirmado vigente | H-vivo-5 | baja (integridad/permiso) | atribución de respuesta a check-in previo en ventana | XS–S | en-verificación | `PLANES/OPT-8__kiosk-submit-checkin-activo.md` |
 | OPT-9 | Endurecer `/live/control` | H-vivo-8 | baja | 500 con id inválido; "Iniciar" reinicia reloj sin confirmar | S | triado | — (pendiente de aprobación) |
 | OPT-10 | Empty-state para cuenta sin eventos accesibles | H-roles-usuario-4 | baja | caso borde: error técnico en vez de estado vacío | XS · solo frontend | triado | — |
 | OPT-11 | Limpieza de campos decorativos y código muerto | H-admin-ecoe-5, H-admin-ecoe-6 | baja | expectativas falsas + mantenibilidad | S | triado | — |
 | OPT-12 | Consistencia de forma de API (`ecoe_event_id` en body) | H-admin-ecoe-7 | baja | solo consistencia; frontend ya lo maneja | S · toca contrato de 3 endpoints | triado | — (candidato a descartar) |
-| OPT-13 | Correcciones a la matriz de permisos (documentación) | H-roles-usuario-2 | baja | doc induce a error | XS · solo `.md` | triado | — |
+| OPT-13 | Correcciones a la matriz de permisos (documentación) | H-roles-usuario-2 | baja | doc induce a error | XS · solo `.md` | en-verificación | — (aplicado en `P0_MATRIZ_PERMISOS.md`) |
 | OPT-14 | Backplane para `LiveTimerManager` multi-worker | H-vivo-7 | baja (latente) | n/a hoy (1 worker); riesgo pre-escalado | L | triado | — (diferir) |
 
 ## Grupo B — Fricción operativa / de rol (dimensionar)

@@ -59,9 +59,18 @@ Para Opción B:
 
 ## Verificación
 
-- [ ] `cd backend && python3 -m pytest tests/test_event_member_invitations.py tests/test_validation*.py -v`
-- [ ] `cd backend && python3 -m pytest`
-- [ ] `cd frontend && npm run lint && npm run build` (si se toca frontend)
+- [x] `cd backend && python3 -m pytest tests/test_event_member_invitations.py tests/test_validation*.py -v`
+- [x] `cd backend && python3 -m pytest`
+- [x] `cd frontend && npm run lint && npm run build`
+
+Notas:
+- Se implementó Opción A: `invite_event_member` pasa `require_evaluator_station=False`.
+- `compute_ecoe_validation` NO cubría el caso (un evaluador sin estación cuando todas las
+  estaciones ya tienen otro evaluador): se añadió la advertencia "Evaluadores sin estación
+  principal asignada".
+- Efecto colateral aceptado (igual que en el import masivo): `corrector` también puede invitarse
+  sin estación; el copy del formulario de corrector se dejó intacto y la exigencia real sigue
+  cubierta por `deferred_grading_ready` en la compuerta de publicación.
 
 ## Decisión pendiente del usuario
 

@@ -75,10 +75,21 @@ No hay hueco de seguridad backend que cubrir con negativos (el backend ya valida
 
 ## Verificación
 
-- [ ] `cd frontend && npm run lint && npm run build`
-- [ ] `cd frontend && npm test`
-- [ ] `cd backend && python3 -m pytest tests/test_permissions_matrix.py -v` (si se añade el test backend)
+- [x] `cd frontend && npm run lint && npm run build`
+- [x] `cd frontend && npm test`
+- [x] `cd backend && python3 -m pytest tests/test_permissions_matrix.py -v` (test `test_duplicate_ecoe_allowed_for_global_admin` añadido)
 - [ ] Confirmación visual del usuario: `admin_global` puede duplicar un ECOE de punta a punta.
+
+Notas de implementación:
+- Helpers en `frontend/src/lib/permissions.ts` (`canDuplicateEcoe`, `canEditStations`,
+  `canAccessStationArea`) + tests unitarios en `permissions.test.ts`.
+- Nuevo flag `eventRolesLoaded` en `lib/auth.tsx` para que los guards no redirijan sobre el
+  `[]` inicial (evita el flash).
+- Los guards de `/stations` y `/station-bank` usan `canAccessStationArea` (espejo del GET del
+  backend, que incluye `coordinador_operativo`), no `canEditStations` — así no se restringe a un
+  coordinador que hoy sí puede ver esas pantallas. `/stations/builder` usa `canEditStations`.
+- `middleware.ts` y el aterrizaje post-login de `login/page.tsx` se dejan fuera (parte opcional
+  del plan): no conocen `eventRoles` antes de elegir evento y el usuario llega por el sidebar.
 
 ## Estado de aprobación
 
