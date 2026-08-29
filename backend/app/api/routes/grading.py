@@ -260,3 +260,102 @@ def grade_response(
         "next": {"response_id": next_row.id} if next_row else None,
         "pending_remaining": len(remaining),
     }
+
+
+def _is_blank_auto(response: StudentResponse) -> bool:
+    """¿Es un autoenvío realmente en blanco (todas las manuales pendientes sin
+    responder)? Una respuesta `auto` con al menos un ítem manual respondido —o
+    ya corregida— NO entra al bulk: la revisa el corrector a mano."""
+    if (response.submission_kind or "manual") != "auto":
+        return False
+    pending = pending_manual_keys(response)
+    if not pending:
+        return False
+    grading = response.grading or {}
+    return all(
+        isinstance(grading.get(key), dict) and grading[key].get("answered") is False
+        for key in pending
+    )
+
+
+@router.post("/grading/{ecoe_event_id}/stations/{station_id}/zero-blank")
+def zero_blank_auto_responses(
+    ecoe_event_id: int,
+    station_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles(*GRADING_ROLES)),
+):
+    """Puntúa 0 los autoenvíos en blanco de una estación de una sola pasada.
+
+    Espejo del gate de `grade_response`: solo bloquea `cerrado`/`archivado`
+    (la corrección diferida es legítima con el evento `en_ejecucion`). Respeta
+    el scope del corrector y deja un `AuditLog` por respuesta —trazabilidad
+    idéntica a la corrección individual—. Selección estricta: `mode=ejecucion`,
+    `submission_kind="auto"`, y todas las preguntas manuales pendientes con
+    `answered is False`.
+    """
+    ecoe_event = db.get(ECOEEvent, ecoe_event_id)
+    if ecoe_event is None:
+        raise HTTPException(status_code=404, detail="ECOE no encontrado")
+    if str(ecoe_event.status) in CLOSED_EVENT_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail="El ECOE está cerrado; los resultados están consolidados",
+        )
+    event_roles = ensure_event_access(db, user, ecoe_event_id, *GRADING_ROLES)
+    station_scope = _corrector_station_scope(db, user, ecoe_event_id, event_roles)
+    if station_scope is not None and station_id not in station_scope:
+        raise HTTPException(
+            status_code=403,
+            detail="No tienes esta estación asignada para corrección diferida",
+        )
+    station = db.get(Station, station_id)
+    if station is None or station.ecoe_event_id != ecoe_event_id:
+        raise HTTPException(status_code=404, detail="La estación no pertenece a este ECOE")
+
+    candidates = db.scalars(
+        select(StudentResponse)
+        .where(
+            StudentResponse.ecoe_event_id == ecoe_event_id,
+            StudentResponse.station_id == station_id,
+            StudentResponse.mode == SessionMode.ejecucion.value,
+            StudentResponse.max_score.is_not(None),
+            StudentResponse.submission_kind == "auto",
+        )
+        .order_by(StudentResponse.submitted_at.asc(), StudentResponse.id.asc())
+    ).all()
+
+    zeroed_ids: list[int] = []
+    for response in candidates:
+        if not _is_blank_auto(response):
+            continue
+        pending = pending_manual_keys(response)
+        apply_manual_scores(
+            response, {key: 0.0 for key in pending}, graded_by_email=user.email
+        )
+        db.add(response)
+        db.add(AuditLog(
+            user_email=user.email,
+            action="grade_student_response",
+            target_type="StudentResponse",
+            target_id=str(response.id),
+            payload={
+                "ecoe_event_id": ecoe_event_id,
+                "station_id": station_id,
+                "bulk": "zero_blank",
+                "scores": {key: 0.0 for key in pending},
+                "score_obtained": response.score_obtained,
+            },
+        ))
+        zeroed_ids.append(response.id)
+
+    db.commit()
+
+    pending_remaining = len(
+        _scoped_pending_responses(db, ecoe_event_id, station_scope)
+    )
+    return {
+        "zeroed": len(zeroed_ids),
+        "response_ids": zeroed_ids,
+        "pending_remaining": pending_remaining,
+    }

@@ -193,6 +193,105 @@ def test_coeditor_and_coordinator_can_delegate_corrector_multi_station(client, d
     assert sorted(created.json()["station_ids"]) == sorted([s1, s2])
 
 
+def _extra_station(event_id: int, number: int) -> int:
+    with TestingSessionLocal() as db:
+        station = Station(
+            ecoe_event_id=event_id,
+            station_number=number,
+            name=f"Informe {number}",
+            station_type="formulario_estudiante",
+            circuit_name="Circuito A",
+            station_time_minutes=8,
+            transition_time_minutes=2,
+            expected_outcomes="Resultado",
+            student_activity="Actividad",
+            pre_entry_instruction="Ingreso",
+            student_station_instruction="Dentro",
+            evaluator_instruction="",
+            requires_evaluator=False,
+            requires_student_form=True,
+            requires_deferred_grading=True,
+            max_score=6,
+            student_form_definition=MANUAL_FORM,
+        )
+        db.add(station)
+        db.commit()
+        db.refresh(station)
+        return station.id
+
+
+def _corrector_staff_id(event_id: int, email: str) -> int:
+    with TestingSessionLocal() as db:
+        return db.scalar(
+            select(StaffAssignment).where(
+                StaffAssignment.ecoe_event_id == event_id,
+                StaffAssignment.email == email,
+            )
+        ).id
+
+
+def test_corrector_station_ids_updated_in_place(auth_client, client):
+    """`PATCH /api/staff/{id}` mueve las estaciones de un corrector sin borrarlo;
+    el scope de `GET /api/grading/{event}` cambia en consecuencia."""
+    login(auth_client, ADMIN)
+    event_id, station_a, student_id, checkin_id = _make_event(deferred=True)
+    station_b = _extra_station(event_id, 2)
+    _submit(auth_client, event_id, station_a, student_id, checkin_id)
+
+    password = secrets.token_urlsafe(24)
+    _account("corr-reassign@example.edu", password)
+    _assign_corrector(event_id, "corr-reassign@example.edu", [station_a])
+    staff_id = _corrector_staff_id(event_id, "corr-reassign@example.edu")
+
+    login(client, ("corr-reassign@example.edu", password))
+    assert client.get(f"/api/grading/{event_id}").json()["pending_count"] == 1
+
+    # `auth_client` y `client` son el MISMO TestClient: re-autenticamos como
+    # admin para el PATCH y volvemos al corrector para revisar el scope.
+    login(auth_client, ADMIN)
+    patched = auth_client.patch(
+        f"/api/staff/{staff_id}",
+        json={"role_code": "corrector", "station_ids": [station_b]},
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["station_ids"] == [station_b]
+
+    login(client, ("corr-reassign@example.edu", password))
+    body = client.get(f"/api/grading/{event_id}").json()
+    assert body["responses"] == []  # ya no ve la estación A
+    assert body["scope"]["assigned_station_ids"] == [station_b]
+
+
+def test_corrector_cannot_be_left_without_stations(auth_client):
+    login(auth_client, ADMIN)
+    event_id, station_a, _, _ = _make_event(deferred=True)
+    _account("corr-empty@example.edu", "x")
+    _assign_corrector(event_id, "corr-empty@example.edu", [station_a])
+    staff_id = _corrector_staff_id(event_id, "corr-empty@example.edu")
+
+    blocked = auth_client.patch(
+        f"/api/staff/{staff_id}",
+        json={"role_code": "corrector", "station_ids": []},
+    )
+    assert blocked.status_code == 400
+    assert _corrector_staff_id(event_id, "corr-empty@example.edu")  # sigue existiendo
+
+
+def test_reassign_corrector_station_must_belong_to_event(auth_client):
+    login(auth_client, ADMIN)
+    event_id, station_a, _, _ = _make_event(deferred=True)
+    other_event, other_station, _, _ = _make_event(deferred=True)
+    _account("corr-crossstation@example.edu", "x")
+    _assign_corrector(event_id, "corr-crossstation@example.edu", [station_a])
+    staff_id = _corrector_staff_id(event_id, "corr-crossstation@example.edu")
+
+    blocked = auth_client.patch(
+        f"/api/staff/{staff_id}",
+        json={"role_code": "corrector", "station_ids": [other_station]},
+    )
+    assert blocked.status_code == 400
+
+
 def test_corrector_requires_at_least_one_station(auth_client):
     login(auth_client, ADMIN)
     event_id, station_id, _, _ = _make_event(deferred=True)
