@@ -195,10 +195,10 @@ Frontend: `npm run lint && npm run build` + vitest de la página `grading`:
 
 ## Verificación
 
-- [ ] `cd backend && python3 -m pytest`
-- [ ] `TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q`
-- [ ] `cd frontend && npm run lint && npm run build && npx vitest run`
-- [ ] `./scripts/run_e2e.sh --grep "grading"` si el flujo dorado cubre corrección diferida
+- [x] `cd backend && python3 -m pytest` → 280 passed (SQLite)
+- [x] `TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q` → 280 passed (Postgres + migraciones Alembic)
+- [x] `cd frontend && npm run lint && npm run build && npx vitest run` → lint sin errores, build ok, 51 tests verdes
+- [ ] `./scripts/run_e2e.sh --grep "grading"` si el flujo dorado cubre corrección diferida — pendiente (requiere Docker; se corre sobre el stack de ramas)
 
 ## Decisiones registradas (producto — ya tomadas por el usuario 2026-08-29)
 
@@ -219,3 +219,23 @@ Frontend: `npm run lint && npm run build` + vitest de la página `grading`:
 - Propuesto por: optimizador — 2026-08-29
 - **Aprobado por usuario: ✅ 2026-08-29** (decisiones de producto tomadas; el plan técnico
   lo revisa el usuario antes de implementar).
+- **Implementado: ✅ 2026-08-29** — rama `opt/OPT-15-cola-corrector` (desde `opt/backlog-grupo-b`).
+  Commits: `feat(grading): extender la respuesta de la cola del corrector (OPT-15)` (backend +
+  `tests/test_grading_queue_opt15.py`), `feat(grading): cola personal del corrector en /grading (OPT-15)`
+  (frontend + tests de la página), `docs(optimizacion): OPT-15 → en-verificación`.
+  **Estado: en-verificación** — falta revisión del usuario + e2e + merge/deploy.
+
+## Checklist de implementación
+
+- [x] Backend — `GET /api/grading/{event}`: `assessment_tool` por fila (cache por `station_id`),
+  `scope`, `pending_by_station`; early-return del corrector sin estaciones incluye `scope`.
+- [x] Backend — `grade_response` devuelve `{next, pending_remaining}` con la misma query scopeada.
+- [x] `apply_manual_scores` **sin tocar** (número libre `[0, max]`).
+- [x] Frontend — panel de pauta de referencia colapsable (solo si `assessment_tool !== null`).
+- [x] Frontend — autoavance mutando la fila local + contadores; sin refetch de la lista.
+- [x] Frontend — barra de progreso "X de Y en tus estaciones" + chips por estación.
+- [x] Frontend — `pending_count` re-renderizado (alimenta el header); empty-states diferenciados.
+- [x] Frontend — Enter en el input de puntaje envía.
+- [x] Tests negativos de scoping (filas / `pending_by_station` / `next` no salen del scope del corrector;
+  `assessment_tool` solo si la estación lo tiene; corrector sin asignación → `scope` distinguible).
+- [x] `test_deferred_grading.py` y `test_grading.py` siguen verdes con la respuesta extendida.

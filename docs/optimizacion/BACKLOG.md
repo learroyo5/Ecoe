@@ -33,7 +33,7 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 | OPT-6 | Visibilidad de pausa del cronómetro en evaluador y kiosko | H-vivo-3 | media | carga operativa: 1 contingencia por estudiante del circuito por cada pausa | M–L · decisión de enfoque | **absorbido por OPT-20** (su entregable = F1, en-verificación) | `PLANES/OPT-20__cronometro-sincronico.md` (F1) |
 | OPT-7 | CRUD de instrumentos (`AssessmentTool`) | H-admin-ecoe-4 | media | banco institucional se llena de pautas muertas; no se corrige una pauta con error | M · migración (columnas + `ondelete`) · impacto cross-event | **aprobado** | `PLANES/OPT-7__crud-instrumentos.md` |
 | OPT-7b | CRUD de plantillas (`StationTemplate`) y pacientes simulados (`SimulatedPatient`) | H-admin-ecoe-4 §6 | baja | mismo patrón solo-creación; sin riesgo de trazabilidad ni huérfanas de alto volumen | S · UPDATE libre + soft-delete trivial | triado | — |
-| OPT-15 | Cola del corrector (núcleo: pauta de referencia, autoavance, progreso, empty-states) | H-corr-5, H-corr-6 | media | corrección diferida a escala; gap vs. diseño FASE1 §Decisión 4 | M · sin migración · sin endpoints nuevos | **aprobado** | `PLANES/OPT-15__cola-corrector.md` |
+| OPT-15 | Cola del corrector (núcleo: pauta de referencia, autoavance, progreso, empty-states) | H-corr-5, H-corr-6 | media | corrección diferida a escala; gap vs. diseño FASE1 §Decisión 4 | M · sin migración · sin endpoints nuevos | **en-verificación** (backend + frontend + tests; suite SQLite y Postgres verde) | `PLANES/OPT-15__cola-corrector.md` |
 | OPT-15b | Corrector: bulk "puntuar 0 los blancos" + "Reasignar" in-place para correctores | H-corr-5 §C, auditoría OPT-15 §4/§6 | baja | residuo de fricción; hoy delete+recreate para cambiar estaciones de un corrector | S · sin migración (`api.updateStaff` ya lo soporta) | diferido | — |
 | OPT-20 | Cronómetro sincrónico único + autoguardado/autoenvío (absorbe OPT-6) | mini-auditoría OPT-20 (H-opt20-1..6, D1–D8) + H-vivo-3 | media (capacidad + carga operativa) | día del examen: el buzzer no garantiza captura; cada pausa dispara reingresos por contingencia; el registro del evaluador a medio llenar se pierde | XL · 4 fases (M + L + M–L + M) · 2 migraciones (F2/F3; F4 sin migración) — gate humano · cambia comportamiento observable (D2) | **en-verificación** (F1–F4 completas —backend + frontend—; solo falta el e2e con Docker, pendiente global sobre el stack de ramas) | `PLANES/OPT-20__cronometro-sincronico.md` |
 
@@ -403,17 +403,23 @@ ve lista vacía indistinguible de "todo corregido" (H-corr-6).
 - **Factibilidad**: M. Endpoint: enviar `assessment_tool`, `pending_count` con scope, orden por prioridad.
   Frontend: autoavance, contador personal, empty-state distinguido. Sin migración.
 - **Prioridad**: P2 — dimensionar (cierra el diseño de Fase 2 de evaluación diferida).
-- **Estado 2026-08-29**: **aprobado** — mini-auditoría de fundamento
+- **Estado 2026-08-29**: **en-verificación** — implementado en `opt/OPT-15-cola-corrector` (desde
+  `opt/backlog-grupo-b`). Mini-auditoría de fundamento
   (`hallazgos/auditor-correccion-resultados__OPT-15__2026-08-29.md`) + decisiones de producto del usuario.
-  Plan: `PLANES/OPT-15__cola-corrector.md`. **Sin migración, sin endpoints nuevos.** Se extiende la respuesta
-  de `GET /api/grading/{event}` con `assessment_tool` serializado por fila (reusa `serialize_assessment_tool`),
-  `scope` ({is_corrector, has_assignment, assigned_station_ids}) y `pending_by_station`; `grade_response`
-  devuelve `{next, pending_remaining}` para eliminar el refetch completo. Pauta = **sólo referencia visual**
-  (FASE1 §Decisión 4); `apply_manual_scores` sin cambios. Frontend: panel de pauta colapsable, autoavance a
-  "siguiente pendiente", barra de progreso "X de Y en tus estaciones", `pending_count` re-renderizado,
-  empty-state diferenciado para corrector sin estaciones (H-corr-6). Corrección de precisión sobre el triage
-  previo: `pending_count` **sí** está scopeado al corrector hoy (la afirmación "global" era imprecisa); el gap
-  real es que la UI no lo usa.
+  Plan: `PLANES/OPT-15__cola-corrector.md`. **Sin migración, sin endpoints nuevos.** Se extendió la respuesta
+  de `GET /api/grading/{event}` con `assessment_tool` serializado por fila (reusa `serialize_assessment_tool`,
+  cacheado por `station_id`), `scope` ({is_corrector, has_assignment, assigned_station_ids}) y
+  `pending_by_station`; `grade_response` devuelve `{next, pending_remaining}` y el cliente ya no refetchea la
+  lista completa. Pauta = **sólo referencia visual** (FASE1 §Decisión 4); `apply_manual_scores` sin cambios.
+  Frontend: panel de pauta colapsable, autoavance a "siguiente pendiente", barra de progreso
+  "X de Y en tus estaciones" + chips por estación, `pending_count` re-renderizado, empty-state diferenciado
+  para corrector sin estaciones (H-corr-6), Enter envía la corrección. Tests nuevos
+  `backend/tests/test_grading_queue_opt15.py` (con negativos de scoping) + tests de la página
+  `grading`. Suite backend verde en SQLite y Postgres (280); frontend `lint` + `build` + `vitest` (51) verdes.
+  Corrección de precisión sobre el triage previo: `pending_count` **sí** estaba scopeado al corrector; el gap
+  real era que la UI no lo usaba.
+- **Pendiente para cerrar**: revisión del usuario + e2e (`./scripts/run_e2e.sh --grep "grading"`) sobre el
+  stack de ramas; merge/deploy.
 
 ### OPT-15b · Corrector — bulk-0 y reasignación in-place
 Follow-up de OPT-15, fuera del núcleo. (1) Bulk "puntuar 0 las respuestas en blanco de esta estación",

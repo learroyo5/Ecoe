@@ -19,6 +19,7 @@ from app.services.authorization import ensure_event_access
 from app.services.dependencies import require_roles
 from app.services.grading import apply_manual_scores, pending_manual_keys
 from app.utils.helpers import normalize_email
+from app.utils.serializers import serialize_assessment_tool
 
 router = APIRouter()
 
@@ -53,6 +54,43 @@ def _corrector_station_scope(
     return {int(sid) for sid in (assignment.station_ids or []) if sid} if assignment else set()
 
 
+def _grading_scope_payload(station_scope: set[int] | None) -> dict:
+    """Objeto `scope` que la UI usa para diferenciar los empty-states.
+
+    - `station_scope is None` → el actor es admin/coeditor: ve todo el evento.
+    - `station_scope == set()` → es `corrector` pero sin `StaffAssignment`
+      (o con `station_ids` vacío): H-corr-6, la UI le dice "pedí estaciones".
+    - `station_scope` con ids → corrector con asignación real.
+    """
+    if station_scope is None:
+        return {"is_corrector": False, "has_assignment": True, "assigned_station_ids": []}
+    return {
+        "is_corrector": True,
+        "has_assignment": bool(station_scope),
+        "assigned_station_ids": sorted(station_scope),
+    }
+
+
+def _scoped_pending_responses(
+    db: Session, ecoe_event_id: int, station_scope: set[int] | None
+) -> list[StudentResponse]:
+    """Respuestas con corrección manual pendiente dentro del scope del actor,
+    en el mismo orden FIFO que la cola (`submitted_at ASC, id ASC`)."""
+    filters = [
+        StudentResponse.ecoe_event_id == ecoe_event_id,
+        StudentResponse.mode == SessionMode.ejecucion.value,
+        StudentResponse.max_score.is_not(None),
+    ]
+    if station_scope is not None:
+        filters.append(StudentResponse.station_id.in_(station_scope))
+    responses = db.scalars(
+        select(StudentResponse)
+        .where(*filters)
+        .order_by(StudentResponse.submitted_at.asc(), StudentResponse.id.asc())
+    ).all()
+    return [response for response in responses if pending_manual_keys(response)]
+
+
 @router.get("/grading/{ecoe_event_id}")
 def list_gradable_responses(
     ecoe_event_id: int,
@@ -69,9 +107,17 @@ def list_gradable_responses(
         StudentResponse.mode == SessionMode.ejecucion.value,
         StudentResponse.max_score.is_not(None),
     ]
+    scope_payload = _grading_scope_payload(station_scope)
     if station_scope is not None:
         if not station_scope:
-            return {"responses": [], "pending_count": 0}
+            # Corrector sin estaciones asignadas: devolvemos la lista vacía pero
+            # con el objeto `scope` para que la UI lo distinga de "todo corregido".
+            return {
+                "responses": [],
+                "pending_count": 0,
+                "scope": scope_payload,
+                "pending_by_station": {},
+            }
         filters.append(StudentResponse.station_id.in_(station_scope))
     responses = db.scalars(
         select(StudentResponse)
@@ -90,11 +136,38 @@ def list_gradable_responses(
             select(Station).where(Station.ecoe_event_id == ecoe_event_id)
         ).all()
     }
+    # La pauta (AssessmentTool) de la estación viaja como referencia visual —
+    # NO cambia la puntuación (FASE1 §Decisión 4: `apply_manual_scores` sigue
+    # siendo número libre `[0, max]`). Se cachea por `station_id` para no
+    # repetir el SELECT en cada fila de la misma estación.
+    tool_cache: dict[int, dict | None] = {}
+
+    def _assessment_tool_for(station: Station | None) -> dict | None:
+        if station is None or not station.assessment_tool_id:
+            return None
+        if station.id not in tool_cache:
+            tool_cache[station.id] = serialize_assessment_tool(db, station.assessment_tool_id)
+        return tool_cache[station.id]
+
+    pending_by_station: dict[int, dict] = {}
     rows = []
     for response in responses:
         student = students.get(response.student_id)
         station = stations.get(response.station_id)
         pending = pending_manual_keys(response)
+        if station is not None:
+            bucket = pending_by_station.setdefault(
+                station.id,
+                {
+                    "station_number": station.station_number,
+                    "station_name": station.name,
+                    "pending": 0,
+                    "total": 0,
+                },
+            )
+            bucket["total"] += 1
+            if pending:
+                bucket["pending"] += 1
         rows.append({
             "response_id": response.id,
             "mode": str(response.mode),
@@ -119,9 +192,15 @@ def list_gradable_responses(
             "questions": (
                 (station.student_form_definition or {}).get("questions", []) if station else []
             ),
+            "assessment_tool": _assessment_tool_for(station),
         })
     pending_count = sum(1 for row in rows if row["pending_questions"])
-    return {"responses": rows, "pending_count": pending_count}
+    return {
+        "responses": rows,
+        "pending_count": pending_count,
+        "scope": scope_payload,
+        "pending_by_station": pending_by_station,
+    }
 
 
 @router.post("/grading/responses/{response_id}")
@@ -162,9 +241,22 @@ def grade_response(
     ))
     db.commit()
     db.refresh(response)
+
+    # El cliente ya no re-fetchea la lista entera tras guardar: le devolvemos
+    # la próxima fila pendiente en su scope (FIFO, después de la recién
+    # corregida) y cuántas le quedan. Misma query scopeada que la cola.
+    remaining = _scoped_pending_responses(db, response.ecoe_event_id, station_scope)
+    after = [
+        pending
+        for pending in remaining
+        if (pending.submitted_at, pending.id) > (response.submitted_at, response.id)
+    ]
+    next_row = after[0] if after else None
     return {
         "graded": True,
         "response_id": response.id,
         "score_obtained": response.score_obtained,
         "max_score": response.max_score,
+        "next": {"response_id": next_row.id} if next_row else None,
+        "pending_remaining": len(remaining),
     }
