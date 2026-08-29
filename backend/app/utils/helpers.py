@@ -5,10 +5,11 @@ app.services.media, and dict serializers in app.utils.serializers — this
 module keeps only helpers with no authorization/media concerns.
 """
 
+import re
 from datetime import timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.entities import AssessmentTool, StaffAssignment, Station, StationCheckIn, Student
@@ -24,12 +25,23 @@ def normalize_email(value: str | None) -> str:
     return str(value or "").strip().lower()
 
 
+_ECOE_NUMBER_TAIL = re.compile(r"^[A-Za-z]*0*(\d+)$")
+
+
 def normalize_ecoe_lookup(value: str | None) -> str:
+    """Forma canónica de un número ECOE para comparar sin fricción.
+
+    Un número tipo ``E007`` / ``e7`` / ``007`` / ``7`` (prefijo de letras
+    opcional + ceros a la izquierda + dígitos) se reduce a su valor numérico
+    (``"7"``), así el evaluador puede tipear ``7`` o ``E007`` indistintamente.
+    Cualquier otro formato (``MED-2026-007``) se compara en minúsculas tal cual.
+    """
     text = str(value or "").strip()
     if not text:
         return ""
-    if text.isdigit():
-        return str(int(text))
+    match = _ECOE_NUMBER_TAIL.match(text)
+    if match:
+        return str(int(match.group(1)))
     return text.lower()
 
 
@@ -59,19 +71,32 @@ MULTI_STATION_ROLE_CODES = {"corrector"}
 
 # ── Business helpers ────────────────────────────────────────────────────
 
+def format_ecoe_number(value: int, width: int = 3) -> str:
+    """Formato canónico del número ECOE: prefijo ``E`` + valor con ceros
+    a la izquierda (``E001``, ``E042``). La búsqueda igual acepta que el
+    evaluador tipee ``1`` / ``001`` / ``E001`` (ver ``normalize_ecoe_lookup``)."""
+    return f"E{value:0{max(3, width)}d}"
+
+
+def _ecoe_number_value(text: str) -> int | None:
+    """Valor numérico de un número ECOE en cualquier formato (``E007`` -> 7)."""
+    match = _ECOE_NUMBER_TAIL.match(str(text or "").strip())
+    return int(match.group(1)) if match else None
+
+
 def next_student_ecoe_number(db: Session, ecoe_event_id: int) -> str:
     numbers = db.scalars(select(Student.ecoe_number).where(Student.ecoe_event_id == ecoe_event_id)).all()
     numeric_values: list[int] = []
     widths: list[int] = []
     for value in numbers:
-        text = str(value or "").strip()
-        if text.isdigit():
-            numeric_values.append(int(text))
-            widths.append(len(text))
+        parsed = _ecoe_number_value(value)
+        if parsed is not None:
+            numeric_values.append(parsed)
+            widths.append(len(re.sub(r"\D", "", str(value))))
 
     next_value = (max(numeric_values) if numeric_values else 0) + 1
     width = max(3, max(widths, default=3), len(str(next_value)))
-    return str(next_value).zfill(width)
+    return format_ecoe_number(next_value, width)
 
 
 def ensure_primary_station_assignment(staff: StaffAssignment | None) -> tuple[list[int], bool]:
@@ -372,21 +397,25 @@ def find_student_by_ecoe_number(
     *,
     active_only: bool = True,
 ) -> Student | None:
-    lookup = normalize_ecoe_lookup(ecoe_number)
+    raw = str(ecoe_number or "").strip()
+    lookup = normalize_ecoe_lookup(raw)
     if not lookup:
         return None
 
     statement = select(Student).where(Student.ecoe_event_id == ecoe_event_id)
     if active_only:
         statement = statement.where(Student.is_active.is_(True))
+    students = list(db.scalars(statement.order_by(Student.id.asc())))
 
-    raw = str(ecoe_number or "").strip()
-    if raw.isdigit():
-        # Numeric lookups match regardless of zero padding: "7" == "007".
-        statement = statement.where(
-            func.ltrim(Student.ecoe_number, "0") == lookup
-        )
-    else:
-        statement = statement.where(func.lower(Student.ecoe_number) == lookup)
+    # Coincidencia exacta (case-insensitive) primero: si el evento distingue
+    # "E7" de "E007", gana la que el evaluador tipeó tal cual.
+    exact = [s for s in students if (s.ecoe_number or "").strip().lower() == raw.lower()]
+    if len(exact) == 1:
+        return exact[0]
 
-    return db.scalar(statement.order_by(Student.id.asc()).limit(1))
+    # Si no, coincidencia canónica ("7" == "007" == "E007"). Ambigua -> None:
+    # nunca adivinar entre dos estudiantes.
+    canonical = [s for s in students if normalize_ecoe_lookup(s.ecoe_number) == lookup]
+    if len(canonical) == 1:
+        return canonical[0]
+    return None

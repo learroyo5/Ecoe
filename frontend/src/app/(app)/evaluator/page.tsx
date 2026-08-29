@@ -410,7 +410,7 @@ export default function EvaluatorPage() {
                 <input
                   value={ecoeNumber}
                   onChange={(event) => setEcoeNumber(event.target.value)}
-                  placeholder="Ejemplo: 008"
+                  placeholder="Ejemplo: E007"
                 />
               </label>
               <button className="btn-primary w-full" disabled={confirmingStudent}>

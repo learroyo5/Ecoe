@@ -1,5 +1,7 @@
 """Student management routes."""
 
+import re
+
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -12,6 +14,7 @@ from app.services.dependencies import get_current_user, require_roles
 from app.utils.files import parse_tabular_file
 from app.services.authorization import ensure_event_access
 from app.utils.helpers import (
+    format_ecoe_number,
     normalize_ecoe_lookup,
     normalize_email,
     normalize_rut,
@@ -150,7 +153,7 @@ def renumber_students(
         return {"updated": 0}
     width = max(3, len(str(len(students))))
     for index, student in enumerate(students, start=1):
-        student.ecoe_number = str(index).zfill(width)
+        student.ecoe_number = format_ecoe_number(index, width)
         db.add(student)
     db.commit()
     return {"updated": len(students)}
@@ -189,8 +192,8 @@ async def import_students(
     skipped_rut_duplicate = 0
     skipped_missing_data = 0
     next_number = next_student_ecoe_number(db, ecoe_event_id)
-    next_numeric_value = int(next_number)
-    next_width = len(next_number)
+    next_numeric_value = int(re.sub(r"\D", "", next_number) or 0)
+    next_width = len(re.sub(r"\D", "", next_number))
     existing_ruts = {
         normalize_rut(rut)
         for rut in db.scalars(select(Student.rut).where(Student.ecoe_event_id == ecoe_event_id)).all()
@@ -211,7 +214,7 @@ async def import_students(
             last_name=row.get("apellidos", row.get("last_name", "")),
             rut=rut,
             email=email,
-            ecoe_number=str(next_numeric_value).zfill(next_width),
+            ecoe_number=format_ecoe_number(next_numeric_value, next_width),
             group_name=row.get("grupo", row.get("group_name", "Grupo 1")),
             circuit_name=row.get("circuito", row.get("circuit_name", "Circuito A")),
         )
