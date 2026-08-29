@@ -204,12 +204,26 @@ class StaffAssignment(Base, TimestampMixin):
 
 class StationTemplate(Base, TimestampMixin):
     __tablename__ = "station_templates"
+    __table_args__ = (
+        Index("ix_station_templates_archived", "archived"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     category: Mapped[str] = mapped_column(String(64), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     default_configuration: Mapped[dict] = mapped_column(JSON, default=dict)
+    # OPT-7b: propiedad y ciclo de vida del banco institucional (mismo patrón
+    # que AssessmentTool en OPT-7). `default_configuration` no se lee en runtime
+    # (el Constructor solo copia campo a campo al aplicar la plantilla), así que
+    # basta UPDATE libre + soft-delete: no hay gate de editabilidad por estado.
+    created_by: Mapped[str | None] = mapped_column(String(255))
+    origin_event_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ecoe_events.id", ondelete="SET NULL")
+    )
+    archived: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=false(), default=False
+    )
 
 
 class AssessmentTool(Base, TimestampMixin):
@@ -261,6 +275,9 @@ class AssessmentItem(Base):
 
 class SimulatedPatient(Base, TimestampMixin):
     __tablename__ = "simulated_patients"
+    __table_args__ = (
+        Index("ix_simulated_patients_archived", "archived"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     character_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -269,6 +286,15 @@ class SimulatedPatient(Base, TimestampMixin):
     key_answers: Mapped[str] = mapped_column(Text, nullable=False)
     emotional_tone: Mapped[str] = mapped_column(String(255), nullable=False)
     special_instructions: Mapped[str] = mapped_column(Text, nullable=False)
+    # OPT-7b: misma propiedad + soft-delete que StationTemplate. La ficha del
+    # paciente no interviene en el cálculo de notas: UPDATE libre + soft-delete.
+    created_by: Mapped[str | None] = mapped_column(String(255))
+    origin_event_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ecoe_events.id", ondelete="SET NULL")
+    )
+    archived: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=false(), default=False
+    )
 
 
 class MediaAsset(Base, TimestampMixin):
@@ -296,11 +322,15 @@ class Station(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     ecoe_event_id: Mapped[int] = mapped_column(ForeignKey("ecoe_events.id"), nullable=False)
-    template_id: Mapped[int | None] = mapped_column(ForeignKey("station_templates.id"))
+    template_id: Mapped[int | None] = mapped_column(
+        ForeignKey("station_templates.id", ondelete="SET NULL")
+    )
     assessment_tool_id: Mapped[int | None] = mapped_column(
         ForeignKey("assessment_tools.id", ondelete="SET NULL")
     )
-    simulated_patient_id: Mapped[int | None] = mapped_column(ForeignKey("simulated_patients.id"))
+    simulated_patient_id: Mapped[int | None] = mapped_column(
+        ForeignKey("simulated_patients.id", ondelete="SET NULL")
+    )
     station_number: Mapped[int] = mapped_column(Integer, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     station_type: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -338,11 +368,15 @@ class StationBank(Base, TimestampMixin):
     __tablename__ = "station_bank"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    template_id: Mapped[int | None] = mapped_column(ForeignKey("station_templates.id"))
+    template_id: Mapped[int | None] = mapped_column(
+        ForeignKey("station_templates.id", ondelete="SET NULL")
+    )
     assessment_tool_id: Mapped[int | None] = mapped_column(
         ForeignKey("assessment_tools.id", ondelete="SET NULL")
     )
-    simulated_patient_id: Mapped[int | None] = mapped_column(ForeignKey("simulated_patients.id"))
+    simulated_patient_id: Mapped[int | None] = mapped_column(
+        ForeignKey("simulated_patients.id", ondelete="SET NULL")
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     station_type: Mapped[str] = mapped_column(String(64), nullable=False)
     circuit_name: Mapped[str] = mapped_column(String(64), default="Circuito A")
