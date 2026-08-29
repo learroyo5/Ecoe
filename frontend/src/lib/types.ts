@@ -297,6 +297,68 @@ export type EvaluatorDraftRow = {
   updated_at: string | null;
 };
 
+/** OPT-15 · Cola del corrector. */
+export type GradingQuestionItem = {
+  kind: "auto" | "manual";
+  earned: number | null;
+  max: number;
+  answered?: boolean;
+};
+
+export type GradableResponse = {
+  response_id: number;
+  mode: string;
+  submission_kind?: string;
+  by_contingency?: boolean;
+  student_id: number;
+  student_name: string;
+  student_ecoe_number: string;
+  station_id: number;
+  station_number: number | null;
+  station_name: string;
+  submitted_at: string;
+  answers: Record<string, unknown>;
+  grading: Record<string, GradingQuestionItem>;
+  pending_questions: string[];
+  score_obtained: number | null;
+  max_score: number | null;
+  graded_by_email: string | null;
+  questions: { label?: string; type?: string }[];
+  /** Pauta de la estación como referencia visual (no puntúa). `null` si la
+   *  estación no tiene `assessment_tool_id`. */
+  assessment_tool: AssessmentTool | null;
+};
+
+export type GradingScope = {
+  /** El actor entra a la cola solo como `corrector` (no admin/coeditor). */
+  is_corrector: boolean;
+  /** Tiene una asignación de corrector con al menos una estación. */
+  has_assignment: boolean;
+  assigned_station_ids: number[];
+};
+
+export type PendingByStation = Record<
+  string,
+  { station_number: number | null; station_name: string; pending: number; total: number }
+>;
+
+export type GradingListResult = {
+  responses: GradableResponse[];
+  pending_count: number;
+  scope: GradingScope;
+  pending_by_station: PendingByStation;
+};
+
+export type GradeResponseResult = {
+  graded: boolean;
+  response_id: number;
+  score_obtained: number | null;
+  max_score: number | null;
+  /** Próxima fila pendiente en el scope del actor (orden FIFO), o `null`. */
+  next: { response_id: number } | null;
+  pending_remaining: number;
+};
+
 export type StudentAccessContext = {
   checkin_id: number;
   student_id: number;

@@ -4,6 +4,8 @@ import type {
   ECOEEvent,
   EvaluatorContext,
   EvaluatorDraftRow,
+  GradeResponseResult,
+  GradingListResult,
   Incident,
   LiveSession,
   MediaAsset,
@@ -310,9 +312,9 @@ export const api = {
 
   // Grading (corrección manual de formularios del estudiante)
   gradingList: (eventId: number) =>
-    request<{ responses: Record<string, unknown>[]; pending_count: number }>(`/grading/${eventId}`),
+    request<GradingListResult>(`/grading/${eventId}`),
   gradeResponse: (responseId: number, scores: Record<string, number>) =>
-    request<{ graded: boolean; score_obtained: number; max_score: number }>(
+    request<GradeResponseResult>(
       `/grading/responses/${responseId}`,
       { method: "POST", body: JSON.stringify({ scores }) },
     ),
