@@ -15,9 +15,11 @@ Cubre los negativos obligatorios del plan
 """
 
 import secrets
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import select
+
+from app.utils.clock import utcnow_naive
 
 from app.core.security import get_password_hash
 from app.models.entities import (
@@ -391,6 +393,53 @@ def test_purge_orphan_template_succeeds(auth_client):
         f"/api/templates/{template_id}/purge?ecoe_event_id={event_id}")
     assert resp.status_code == 200
     assert _template_row(template_id) is None
+
+
+def test_purge_orphan_command_dry_run_then_apply(auth_client):
+    from scripts.purge_orphan_content import find_candidates, main
+
+    login(auth_client, ADMIN)
+    event_id = _event()
+
+    old_orphan = _template(origin_event_id=event_id, name="Vieja huérfana")
+    recent_orphan = _template(origin_event_id=event_id, name="Nueva huérfana")
+    referenced = _template(origin_event_id=event_id, name="Referenciada")
+    _station(event_id, template_id=referenced)
+
+    with TestingSessionLocal() as db:
+        row = db.get(StationTemplate, old_orphan)
+        row.created_at = utcnow_naive() - timedelta(days=200)
+        db.add(row)
+        db.commit()
+
+        cands = {c["id"] for c in find_candidates(
+            db, kind="templates", min_age_days=90, include_archived=False)}
+    assert old_orphan in cands
+    assert recent_orphan not in cands   # demasiado nuevo
+    assert referenced not in cands      # tiene referencia
+
+    assert main(["--kind", "templates", "--min-age-days", "90"]) == 0  # dry-run
+    assert _template_row(old_orphan) is not None
+
+    assert main(["--kind", "templates", "--min-age-days", "90", "--apply"]) == 0
+    assert _template_row(old_orphan) is None
+    assert _template_row(recent_orphan) is not None
+    assert _template_row(referenced) is not None
+
+
+def test_purge_orphan_command_patients_kind(auth_client):
+    from scripts.purge_orphan_content import main
+
+    login(auth_client, ADMIN)
+    event_id = _event()
+    orphan = _patient(origin_event_id=event_id)
+    with TestingSessionLocal() as db:
+        row = db.get(SimulatedPatient, orphan)
+        row.created_at = utcnow_naive() - timedelta(days=200)
+        db.add(row)
+        db.commit()
+    assert main(["--kind", "patients", "--min-age-days", "90", "--apply"]) == 0
+    assert _patient_row(orphan) is None
 
 
 def test_create_station_from_template_still_works(auth_client):
