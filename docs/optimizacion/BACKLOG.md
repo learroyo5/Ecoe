@@ -30,10 +30,10 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 
 | ID | Título | Origen (hallazgo) | Severidad | Impacto | Factibilidad | Estado | Plan |
 |----|--------|-------------------|-----------|---------|--------------|--------|------|
-| OPT-6 | Visibilidad de pausa del cronómetro en evaluador y kiosko | H-vivo-3 | media | carga operativa: 1 contingencia por estudiante del circuito por cada pausa | M–L · decisión de enfoque | **absorbido por OPT-20** | `PLANES/OPT-20__cronometro-sincronico.md` (F1) |
+| OPT-6 | Visibilidad de pausa del cronómetro en evaluador y kiosko | H-vivo-3 | media | carga operativa: 1 contingencia por estudiante del circuito por cada pausa | M–L · decisión de enfoque | **absorbido por OPT-20** (su entregable = F1, en-verificación) | `PLANES/OPT-20__cronometro-sincronico.md` (F1) |
 | OPT-7 | CRUD de instrumentos / plantillas / pacientes simulados | H-admin-ecoe-4 | media | banco institucional se llena de pautas muertas; no se corrige una pauta con error | M · impacto cross-event | triado | — |
 | OPT-15 | Fricción del corrector (cola personal, siguiente-pendiente, rúbrica de referencia) | H-corr-5, H-corr-6 | media | corrección diferida a escala; gap vs. diseño FASE1 §Decisión 4 | M · sin migración | triado | — |
-| OPT-20 | Cronómetro sincrónico único + autoguardado/autoenvío (absorbe OPT-6) | mini-auditoría OPT-20 (H-opt20-1..6, D1–D8) + H-vivo-3 | media (capacidad + carga operativa) | día del examen: el buzzer no garantiza captura; cada pausa dispara reingresos por contingencia; el registro del evaluador a medio llenar se pierde | XL · 4 fases (M + L + M–L + M) · 3 migraciones (F2/F3/F4) — gate humano · cambia comportamiento observable (D2) | **implementando** (F1 + F2 + F3 completas —backend + frontend— en-verificación; solo falta e2e con Docker; F4 pendiente) | `PLANES/OPT-20__cronometro-sincronico.md` |
+| OPT-20 | Cronómetro sincrónico único + autoguardado/autoenvío (absorbe OPT-6) | mini-auditoría OPT-20 (H-opt20-1..6, D1–D8) + H-vivo-3 | media (capacidad + carga operativa) | día del examen: el buzzer no garantiza captura; cada pausa dispara reingresos por contingencia; el registro del evaluador a medio llenar se pierde | XL · 4 fases (M + L + M–L + M) · 2 migraciones (F2/F3; F4 sin migración) — gate humano · cambia comportamiento observable (D2) | **en-verificación** (F1–F4 completas —backend + frontend—; solo falta el e2e con Docker, pendiente global sobre el stack de ramas) | `PLANES/OPT-20__cronometro-sincronico.md` |
 
 ## Grupo C — Capacidad de análisis de datos (Fase 2 — features grandes, requieren dimensionamiento y definición metodológica del usuario)
 
@@ -241,10 +241,24 @@ frontend). Plan redactado: `PLANES/OPT-20__cronometro-sincronico.md`.
     base limpia; lint + build + vitest (47) verdes. **Pendiente**: `./scripts/run_e2e.sh` (necesita Docker,
     no ejecutable en la sesión)._
   - **F4** (M) — `submission_kind` en `student_responses` y `evaluator_records` + flag `answered` por pregunta
-    + marcado en trazabilidad/export. Migración: 2 columnas.
+    + marcado en trazabilidad/export.
+    _Estado 2026-08-29: **F4 completa (backend + frontend), en-verificación total.** Rama `opt/OPT-20-F4`
+    (desde `opt/OPT-20-F3`). **Sin migración**: las columnas `submission_kind` ya existían (F2 =
+    `l2m3n4o5p6q7`, F3 = `m3n4o5p6q7r8`); `answered` vive dentro del JSON de `grading`. `grade_answers`
+    agrega `"answered": bool` por ítem sin tocar la aritmética; reconciliación de F3 — la promoción de un
+    borrador de evaluador (vía `/evaluator/submit` y vía contingencia) estampa `submission_kind =
+    'draft_finalized'` en vez de `manual`/`contingency` (`by_contingency` se mantiene, decisión #9); el
+    cliente nunca elige `submission_kind` (negativo). `build_traceability_report` etiqueta y cuenta
+    `blank_auto_submissions` (estudiante/estación/resumen) + badge en la bitácora; `export_results_excel`
+    agrega la hoja `trazabilidad_envios` (indicador mínimo por respuesta — el rediseño completo del export
+    es **OPT-19**, que debe absorber esta hoja). Frontend: badges "Respuesta automática / incompleta" en
+    `/grading` (respuesta e ítem) y en `/results` (bitácora + columna). `pytest` SQLite (270) + Postgres
+    (270) verdes; lint + build + vitest (47) verdes; 12 tests F4 nuevos. **Pendiente**: `./scripts/run_e2e.sh`
+    (necesita Docker)._
 - **Toca**: máquina de estados (efecto colateral nuevo en `/live/control`, acción `expire_phase`; **no** el
-  grafo `ALLOWED_STATUS_TRANSITIONS`), 3 migraciones (F2/F3/F4 — **gate humano**), auth de WebSocket (F1 —
-  **tests negativos obligatorios**), aritmética de `compute_results` (F3 — filtro `is_draft`).
+  grafo `ALLOWED_STATUS_TRANSITIONS`), 2 migraciones (F2/F3 — **gate humano**; F4 no necesitó migración),
+  auth de WebSocket (F1 — **tests negativos obligatorios**), aritmética de `compute_results` (F3 — filtro
+  `is_draft`; F4 no la toca).
 - **Prioridad**: P1 para **F1** (cierra OPT-6, alto valor operativo, bajo riesgo, desbloquea el resto).
   F2–F4 son P2, secuenciales. **9 decisiones de implementación abiertas** listadas en el plan (trigger del
   autoenvío, almacén del borrador, transporte del token de kiosko en WS, fallback de pilotaje, etc.).

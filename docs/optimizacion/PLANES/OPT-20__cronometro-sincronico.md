@@ -548,6 +548,49 @@ persista como **borrador** (no como 0 final) y se pueda completar en contingenci
 **Objetivo:** distinguir en datos y en el export un 0-por-omisión de un 0-por-error,
 sin cambiar la aritmética del consolidado.
 
+> **Estado 2026-08-29 — F4 completa (backend + frontend), en-verificación total.**
+> Rama `opt/OPT-20-F4` (desde el HEAD de `opt/OPT-20-F3`). Solo resta el e2e con Docker.
+> - [x] **Sin migración**: las columnas `submission_kind` ya existían (F2 =
+>   `l2m3n4o5p6q7` en `student_responses`; F3 = `m3n4o5p6q7r8` en
+>   `evaluator_records`). El `answered` por pregunta vive dentro del JSON de
+>   `grading`/`per_question`, no es columna. Se confirmó leyendo el código antes de
+>   descartar la migración.
+> - [x] `grade_answers` / `per_question` (`services/grading.py`): cada entrada lleva
+>   `"answered": bool` (helper `is_answered`: `None` / str vacío / lista vacía = sin
+>   responder). Sin cambio de aritmética; `compute_results` intacto (un blanco `auto`
+>   suma `0/max_score`).
+> - [x] Estampado consistente de `submission_kind`: `submit_student_response` →
+>   `manual` (ya estaba), barrido F2 → `auto` (ya estaba), `contingency.*` →
+>   `contingency` (ya estaba). **Reconciliación F3**: la promoción de un borrador de
+>   evaluador —vía `/evaluator/submit` **y** vía `/contingency/evaluator-record`—
+>   pasa de `manual`/`contingency` a **`draft_finalized`**. `by_contingency` se
+>   mantiene como marca de auditoría del flujo de contingencia (decisión #9:
+>   ambos). El cliente nunca elige `submission_kind` (no es campo de schema; test
+>   negativo `test_submission_kind_not_client_settable`). Dos tests de F3 ajustados
+>   citando este plan.
+> - [x] `build_traceability_report`: `activity_log` etiqueta la respuesta según
+>   `submission_kind` y si `answers` está vacío ("automática, sin respuesta" /
+>   "automática" / "por contingencia"), con `submission_kind`/`answered` en la
+>   entrada; contador `blank_auto_submissions` por estudiante, por estación y en el
+>   resumen. `read_results` congelado sin cambios.
+> - [x] `export_results_excel`: hoja nueva `trazabilidad_envios` con un indicador de
+>   origen por respuesta (`origen` + `en_blanco`). La hoja `consolidado` no cambia.
+>   **Cruce con OPT-19** (export enriquecido, aún no hecho): esto es el indicador
+>   mínimo por respuesta; el rediseño completo del export (columnas por estación,
+>   formato de análisis externo) queda para OPT-19, que debe integrar/absorber esta
+>   hoja.
+> - [x] Frontend: `/grading` badge "Respuesta automática" / "Por contingencia" /
+>   "Incompleta — ítems sin responder" a nivel respuesta + marca "Sin responder" por
+>   ítem; `/results` badge de origen en la bitácora + columna "Autoenvíos en blanco"
+>   en la trazabilidad. `lib/labels.ts::submissionKindLabel`, tipos en `types.ts`,
+>   `submission_kind`/`by_contingency` expuestos en `/grading`.
+> - [x] Tests: `tests/test_opt20_f4_submission_kind.py` (12, con negativos) ·
+>   `python3 -m pytest` SQLite (270) y Postgres (270) verdes · sin migración que
+>   verificar · `npm run lint && npm run build && npx vitest run` (47) verdes ·
+>   ningún test previo debilitado.
+> - [ ] `./scripts/run_e2e.sh` — escenario de autoenvío en blanco marcado (sandbox
+>   sin Docker).
+
 ### Backend
 
 - **Migración** (una sola, dos columnas):
@@ -650,11 +693,17 @@ sin cambiar la aritmética del consolidado.
 
 ## Verificación (cada fase)
 
-- [ ] `cd backend && python3 -m pytest`
-- [ ] `TEST_DATABASE_URL=postgresql+psycopg://…/ecoe_test python3 -m pytest -q` (F2/F3/F4 sí o sí — migraciones/constraints)
-- [ ] `DATABASE_URL=sqlite:////tmp/ecoe_opt20_check.db … alembic upgrade head` + `downgrade` (F2/F3/F4)
-- [ ] `cd frontend && npm run lint && npm run build`
-- [ ] `./scripts/run_e2e.sh` — flujo dorado + escenario de pausa (F1) y de autoenvío (F2)
+- [x] `cd backend && python3 -m pytest` — F1–F4 verdes (270 con F4).
+- [x] `TEST_DATABASE_URL=postgresql+psycopg://…/ecoe_test python3 -m pytest -q` — F1–F4 verdes.
+- [x] `DATABASE_URL=sqlite:////tmp/ecoe_opt20_check.db … alembic upgrade head` + `downgrade` — F2/F3 OK; **F4 no crea migración** (columnas ya existen).
+- [x] `cd frontend && npm run lint && npm run build && npx vitest run` — F1–F4 verdes.
+- [ ] `./scripts/run_e2e.sh` — flujo dorado + escenario de pausa (F1), autoenvío (F2),
+  borrador de evaluador (F3) y autoenvío en blanco marcado (F4). **Pendiente global
+  de OPT-20**: no ejecutable en las sesiones de implementación (sandbox sin Docker).
+
+**OPT-20 F1–F4 quedan completas (backend + frontend) y en-verificación. Lo único
+pendiente para el merge es el e2e con Docker, corrido una sola vez sobre el stack
+completo de ramas.**
 
 ## Decisiones de implementación abiertas (🔧 — resolver al aprobar)
 
