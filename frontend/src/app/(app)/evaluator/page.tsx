@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
@@ -10,6 +10,12 @@ import { useLiveTimer } from "@/lib/ws";
 import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 import { ConfirmDialog, TIMER_TONE_CLASSES, timerTone } from "@/components/confirm-dialog";
+
+// OPT-20 F3 (D3): autoguardado server-side del registro del evaluador —
+// debounce por cambio + latido periódico. Al vencer la fase el barrido /
+// coordinación tiene un borrador que finalizar en vez de perderlo.
+const DRAFT_DEBOUNCE_MS = 800;
+const DRAFT_HEARTBEAT_MS = 10000;
 
 export default function EvaluatorPage() {
   const { authenticated, eventId, user } = useECOE();
@@ -178,6 +184,55 @@ export default function EvaluatorPage() {
     }));
   };
 
+  // ── Borrador server-side (OPT-20 F3) ────────────────────────────────
+  const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
+  const draftBodyRef = useRef<Record<string, unknown> | null>(null);
+  const scoreForDraft = assessmentItems.length ? computedScore : Number(scoreObtained) || 0;
+  useEffect(() => {
+    if (!activeCheckin) {
+      draftBodyRef.current = null;
+      return;
+    }
+    draftBodyRef.current = {
+      ecoe_event_id: eventId,
+      station_id: stationId,
+      student_id: Number(activeCheckin.student_id),
+      checkin_id: Number(activeCheckin.id),
+      evaluator_name: user?.full_name ?? "Evaluador",
+      score_obtained: scoreForDraft,
+      observation,
+      answers: {
+        tool_id: assessmentTool?.id ?? null,
+        tool_name: assessmentTool?.name ?? null,
+        tool_type: assessmentTool?.tool_type ?? null,
+        item_scores: itemScores,
+      },
+    };
+  }, [activeCheckin, eventId, stationId, user, scoreForDraft, observation, assessmentTool, itemScores]);
+
+  const pushDraft = useCallback(() => {
+    const body = draftBodyRef.current;
+    if (!body) return;
+    api
+      .evaluatorDraft(body as Parameters<typeof api.evaluatorDraft>[0])
+      .then(() => setDraftSavedAt(new Date()))
+      .catch(() => {
+        /* mejor esfuerzo: el barrido / contingencia cubren el resto */
+      });
+  }, []);
+
+  const draftActive = Boolean(activeCheckin) && !submitted && !timeExpired;
+  useEffect(() => {
+    if (!draftActive) return;
+    const timeoutId = window.setTimeout(pushDraft, DRAFT_DEBOUNCE_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [draftActive, scoreForDraft, observation, itemScores, pushDraft]);
+  useEffect(() => {
+    if (!draftActive) return;
+    const intervalId = window.setInterval(pushDraft, DRAFT_HEARTBEAT_MS);
+    return () => window.clearInterval(intervalId);
+  }, [draftActive, pushDraft]);
+
   const submitEvaluation = async () => {
     if (!activeCheckin) return;
     if (livePaused) {
@@ -223,6 +278,7 @@ export default function EvaluatorPage() {
     setScoreObtained("0");
     setObservation("");
     setItemScoreState({ checkinId: "", scores: {} });
+    setDraftSavedAt(null);
     setNowMs(Date.now());
     setContext((current) => (current ? { ...current, active_checkin: null } : current));
     setMessage(notice);
@@ -406,8 +462,13 @@ export default function EvaluatorPage() {
               vista se limpiará para identificar al siguiente estudiante.
             </div>
           ) : timeExpired ? (
-            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 font-semibold">
-              ⏰ El tiempo de la estación ha terminado. La evaluación ya no puede enviarse.
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              <p className="font-semibold">⏰ Tiempo agotado.</p>
+              <p className="mt-1">
+                Tu registro quedó guardado como <strong>borrador</strong>
+                {draftSavedAt ? ` (última copia ${draftSavedAt.toLocaleTimeString()})` : ""}. Complétalo
+                con coordinación en la ventana de contingencia; ya no puede enviarse desde aquí.
+              </p>
             </div>
           ) : (
             <form
@@ -534,9 +595,16 @@ export default function EvaluatorPage() {
                   value={observation}
                   disabled={submitted || timeExpired}
                   onChange={(event) => setObservation(event.target.value)}
+                  onBlur={pushDraft}
                   placeholder="Comentario breve para retroalimentación o trazabilidad."
                 />
               </label>
+              {draftSavedAt && !submitted ? (
+                <p className="text-xs text-slate-500">
+                  ✓ Borrador guardado a las {draftSavedAt.toLocaleTimeString()} — si se acaba el
+                  tiempo, coordinación puede finalizarlo por contingencia.
+                </p>
+              ) : null}
               <button
                 className="btn-primary w-full text-base"
                 disabled={submitted || submittingEvaluation || timeExpired || livePaused}

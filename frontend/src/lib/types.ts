@@ -280,6 +280,23 @@ export type ActiveCheckin = {
   student_response_exists: boolean;
 };
 
+/** OPT-20 F3 (D3): un EvaluatorRecord que quedó como borrador al vencer la
+ *  fase; coordinación lo finaliza en la ventana de contingencia. */
+export type EvaluatorDraftRow = {
+  record_id: number;
+  station_id: number;
+  station_number: number | null;
+  station_name: string;
+  student_id: number;
+  student_ecoe_number: string;
+  student_name: string;
+  score_obtained: number;
+  max_score: number;
+  evaluator_name: string;
+  observation: string;
+  updated_at: string | null;
+};
+
 export type StudentAccessContext = {
   checkin_id: number;
   student_id: number;

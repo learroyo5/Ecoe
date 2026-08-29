@@ -9,6 +9,7 @@ import { useLiveTimer } from "@/lib/ws";
 import { SectionCard } from "@/components/section-card";
 import { StatusNotice } from "@/components/forms";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { EvaluatorDraftsPanel } from "@/components/evaluator-drafts-panel";
 import type { Incident } from "@/lib/types";
 
 type TimerState = {
@@ -454,6 +455,9 @@ export default function LivePage() {
           </div>
         )}
       </SectionCard>
+
+      {/* OPT-20 F3: contingencia de coordinación — finalizar borradores de evaluador */}
+      <EvaluatorDraftsPanel eventId={eventId} />
     </div>
   );
 }

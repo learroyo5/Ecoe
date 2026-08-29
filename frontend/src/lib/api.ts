@@ -3,6 +3,7 @@ import type {
   DashboardSummary,
   ECOEEvent,
   EvaluatorContext,
+  EvaluatorDraftRow,
   Incident,
   LiveSession,
   MediaAsset,
@@ -183,6 +184,32 @@ export const api = {
     request<ConfirmCheckinResult>("/station-checkins/confirm", { method: "POST", body: JSON.stringify(payload) }),
   submitEvaluator: (payload: Record<string, unknown>) =>
     request<MutationResult>("/evaluator/submit", { method: "POST", body: JSON.stringify(payload) }),
+  // OPT-20 F3 (D3): autoguardado server-side del registro del evaluador a
+  // medio llenar. El registro parcial ES la fila (is_draft=True); se promueve
+  // a definitiva al enviar o al finalizarla por contingencia.
+  evaluatorDraft: (payload: {
+    ecoe_event_id: number;
+    station_id: number;
+    student_id: number;
+    checkin_id?: number;
+    evaluator_name: string;
+    score_obtained: number;
+    observation: string;
+    answers: Record<string, unknown>;
+  }) =>
+    request<{ saved: boolean; record_id: number; is_draft: boolean; updated_at: string | null }>(
+      "/evaluator/draft",
+      { method: "PUT", body: JSON.stringify(payload) },
+    ),
+  // Coordinación: borradores de evaluador pendientes de finalizar y su cierre
+  // por contingencia (finaliza el borrador existente si lo hay).
+  pendingEvaluatorDrafts: (eventId: number) =>
+    request<{ drafts: EvaluatorDraftRow[] }>(`/contingency/evaluator-drafts/${eventId}`),
+  finalizeEvaluatorRecord: (payload: Record<string, unknown>) =>
+    request<MutationResult & { by_contingency?: boolean; finalized_draft?: boolean }>(
+      "/contingency/evaluator-record",
+      { method: "POST", body: JSON.stringify(payload) },
+    ),
 
   // Student access
   studentAccess: (payload: { ecoe_event_id: number; ecoe_number: string }) =>
