@@ -468,6 +468,37 @@ export type ECOEResult = {
   equivalent_grade: number;
 };
 
+/** OPT-16: agregado por estación. La DE es muestral (n−1) y llega `null`
+ *  cuando `n < 2`; una estación sin ninguna nota llega con `n = 0` y todos
+ *  los agregados en `null`. */
+export type StationScoreAggregate = {
+  station_id: number;
+  station_number: number;
+  station_name: string;
+  circuit_name: string;
+  n: number;
+  mean_score: number | null;
+  sd_score: number | null;
+  mean_max: number | null;
+  mean_percent: number | null;
+  sd_percent: number | null;
+  min_percent: number | null;
+  max_percent: number | null;
+};
+
+/** OPT-16: nota de un estudiante en una estación (formato largo). */
+export type StudentStationScore = {
+  student_id: number;
+  ecoe_number: string | null;
+  student_name: string;
+  station_id: number;
+  station_number: number | null;
+  station_name: string;
+  obtained_score: number;
+  max_score: number;
+  percent_score: number;
+};
+
 export type ResultsResponse = {
   results: ECOEResult[];
   /** true cuando el ECOE está cerrado/archivado y el payload sirve el
@@ -476,4 +507,11 @@ export type ResultsResponse = {
   /** ISO 8601 de la consolidación (`ECOEResult.updated_at`); null si el
    *  evento aún no está congelado o se cerró antes de poblar el snapshot. */
   consolidated_at: string | null;
+  /** OPT-16: desglose por estación. Sigue el mismo patrón `frozen` que
+   *  `results` (snapshot `StationResult` tras el cierre, recálculo en vivo
+   *  antes). */
+  by_station: {
+    stations: StationScoreAggregate[];
+    students: StudentStationScore[];
+  };
 } & TraceabilityReport;

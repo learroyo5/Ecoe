@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
 import { modeLabel, submissionKindLabel } from "@/lib/labels";
@@ -22,6 +24,10 @@ function formatTimestamp(value: unknown) {
   });
 }
 
+function formatNumber(value: number | null | undefined) {
+  return value === null || value === undefined ? "—" : String(value);
+}
+
 export default function ResultsPage() {
   const { authenticated, eventId } = useECOE();
   const { data, loading, error } = useApi<ResultsResponse>(
@@ -34,6 +40,12 @@ export default function ResultsPage() {
   const activityLog = data?.activity_log ?? [];
   const frozen = data?.frozen === true;
   const consolidatedLabel = frozen && data?.consolidated_at ? formatTimestamp(data.consolidated_at) : null;
+  const byStation = data?.by_station ?? { stations: [], students: [] };
+  const [stationFilter, setStationFilter] = useState<string>("all");
+  const filteredStationScores =
+    stationFilter === "all"
+      ? byStation.students
+      : byStation.students.filter((row) => String(row.station_id) === stationFilter);
 
   return (
     <div className="space-y-6">
@@ -125,6 +137,86 @@ export default function ResultsPage() {
               { key: "equivalent_grade", label: "Nota equivalente" },
             ]}
           />
+        )}
+      </SectionCard>
+      <SectionCard
+        title="Resultados por estación"
+        subtitle="Desempeño desglosado por estación: promedio y dispersión del circuito, y la nota de cada estudiante en cada estación. La DE es muestral y aparece como “—” cuando hay menos de dos notas."
+      >
+        {loading ? (
+          <p>{frozen ? "Cargando resultados por estación..." : "Calculando resultados por estación..."}</p>
+        ) : error ? (
+          <p>{error}</p>
+        ) : (
+          <div className="space-y-6">
+            <DataTable
+              rows={byStation.stations}
+              columns={[
+                { key: "station_number", label: "Estación" },
+                { key: "station_name", label: "Nombre" },
+                { key: "circuit_name", label: "Circuito" },
+                { key: "n", label: "n" },
+                {
+                  key: "mean_percent",
+                  label: "Media %",
+                  render: (row) => formatNumber(row.mean_percent),
+                },
+                {
+                  key: "sd_percent",
+                  label: "DE %",
+                  render: (row) => formatNumber(row.sd_percent),
+                },
+                {
+                  key: "mean_score",
+                  label: "Media pts",
+                  render: (row) => formatNumber(row.mean_score),
+                },
+                {
+                  key: "mean_max",
+                  label: "Máx.",
+                  render: (row) => formatNumber(row.mean_max),
+                },
+              ]}
+            />
+            <div className="space-y-3">
+              <label className="flex flex-wrap items-center gap-2 text-sm text-[var(--color-text-secondary)]">
+                <span className="font-semibold">Filtrar por estación</span>
+                <select
+                  className="max-w-xs"
+                  value={stationFilter}
+                  onChange={(event) => setStationFilter(event.target.value)}
+                >
+                  <option value="all">Todas las estaciones</option>
+                  {byStation.stations.map((station) => (
+                    <option key={station.station_id} value={String(station.station_id)}>
+                      {station.station_number}. {station.station_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <DataTable
+                rows={filteredStationScores}
+                searchKeys={["student_name", "ecoe_number"]}
+                searchPlaceholder="Buscar estudiante..."
+                columns={[
+                  { key: "ecoe_number", label: "N ECOE" },
+                  { key: "student_name", label: "Estudiante" },
+                  {
+                    key: "station_name",
+                    label: "Estación",
+                    render: (row) => `${row.station_number ?? "?"}. ${row.station_name}`,
+                  },
+                  { key: "obtained_score", label: "Puntaje" },
+                  { key: "max_score", label: "Máximo" },
+                  {
+                    key: "percent_score",
+                    label: "%",
+                    render: (row) => formatNumber(row.percent_score),
+                  },
+                ]}
+              />
+            </div>
+          </div>
         )}
       </SectionCard>
       <SectionCard

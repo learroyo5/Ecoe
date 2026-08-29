@@ -32,6 +32,7 @@ const baseTraceability = {
   student_traceability: [],
   station_traceability: [],
   activity_log: [],
+  by_station: { stations: [], students: [] },
 };
 
 beforeEach(() => {
@@ -69,5 +70,70 @@ describe("ResultsPage — inmutabilidad OPT-1", () => {
       expect(screen.queryByText("Calculando resultados...")).not.toBeInTheDocument(),
     );
     expect(screen.queryByTestId("results-frozen-chip")).not.toBeInTheDocument();
+  });
+});
+
+describe("ResultsPage — resultados por estación OPT-16", () => {
+  it("renderiza el agregado por estación y la nota por estudiante desde by_station", async () => {
+    mockedApi.results.mockResolvedValue({
+      results: [],
+      frozen: false,
+      consolidated_at: null,
+      ...baseTraceability,
+      by_station: {
+        stations: [
+          {
+            station_id: 7,
+            station_number: 1,
+            station_name: "Anamnesis",
+            circuit_name: "Circuito A",
+            n: 2,
+            mean_score: 8,
+            sd_score: 2.83,
+            mean_max: 10,
+            mean_percent: 80,
+            sd_percent: 28.28,
+            min_percent: 60,
+            max_percent: 100,
+          },
+        ],
+        students: [
+          {
+            student_id: 1,
+            ecoe_number: "001",
+            student_name: "Ana Pérez",
+            station_id: 7,
+            station_number: 1,
+            station_name: "Anamnesis",
+            obtained_score: 10,
+            max_score: 10,
+            percent_score: 100,
+          },
+        ],
+      },
+    } as never);
+
+    render(<ResultsPage />);
+
+    expect(await screen.findByText("Resultados por estación")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Anamnesis")).toBeInTheDocument());
+    expect(screen.getByText("Ana Pérez")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "1. Anamnesis" })).toBeInTheDocument();
+  });
+
+  it("no rompe cuando by_station.stations está vacío", async () => {
+    mockedApi.results.mockResolvedValue({
+      results: [],
+      frozen: false,
+      consolidated_at: null,
+      ...baseTraceability,
+    } as never);
+
+    render(<ResultsPage />);
+
+    expect(await screen.findByText("Resultados por estación")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText("Calculando resultados por estación...")).not.toBeInTheDocument(),
+    );
   });
 });
