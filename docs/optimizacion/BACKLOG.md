@@ -41,7 +41,7 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 
 | ID | Título | Origen (hallazgo) | Severidad | Impacto | Factibilidad | Estado | Plan |
 |----|--------|-------------------|-----------|---------|--------------|--------|------|
-| OPT-16 | Resultado por estación (poblar `StationResult`) + desglose `by_station` | H-dato-1 | alta (capacidad) | ancla del análisis final; hoy imposible ver desempeño por estación | M · sin migración (tabla ya existe) | triado | `PLANES/FASE2_ANALISIS_DATOS__scoping.md` |
+| OPT-16 | Resultado por estación (poblar `StationResult`) + desglose `by_station` | H-dato-1 | alta (capacidad) | ancla del análisis final; hoy imposible ver desempeño por estación | M · sin migración (tabla ya existe) | en-plan | `PLANES/OPT-16__resultado-por-estacion.md` |
 | OPT-17 | Ponderación y estándar por estación | H-dato-3 | alta (capacidad) | una estación de `max_score` alto domina la nota; no hay estándar conjuntivo | L · migración + decisión de producto | triado | `PLANES/FASE2_ANALISIS_DATOS__scoping.md` |
 | OPT-18 | Analítica psicométrica (ejecución + pilotaje) | H-dato-2 | alta (capacidad) | `pilotaje_validado` es un click sin respaldo cuantitativo | L–XL | triado | `PLANES/FASE2_ANALISIS_DATOS__scoping.md` |
 | OPT-19 | Export enriquecido + renombrar "Export PDF" de Resultados | H-dato-4 | media (capacidad) | análisis externo imposible; etiqueta engañosa en `/results` | S (etiqueta) / M–L (export) | triado | `PLANES/FASE2_ANALISIS_DATOS__scoping.md` |
@@ -445,6 +445,17 @@ las estaciones de un corrector exige borrarlo y recrearlo. PATCH ya lo soporta; 
   lote de estabilización (OPT-1..5, OPT-8). El **único sub-fix barato que se puede adelantar**: renombrar el
   botón "Exportar PDF" de `/results` (hoy descarga el respaldo de contingencia, no resultados) — parte de
   OPT-19, ~XS.
+
+**Actualización 2026-08-29 · OPT-16 → `en-plan`.** Mini-auditoría de fundamento
+(`hallazgos/auditor-correccion-resultados__OPT-16__2026-08-29.md`) + plan redactado
+(`PLANES/OPT-16__resultado-por-estacion.md`). Confirmado: `station_results` existe en el baseline
+(`c7d8e9f00123_baseline_schema.py:409-425`) con la `UniqueConstraint` — **sin migración**. Alcance mecánico:
+`persist_results` puebla `StationResult` (mismos filtros que `compute_results`: `mode=ejecucion`,
+`is_draft=False`, `score_obtained IS NOT NULL`); `GET /results` expone `by_station` (nota por estudiante/
+estación + agregado media/DE/n), congelado desde snapshot cuando el evento está cerrado (patrón OPT-1);
+tabla nueva en `/results`. Sin endpoint/permiso/máquina de estados nuevos. La nota por estación es
+**informativa** (alimentar un estándar por estación = OPT-17). 4 decisiones menores para el usuario en el
+plan (todas no bloqueantes de la implementación).
 
 ---
 
