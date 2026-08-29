@@ -145,6 +145,29 @@ hoy, pero ahora marcado.
 `paused`, congelen su contador y **no** autoenvíen. Puramente **aditivo**: no
 cambia todavía la semántica del deadline ni toca migraciones. Riesgo bajo.
 
+> **Estado 2026-08-28 — implementada, en-verificación** (rama `opt/OPT-20-F1`).
+> - [x] Backend: guard de `/ws/live/{id}` ampliado a `evaluador`/`estudiante` +
+>   token de kiosko por query param (validado con `authenticate_kiosk_token`,
+>   exige `kiosk.ecoe_event_id == ecoe_event_id`). WS solo lectura: los frames
+>   entrantes se ignoran.
+> - [x] Backend: `live_status` / `current_phase_ends_at` / `paused` agregados a
+>   `/kiosk/context`, `/evaluator/context/{id}`, `/student/access` (helper
+>   `helpers.py::live_phase_snapshot`).
+> - [x] Frontend: hook `useLiveTimer(eventId, { kioskToken? })` en `src/lib/ws.ts`;
+>   `live/page.tsx` refactorizado para usarlo sin cambiar comportamiento.
+> - [x] Frontend: `kiosk/page.tsx` y `student/page.tsx` — overlay "PAUSA", contador
+>   congelado, autoenvío detrás de `status === "running"` (o sin `LiveSession`).
+> - [x] Frontend: `evaluator/page.tsx` — banner de pausa + "Guardar evaluación"
+>   deshabilitado con leyenda "Pausa en curso" (registro sigue editable).
+> - [x] Tests backend (`tests/test_ws_live_screen.py`) incl. negativos; vitest
+>   `src/app/kiosk/__tests__/page.test.tsx` (pausa → no autoenvía).
+> - [x] `python3 -m pytest` (SQLite y Postgres) · `npm run lint && npm run build`
+>   · `npx vitest run` — todo verde; ningún test previo debilitado.
+> - [ ] `./scripts/run_e2e.sh` — escenario de pausa agregado al flujo dorado, no
+>   ejecutable en la sesión de implementación (sandbox sin Docker).
+> - [ ] **Prerequisito de despliegue** (no bloquea el código): headers
+>   `Upgrade`/`Connection: upgrade` en `location /api/` del `nginx` público real.
+
 ### Backend
 
 - `app/api/routes/operational.py` — WebSocket. Ampliar el acceso a las pantallas

@@ -33,7 +33,7 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 | OPT-6 | Visibilidad de pausa del cronómetro en evaluador y kiosko | H-vivo-3 | media | carga operativa: 1 contingencia por estudiante del circuito por cada pausa | M–L · decisión de enfoque | **absorbido por OPT-20** | `PLANES/OPT-20__cronometro-sincronico.md` (F1) |
 | OPT-7 | CRUD de instrumentos / plantillas / pacientes simulados | H-admin-ecoe-4 | media | banco institucional se llena de pautas muertas; no se corrige una pauta con error | M · impacto cross-event | triado | — |
 | OPT-15 | Fricción del corrector (cola personal, siguiente-pendiente, rúbrica de referencia) | H-corr-5, H-corr-6 | media | corrección diferida a escala; gap vs. diseño FASE1 §Decisión 4 | M · sin migración | triado | — |
-| OPT-20 | Cronómetro sincrónico único + autoguardado/autoenvío (absorbe OPT-6) | mini-auditoría OPT-20 (H-opt20-1..6, D1–D8) + H-vivo-3 | media (capacidad + carga operativa) | día del examen: el buzzer no garantiza captura; cada pausa dispara reingresos por contingencia; el registro del evaluador a medio llenar se pierde | XL · 4 fases (M + L + M–L + M) · 3 migraciones (F2/F3/F4) — gate humano · cambia comportamiento observable (D2) | aprobado (F1–F4) | `PLANES/OPT-20__cronometro-sincronico.md` |
+| OPT-20 | Cronómetro sincrónico único + autoguardado/autoenvío (absorbe OPT-6) | mini-auditoría OPT-20 (H-opt20-1..6, D1–D8) + H-vivo-3 | media (capacidad + carga operativa) | día del examen: el buzzer no garantiza captura; cada pausa dispara reingresos por contingencia; el registro del evaluador a medio llenar se pierde | XL · 4 fases (M + L + M–L + M) · 3 migraciones (F2/F3/F4) — gate humano · cambia comportamiento observable (D2) | **implementando** (F1 en-verificación; F2–F4 aprobadas, pendientes) | `PLANES/OPT-20__cronometro-sincronico.md` |
 
 ## Grupo C — Capacidad de análisis de datos (Fase 2 — features grandes, requieren dimensionamiento y definición metodológica del usuario)
 
@@ -206,6 +206,10 @@ frontend). Plan redactado: `PLANES/OPT-20__cronometro-sincronico.md`.
 - **Factibilidad**: XL, dividido en 4 fases por dependencia/riesgo:
   - **F1** (M) — WS operativo para kiosko/evaluador/estudiante + auth (token de kiosko en WS) + propagación de
     `paused` + suspensión del autoenvío en pausa. Aditivo, sin migración. **Cierra OPT-6.**
+    _Estado 2026-08-28: implementada en rama `opt/OPT-20-F1`, en-verificación. Backend + Postgres + lint +
+    build + vitest verdes. Pendiente: correr `./scripts/run_e2e.sh` (escenario de pausa agregado al flujo
+    dorado; no ejecutable en la sesión de implementación) y los headers `Upgrade` de nginx en el server real
+    (no bloqueante del código: F1 funciona en local/e2e; solo el proxy público real necesita el ajuste manual)._
   - **F2** (L) — deadline derivado de la fase del `LiveSession` + barrido/autoenvío autoritativo server-side
     (híbrido lazy + `/live/control`, sin scheduler) + persistencia server-side del borrador. Migración:
     tabla `station_response_drafts`. **Cambia comportamiento observable el día del examen (D2)** → actualizar
