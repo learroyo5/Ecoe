@@ -1,6 +1,7 @@
 """Results computation, persistence, traceability, and export services."""
 
 import statistics
+from collections import defaultdict
 from io import BytesIO
 from pathlib import Path
 
@@ -50,64 +51,60 @@ def compute_equivalent_grade(percentage: float, passing_reference_percent: float
 
 
 def compute_results(db: Session, ecoe_event_id: int) -> list[dict]:
+    """Nota agregada por estudiante.
+
+    OPT-17 — normalización por estación: `percentage` es el **promedio de los
+    porcentajes de logro por estación** del estudiante (cada estación
+    normalizada a su propio máximo → todas pesan igual), no la razón de sumas
+    crudas `sum(obtenido)/sum(máx)*100` de antes. El estándar sigue siendo
+    **compensatorio**: un solo umbral global (`passing_reference_percent`) sobre
+    ese promedio, sin lógica conjuntiva ni umbral por estación.
+
+    `total_score` / `max_score` se mantienen como **suma cruda** de los
+    registros del estudiante (informativos; el analista externo los espera). A
+    partir de OPT-17, para eventos con estaciones de máximo heterogéneo,
+    `percentage` deja de ser `total_score / max_score * 100`.
+
+    Se reescribe sobre `compute_station_results` (OPT-16), que aplica
+    exactamente los mismos filtros que antes usaba `compute_results`
+    (`mode == ejecucion`, `EvaluatorRecord.is_draft == False`,
+    `StudentResponse.score_obtained IS NOT NULL`). OPT-17 no introduce filtros
+    nuevos; sólo cambia cómo se combinan las filas.
+    """
     ecoe_event = db.get(ECOEEvent, ecoe_event_id)
     passing_reference_percent = ecoe_event.passing_reference_percent if ecoe_event else 60.0
     students = db.scalars(
         select(Student).where(Student.ecoe_event_id == ecoe_event_id, Student.is_active.is_(True))
     ).all()
-    # Single aggregated query instead of one query per student.
-    totals_by_student: dict[int, tuple[float, float]] = {
-        row[0]: (row[1] or 0, row[2] or 0)
-        for row in db.execute(
-            select(
-                EvaluatorRecord.student_id,
-                func.sum(EvaluatorRecord.score_obtained),
-                func.sum(EvaluatorRecord.max_score),
-            )
-            .where(
-                EvaluatorRecord.ecoe_event_id == ecoe_event_id,
-                EvaluatorRecord.mode == SessionMode.ejecucion.value,
-                # OPT-20 F3 (D3): a half-filled autosaved draft never enters
-                # the consolidated score; it is promoted on final submit.
-                EvaluatorRecord.is_draft.is_(False),
-            )
-            .group_by(EvaluatorRecord.student_id)
-        ).all()
-    }
-    # Formularios de estudiante con puntaje definitivo (autocorregidos o ya
-    # corregidos manualmente); los pendientes de correccion no entran aun.
-    form_totals_by_student: dict[int, tuple[float, float]] = {
-        row[0]: (row[1] or 0, row[2] or 0)
-        for row in db.execute(
-            select(
-                StudentResponse.student_id,
-                func.sum(StudentResponse.score_obtained),
-                func.sum(StudentResponse.max_score),
-            )
-            .where(
-                StudentResponse.ecoe_event_id == ecoe_event_id,
-                StudentResponse.mode == SessionMode.ejecucion.value,
-                StudentResponse.score_obtained.is_not(None),
-            )
-            .group_by(StudentResponse.student_id)
-        ).all()
-    }
+    station_rows_by_student: dict[int, list[dict]] = defaultdict(list)
+    for row in compute_station_results(db, ecoe_event_id):
+        station_rows_by_student[row["student_id"]].append(row)
     results = []
     for student in students:
-        eval_score, eval_max = totals_by_student.get(student.id, (0, 0))
-        form_score, form_max = form_totals_by_student.get(student.id, (0, 0))
-        total_score = eval_score + form_score
-        max_score = eval_max + form_max
-        percentage = (total_score / max_score * 100) if max_score else 0
+        rows = station_rows_by_student.get(student.id, [])
+        # Sólo las estaciones con máximo > 0 pueden aportar un % de logro; una
+        # fila con `max == 0` entra igual a las sumas crudas pero no a la media.
+        scored = [row for row in rows if row["max_score"] and row["max_score"] > 0]
+        raw_obtained = sum(row["obtained_score"] for row in rows)
+        raw_max = sum(row["max_score"] for row in rows)
+        if scored:
+            percentage = sum(row["percent_score"] for row in scored) / len(scored)
+        else:
+            # Estudiante sin ninguna estación puntuable (ausente / sin
+            # actividad): 0 %, nota mínima — igual que antes de OPT-17.
+            percentage = 0.0
         grade = compute_equivalent_grade(percentage, passing_reference_percent)
         results.append({
             "student_id": student.id,
             "student_name": f"{student.name} {student.last_name}",
             "ecoe_number": student.ecoe_number,
-            "total_score": round(total_score, 2),
-            "max_score": round(max_score, 2),
+            "total_score": round(raw_obtained, 2),
+            "max_score": round(raw_max, 2),
             "percentage": round(percentage, 2),
             "equivalent_grade": round(grade, 2),
+            # OPT-17: nº de estaciones con actividad puntuable que entraron al
+            # promedio (el divisor de `percentage`). Campo del dict, no de BD.
+            "stations_counted": len(scored),
         })
     return results
 
@@ -300,6 +297,11 @@ def read_results(
     `frozen=True` y la fecha de consolidación (`ECOEResult.updated_at`). En
     cualquier otro estado —o si el cierre no dejó snapshot— recalcula en vivo con
     `compute_results` y `frozen=False`.
+
+    OPT-17: el snapshot `ECOEResult` no persiste `stations_counted` (no hay
+    columna; sin migración), así que las filas congeladas no llevan esa clave —
+    sólo el recálculo en vivo. Un evento `cerrado`/`archivado` **sin** snapshot
+    cae al recálculo en vivo y por lo tanto ya sirve la fórmula nueva de OPT-17.
     """
     ecoe_event = db.get(ECOEEvent, ecoe_event_id)
     if ecoe_event is not None and str(ecoe_event.status) in FROZEN_RESULT_STATUSES:

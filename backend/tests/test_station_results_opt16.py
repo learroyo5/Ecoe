@@ -198,6 +198,15 @@ def test_persist_results_populates_station_results(auth_client):
 
 
 def test_station_results_sum_matches_consolidated(auth_client):
+    """Invariante de OPT-16 reescrito para OPT-17.
+
+    OPT-16: `sum(StationResult.obtained_score) == ECOEResult.total_score` y
+    `sum(max) == ECOEResult.max_score` — las **sumas crudas** siguen cuadrando.
+    OPT-17: `ECOEResult.percentage` ya **no** es una suma (`total_score /
+    max_score * 100`) sino el **promedio de los `percent_score` por estación**;
+    con estaciones de máximo heterogéneo (10 y 6) ambos números difieren para el
+    estudiante 1 (100 % / 0 % → media 50 % ≠ razón de sumas 62.5 %).
+    """
     event_id, stations, students = _build_event(n_students=3)
     s1, s2 = stations
     answers = {0: ("A", "A"), 1: ("A", "B"), 2: ("B", "B")}
@@ -219,13 +228,29 @@ def test_station_results_sum_matches_consolidated(auth_client):
             ).all()
         }
     per_student: dict[int, list[float]] = {}
+    per_student_percents: dict[int, list[float]] = {}
     for row in station_rows:
         acc = per_student.setdefault(row.student_id, [0.0, 0.0])
         acc[0] += row.obtained_score
         acc[1] += row.max_score
+        per_student_percents.setdefault(row.student_id, []).append(row.percent_score)
     for student_id, (obtained, max_score) in per_student.items():
+        # Sumas crudas: siguen cuadrando exactamente (OPT-16).
         assert obtained == pytest.approx(ecoe_rows[student_id].total_score)
         assert max_score == pytest.approx(ecoe_rows[student_id].max_score)
+        # Porcentaje consolidado: promedio de %-por-estación (OPT-17), no razón
+        # de sumas.
+        mean_percent = statistics.fmean(per_student_percents[student_id])
+        assert ecoe_rows[student_id].percentage == pytest.approx(
+            round(mean_percent, 2), abs=0.01
+        )
+    # El estudiante 1 (índice 1) demuestra el cambio de fórmula.
+    student_1_id = students[1][0]
+    ratio_of_sums = (
+        per_student[student_1_id][0] / per_student[student_1_id][1] * 100
+    )
+    assert ecoe_rows[student_1_id].percentage == pytest.approx(50.0, abs=0.01)
+    assert ratio_of_sums == pytest.approx(62.5, abs=0.01)
 
 
 def test_by_station_block_in_results_payload(auth_client):
