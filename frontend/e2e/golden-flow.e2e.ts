@@ -130,10 +130,27 @@ test.describe.serial("flujo dorado", () => {
     // El kiosco detecta el check-in por polling y muestra la identidad.
     await expect(kiosk.getByText("E002 · Estudiante2 Demo").first()).toBeVisible({ timeout: 15_000 });
 
+    // OPT-20 F1: una pausa del cronómetro central congela el kiosco (overlay
+    // de PAUSA, sin autoenvío); al reanudar, el formulario vuelve.
+    const timerApi = await coordinatorApi();
+    await timerApi.post("/api/live/control", { data: { ecoe_event_id: 1, action: "start" } });
+    await timerApi.post("/api/live/control", { data: { ecoe_event_id: 1, action: "pause" } });
+    await expect(
+      kiosk.getByText("PAUSA — el cronómetro está detenido"),
+    ).toBeVisible({ timeout: 15_000 });
+    await timerApi.post("/api/live/control", { data: { ecoe_event_id: 1, action: "resume" } });
+    await expect(
+      kiosk.getByText("PAUSA — el cronómetro está detenido"),
+    ).toHaveCount(0, { timeout: 15_000 });
+    await timerApi.dispose();
+
     await kiosk.getByRole("radio").first().check();
     await kiosk.getByRole("button", { name: "Enviar respuesta final" }).click();
     await kiosk.getByRole("dialog").getByRole("button", { name: "Enviar respuesta" }).click();
-    await expect(kiosk.getByRole("button", { name: "Respuesta enviada ✓" })).toBeVisible();
+    // Tras enviar, el kiosco reemplaza la identidad/respuestas por una pantalla
+    // neutra (ver commit "ocultar identidad y respuestas del kiosco tras enviar").
+    await expect(kiosk.getByRole("heading", { name: "Respuesta enviada ✓" })).toBeVisible();
+    await expect(kiosk.getByText("E002 · Estudiante2 Demo")).toHaveCount(0);
 
     await kioskContext.close();
   });

@@ -39,6 +39,7 @@ services:
       ADMIN_PASSWORD: e2e-admin-password
       COEDITOR_PASSWORD: e2e-coeditor-password
       EVALUATOR_PASSWORD: e2e-evaluator-password
+      CORRECTOR_PASSWORD: e2e-corrector-password
       STUDENT_PASSWORD: e2e-student-password
       COORDINATOR_PASSWORD: e2e-coordinator-password
       TIMER_PASSWORD: e2e-timer-password

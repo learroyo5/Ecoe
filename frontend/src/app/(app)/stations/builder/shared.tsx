@@ -105,6 +105,7 @@ export const stationTypeOptions = [
 export type StationCapabilities = {
   requiresEvaluator: boolean;
   requiresStudentForm: boolean;
+  requiresDeferredGrading: boolean;
   usesMultimedia: boolean;
   usesSimulatedPatient: boolean;
 };
@@ -112,6 +113,7 @@ export type StationCapabilities = {
 export const defaultCapabilities: StationCapabilities = {
   requiresEvaluator: true,
   requiresStudentForm: false,
+  requiresDeferredGrading: false,
   usesMultimedia: false,
   usesSimulatedPatient: false,
 };
@@ -132,6 +134,12 @@ export const capabilityConfig: {
     label: "Formulario del estudiante",
     requirement:
       "El estudiante responde en pantalla. Necesita al menos 1 pregunta guardada; con puntaje y clave, se autocorrige.",
+  },
+  {
+    key: "requiresDeferredGrading",
+    label: "Corrección diferida",
+    requirement:
+      "Un corrector puntúa las respuestas después de la rotación. Necesita el formulario del estudiante con al menos 1 pregunta de respuesta breve con puntaje, y un corrector asignado en la pantalla Evaluadores.",
   },
   {
     key: "usesMultimedia",

@@ -22,6 +22,15 @@ STAFF_SCOPED_ROLE_CODES = {
     RoleCode.coeditor_docente.value,
     RoleCode.coordinador_operativo.value,
     RoleCode.evaluador.value,
+    RoleCode.corrector.value,
+    RoleCode.cronometrador.value,
+}
+
+# Roles operativos que un coeditor/coordinador puede delegar sin ser admin del
+# ECOE: no otorgan poder de configuración ni acceso institucional.
+DELEGABLE_LIMITED_ROLE_CODES = {
+    RoleCode.evaluador.value,
+    RoleCode.corrector.value,
     RoleCode.cronometrador.value,
 }
 ADMIN_EVENT_ROLE_CODES = {
@@ -186,11 +195,10 @@ def ensure_staff_role_can_be_delegated(actor_event_roles: set[str], target_role:
     """Prevent operational/content roles from granting equal or higher power."""
     if RoleCode.admin_ecoe.value in actor_event_roles:
         return
-    limited_roles = {RoleCode.evaluador.value, RoleCode.cronometrador.value}
     if actor_event_roles & {
         RoleCode.coeditor_docente.value,
         RoleCode.coordinador_operativo.value,
-    } and target_role in limited_roles:
+    } and target_role in DELEGABLE_LIMITED_ROLE_CODES:
         return
     raise HTTPException(
         status_code=403,
@@ -202,7 +210,7 @@ def ensure_staff_assignment_can_be_managed(actor_event_roles: set[str], current_
     """Only event admins may alter privileged staff assignments."""
     if RoleCode.admin_ecoe.value in actor_event_roles:
         return
-    if current_role in {RoleCode.evaluador.value, RoleCode.cronometrador.value}:
+    if current_role in DELEGABLE_LIMITED_ROLE_CODES:
         return
     raise HTTPException(
         status_code=403,

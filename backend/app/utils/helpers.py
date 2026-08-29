@@ -33,9 +33,28 @@ def normalize_ecoe_lookup(value: str | None) -> str:
     return text.lower()
 
 
-def normalize_station_ids(raw_station_ids: list[int] | None) -> list[int]:
-    station_ids = [station_id for station_id in (raw_station_ids or []) if station_id]
-    return station_ids[:1]
+def normalize_station_ids(
+    raw_station_ids: list[int] | None, *, single: bool = True
+) -> list[int]:
+    """Clean a station-id list, de-duplicating and dropping falsy values.
+
+    `single=True` (default) keeps only the first id: most staff roles have at
+    most one meaningful station (the evaluador's principal station). A
+    `corrector` may cover several deferred-grading stations, so the staff
+    routes pass `single=False` for that role.
+    """
+    seen: set[int] = set()
+    station_ids: list[int] = []
+    for station_id in raw_station_ids or []:
+        if not station_id or station_id in seen:
+            continue
+        seen.add(station_id)
+        station_ids.append(station_id)
+    return station_ids[:1] if single else station_ids
+
+
+# Roles cuyo `station_ids` puede tener más de una estación.
+MULTI_STATION_ROLE_CODES = {"corrector"}
 
 
 # ── Business helpers ────────────────────────────────────────────────────
@@ -58,7 +77,8 @@ def next_student_ecoe_number(db: Session, ecoe_event_id: int) -> str:
 def ensure_primary_station_assignment(staff: StaffAssignment | None) -> tuple[list[int], bool]:
     if not staff:
         return [], False
-    normalized_station_ids = normalize_station_ids(staff.station_ids)
+    single = str(staff.role_code) not in MULTI_STATION_ROLE_CODES
+    normalized_station_ids = normalize_station_ids(staff.station_ids, single=single)
     changed = normalized_station_ids != (staff.station_ids or [])
     if changed:
         staff.station_ids = normalized_station_ids
@@ -88,20 +108,120 @@ def checkin_submission_deadline(
     )
 
 
-def ensure_checkin_within_time(
+def isoformat_or_none(value):
+    """Serialize an optional datetime for a JSON response."""
+    return value.isoformat() if value is not None else None
+
+
+LIVE_IDLE_STATUSES = {"idle", "ready"}
+
+
+def _live_phase_station_deadline(session, *, far_past):
+    """Nominal end of the station phase currently governed by ``session``.
+
+    ``None`` means the central clock is paused (no effective deadline);
+    ``far_past`` is returned when the phase is definitely closed but no exact
+    instant is available (e.g. the operator forced ``expire_phase``).
+    """
+    status = str(session.status)
+    if status == "paused":
+        return None
+    if status == "running":
+        if session.phase_started_at is None:
+            # expire_phase / buzzer: the station phase was forced closed.
+            return far_past
+        return session.phase_started_at + timedelta(seconds=session.remaining_seconds or 0)
+    if status == "transition":
+        # The station phase ended when the transition phase started.
+        return session.phase_started_at or far_past
+    # idle / ready / unknown: caller falls back to the per-check-in window.
+    return "fallback"
+
+
+def resolve_submission_deadline(
+    db: Session,
+    ecoe_event,
     checkin: "StationCheckIn",
     station: "Station",
     *,
-    extra_minutes: float = 0.0,
+    for_evaluator: bool = False,
+):
+    """Authoritative nominal submission deadline for an operational screen.
+
+    OPT-20 F2 (D1/D2): the effective deadline of any operational submission is
+    the end of the current phase of the event's ``LiveSession`` (server clock),
+    **not** ``confirmed_at + station_time`` any more. A student who checks in
+    late loses that time (D2). Fallbacks:
+
+    - No ``LiveSession`` yet, or ``idle`` / ``ready`` (typical during
+      ``en_pilotaje`` when nobody drives ``/live``): fall back to Reloj B
+      (``checkin_submission_deadline``) — the historical, low-friction
+      behaviour.
+    - ``paused``: returns ``None`` — the central clock is stopped, so writes
+      are accepted while the pause lasts and the window resumes on ``resume``.
+
+    Returns a naive UTC ``datetime`` or ``None``. The grace period is applied
+    by the caller (``ensure_checkin_within_time``), never baked in here.
+    """
+    from app.models.entities import LiveSession
+
+    extra_minutes = float(station.transition_time_minutes or 0) if for_evaluator else 0.0
+    fallback = lambda: checkin_submission_deadline(  # noqa: E731
+        checkin, station, extra_minutes=extra_minutes
+    )
+
+    session = db.scalar(
+        select(LiveSession).where(LiveSession.ecoe_event_id == ecoe_event.id).limit(1)
+    )
+    if session is None or str(session.status) in LIVE_IDLE_STATUSES:
+        return fallback()
+
+    far_past = utcnow_naive() - timedelta(days=1)
+    station_deadline = _live_phase_station_deadline(session, far_past=far_past)
+    if station_deadline is None:
+        return None  # paused
+    if station_deadline == "fallback":
+        return fallback()
+
+    if not for_evaluator:
+        return station_deadline
+
+    # The evaluator records after the student leaves, so the window also spans
+    # the transition phase (decision 6: end of the *real* transition phase).
+    if str(session.status) == "transition":
+        if session.phase_started_at is not None:
+            return session.phase_started_at + timedelta(
+                seconds=session.remaining_seconds or 0
+            )
+        return station_deadline
+    # running: the transition phase has not started; approximate its end with
+    # one full transition duration after the station phase so the evaluator is
+    # not blocked before the operator presses ``next_transition``.
+    return station_deadline + timedelta(seconds=session.transition_time_seconds or 0)
+
+
+def ensure_checkin_within_time(
+    db: Session,
+    ecoe_event,
+    checkin: "StationCheckIn",
+    station: "Station",
+    *,
+    for_evaluator: bool = False,
     grace_seconds: int = SUBMISSION_GRACE_SECONDS,
 ) -> None:
-    """Reject submissions after the station time window has expired.
+    """Reject submissions after the authoritative submission window expired.
 
-    The window starts when the evaluator confirms the check-in. The client
-    also blocks the UI, but the server is the authority: client clocks can
-    be wrong or manipulated.
+    The window is derived from the event's ``LiveSession`` (see
+    ``resolve_submission_deadline``); it falls back to the per-check-in window
+    when no live session is driving the event. The client also blocks the UI,
+    but the server is the authority: client clocks can be wrong or manipulated.
+    A ``paused`` live session has no effective deadline — the write is accepted.
     """
-    deadline = checkin_submission_deadline(checkin, station, extra_minutes=extra_minutes)
+    deadline = resolve_submission_deadline(
+        db, ecoe_event, checkin, station, for_evaluator=for_evaluator
+    )
+    if deadline is None:
+        return
     if utcnow_naive() > deadline + timedelta(seconds=grace_seconds):
         raise HTTPException(
             status_code=400,
@@ -135,6 +255,33 @@ def compute_remaining_seconds(session) -> int:
         elapsed = (utcnow_naive() - session.phase_started_at).total_seconds()
         return max(0, round(session.remaining_seconds - elapsed))
     return session.remaining_seconds
+
+
+def live_phase_snapshot(db: Session, ecoe_event_id: int) -> dict:
+    """Read-only public view of the live clock for operational screens (OPT-20 F1).
+
+    Purely additive: it does NOT change the submission deadline (writes still
+    go through ``ensure_checkin_within_time`` / ``checkin_submission_deadline``).
+    The kiosk / evaluador / estudiante screens use this for the first paint and
+    as a no-WebSocket fallback so a pause still freezes their local countdown.
+    """
+    from app.models.entities import LiveSession
+
+    session = db.scalar(
+        select(LiveSession).where(LiveSession.ecoe_event_id == ecoe_event_id).limit(1)
+    )
+    if not session:
+        return {"live_status": None, "current_phase_ends_at": None, "paused": False}
+    ends_at = None
+    if session.status in LIVE_RUNNING_STATUSES and session.phase_started_at:
+        ends_at = (
+            utcnow_naive() + timedelta(seconds=compute_remaining_seconds(session))
+        ).isoformat()
+    return {
+        "live_status": session.status,
+        "current_phase_ends_at": ends_at,
+        "paused": session.status == "paused",
+    }
 
 
 def resolve_session_mode(ecoe_event) -> str:

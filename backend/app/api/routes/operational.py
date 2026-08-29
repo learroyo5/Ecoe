@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response as FastAPIResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -28,13 +28,14 @@ from app.schemas.common import (
     TimerAction,
 )
 from app.services.dependencies import authenticate_session_token, get_current_user, require_roles
+from app.services.kiosk import authenticate_kiosk_token
 from app.services.ecoe import (
     build_dashboard,
     build_traceability_report,
-    compute_results,
     export_contingency_pdf,
     export_results_excel,
     persist_results,
+    read_results,
 )
 from app.services.authorization import ADMIN_EVENT_ROLE_CODES, ensure_event_access
 from app.services.media import (
@@ -45,9 +46,16 @@ from app.services.media import (
     safe_media_filename,
     validate_media_type,
 )
-from app.utils.helpers import compute_remaining_seconds, utcnow_naive
+from app.utils.helpers import SUBMISSION_GRACE_SECONDS, compute_remaining_seconds, utcnow_naive
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginate_query
+from app.services.live_sweep import sweep_expired_phases
 from app.services.websocket import live_timer
+
+# Timer actions accepted by POST /live/control. `expire_phase` (OPT-20 F2)
+# ends the current phase without advancing the station index — the buzzer,
+# and the trigger for the server-side auto-submit sweep (H-opt20-6 / H-vivo-8).
+TIMER_ACTIONS = {"start", "pause", "resume", "reset", "next_transition", "expire_phase"}
+_SWEEP_TIMER_ACTIONS = {"start", "reset", "next_transition", "expire_phase"}
 
 logger = logging.getLogger("ecoe.operational")
 
@@ -56,7 +64,11 @@ router = APIRouter()
 # ── WebSocket: Live Timer ──────────────────────────────────────────────
 
 @router.websocket("/ws/live/{ecoe_event_id}")
-async def websocket_live_timer(websocket: WebSocket, ecoe_event_id: int):
+async def websocket_live_timer(
+    websocket: WebSocket,
+    ecoe_event_id: int,
+    kiosk_token: str | None = Query(default=None),
+):
     settings = get_settings()
     origin = websocket.headers.get("origin")
     allowed_origins = {
@@ -67,30 +79,46 @@ async def websocket_live_timer(websocket: WebSocket, ecoe_event_id: int):
     if origin and origin.rstrip("/") not in allowed_origins:
         await websocket.close(code=1008)
         return
-    token = None
-    authorization = websocket.headers.get("authorization", "")
-    if authorization.lower().startswith("bearer "):
-        token = authorization.split(" ", 1)[1].strip()
-    if not token:
-        token = websocket.cookies.get(settings.auth_cookie_name)
-    if not token:
-        cookie_header = websocket.headers.get("cookie", "")
-        parsed_cookie = SimpleCookie()
-        parsed_cookie.load(cookie_header)
-        morsel = parsed_cookie.get(settings.auth_cookie_name)
-        token = morsel.value if morsel else None
 
+    # OPT-20 F1: besides event coordination, the operational screens
+    # (kiosko / evaluador / estudiante) subscribe here read-only to follow the
+    # central clock and freeze on pause. This handler never mutates state:
+    # inbound frames are keep-alive only and are ignored. Timer control stays
+    # exclusively on the authenticated POST /live/control.
     with SessionLocal() as db:
         try:
-            user = authenticate_session_token(db, token)
-            ensure_event_access(
-                db,
-                user,
-                ecoe_event_id,
-                RoleCode.admin_ecoe.value,
-                RoleCode.coordinador_operativo.value,
-                RoleCode.cronometrador.value,
-            )
+            if kiosk_token is not None:
+                # A browser cannot attach custom headers to a WebSocket, so the
+                # station-scoped kiosk token travels as a query param. Risk: it
+                # may land in reverse-proxy / access logs; accepted because the
+                # token has a short TTL and is scoped to a single station.
+                kiosk = authenticate_kiosk_token(db, kiosk_token)
+                if kiosk.ecoe_event_id != ecoe_event_id:
+                    raise HTTPException(status_code=403, detail="Token de otro evento")
+            else:
+                token = None
+                authorization = websocket.headers.get("authorization", "")
+                if authorization.lower().startswith("bearer "):
+                    token = authorization.split(" ", 1)[1].strip()
+                if not token:
+                    token = websocket.cookies.get(settings.auth_cookie_name)
+                if not token:
+                    cookie_header = websocket.headers.get("cookie", "")
+                    parsed_cookie = SimpleCookie()
+                    parsed_cookie.load(cookie_header)
+                    morsel = parsed_cookie.get(settings.auth_cookie_name)
+                    token = morsel.value if morsel else None
+                user = authenticate_session_token(db, token)
+                ensure_event_access(
+                    db,
+                    user,
+                    ecoe_event_id,
+                    RoleCode.admin_ecoe.value,
+                    RoleCode.coordinador_operativo.value,
+                    RoleCode.cronometrador.value,
+                    RoleCode.evaluador.value,
+                    RoleCode.estudiante.value,
+                )
         except HTTPException:
             await websocket.close(code=1008)
             return
@@ -98,7 +126,7 @@ async def websocket_live_timer(websocket: WebSocket, ecoe_event_id: int):
     await live_timer.connect(ecoe_event_id, websocket)
     try:
         while True:
-            # Keep connection alive; client can send ping/pong
+            # Keep connection alive; any received frame is ignored (read-only).
             await websocket.receive_text()
     except WebSocketDisconnect:
         live_timer.disconnect(ecoe_event_id, websocket)
@@ -132,6 +160,12 @@ def get_live_panel(ecoe_event_id: int, db: Session = Depends(get_db), user=Depen
     session = db.scalar(select(LiveSession).where(LiveSession.ecoe_event_id == ecoe_event_id).limit(1))
     if not session:
         raise HTTPException(status_code=404, detail="Sesión en vivo no encontrada")
+    # OPT-20 F2 safety net: the live panel is polled continuously, so use it to
+    # finalize any expired phase. Idempotent, no-op while the phase is open.
+    ecoe_event = db.get(ECOEEvent, ecoe_event_id)
+    if ecoe_event is not None:
+        sweep_expired_phases(db, ecoe_event)
+    db.refresh(session)
     return live_session_state(session)
 
 
@@ -146,11 +180,18 @@ def control_timer(
                         RoleCode.admin_ecoe.value,
                         RoleCode.coordinador_operativo.value,
                         RoleCode.cronometrador.value)
+    if payload.action not in TIMER_ACTIONS:
+        raise HTTPException(status_code=400, detail="Acción no soportada")
+    ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
+    if ecoe_event is None:
+        # Defensive: ensure_event_access already 404s on a missing event, but a
+        # bare db.get here would otherwise reach ecoe_event.station_time_minutes
+        # and raise 500 (H-vivo-8 a).
+        raise HTTPException(status_code=404, detail="ECOE no encontrado")
     session = db.scalar(
         select(LiveSession).where(LiveSession.ecoe_event_id == payload.ecoe_event_id).limit(1)
     )
     if not session:
-        ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
         session = LiveSession(
             ecoe_event_id=payload.ecoe_event_id,
             station_time_seconds=max(1, round(ecoe_event.station_time_minutes * 60)),
@@ -178,13 +219,45 @@ def control_timer(
         session.remaining_seconds = session.station_time_seconds
         session.phase_started_at = None
     elif payload.action == "next_transition":
+        # H-vivo-8 (c): cap the rotation index at the number of station slots
+        # (distinct station_number) so a stray click can't run the circuit past
+        # its last station and desync every panel.
+        station_slots = db.scalar(
+            select(func.count(func.distinct(Station.station_number))).where(
+                Station.ecoe_event_id == payload.ecoe_event_id
+            )
+        ) or 0
+        if station_slots and session.current_station_index >= station_slots:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"El circuito tiene {station_slots} estaciones; "
+                    "el cronómetro ya está en la última."
+                ),
+            )
         session.status = "transition"
         session.remaining_seconds = session.transition_time_seconds
         session.current_station_index += 1
         session.phase_started_at = now
-    else:
-        raise HTTPException(status_code=400, detail="Acción no soportada")
+    elif payload.action == "expire_phase":
+        # Buzzer: end the current phase now, WITHOUT advancing the station
+        # index. The countdown freezes at 0 and the sweep below finalizes the
+        # check-ins whose phase just ended.
+        session.remaining_seconds = 0
+        session.phase_started_at = None
     db.add(session)
+    db.flush()
+
+    if payload.action in _SWEEP_TIMER_ACTIONS and ecoe_event is not None:
+        forced = payload.action == "expire_phase"
+        sweep_expired_phases(
+            db,
+            ecoe_event,
+            force=forced,
+            grace_seconds=0 if forced else SUBMISSION_GRACE_SECONDS,
+            commit=False,
+        )
+
     db.commit()
     db.refresh(session)
 
@@ -326,9 +399,11 @@ def validation(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(g
 @router.get("/results/{ecoe_event_id}")
 def get_results(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
-    results = compute_results(db, ecoe_event_id)
+    results, frozen, consolidated_at = read_results(db, ecoe_event_id)
     return {
         "results": results,
+        "frozen": frozen,
+        "consolidated_at": consolidated_at.isoformat() if consolidated_at else None,
         **build_traceability_report(db, ecoe_event_id, consolidated_results=results),
     }
 
@@ -336,7 +411,7 @@ def get_results(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(
 @router.post("/results/{ecoe_event_id}/consolidate")
 def consolidate_results(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
-    results = persist_results(db, ecoe_event_id)
+    results = persist_results(db, ecoe_event_id, actor_email=user.email)
     return {
         "consolidated": True,
         "results": results,

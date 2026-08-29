@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
+import { canAccessStationArea } from "@/lib/permissions";
+import { defaultRouteForRole } from "@/lib/routes";
 import { useApi } from "@/hooks/use-api";
 import { SectionCard } from "@/components/section-card";
 import { StatusNotice } from "@/components/forms";
@@ -28,8 +30,13 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function StationsPage() {
-  const { authenticated, eventId, user } = useECOE();
+  const { authenticated, eventId, user, eventRoles, eventRolesLoaded } = useECOE();
   const router = useRouter();
+  // Gating por rol EFECTIVO de evento, no por el rol global del JWT: una
+  // cuenta cuyo rol global es "evaluador" puede ser admin/coeditor/coordinador
+  // en este ECOE y el backend le deja leer las estaciones (OPT-3).
+  const canAccess = canAccessStationArea(user?.role, eventRoles);
+  const accessDenied = eventRolesLoaded && !canAccess;
   const { data, loading, error, setData } = useApi(
     () => api.stations(eventId) as Promise<Record<string, unknown>[]>,
     [eventId, authenticated],
@@ -71,16 +78,16 @@ export default function StationsPage() {
   };
 
   useEffect(() => {
-    if (user?.role === "evaluador") {
-      router.replace("/evaluator");
+    if (accessDenied) {
+      router.replace(defaultRouteForRole(user?.role ?? ""));
     }
-  }, [router, user?.role]);
+  }, [router, accessDenied, user?.role]);
 
-  if (user?.role === "evaluador") {
+  if (accessDenied) {
     return (
       <SectionCard
         title="Acceso restringido"
-        subtitle="El perfil evaluador no puede entrar a la gestión de estaciones."
+        subtitle="Tu rol en este ECOE no permite entrar a la gestión de estaciones."
       >
         <p>Te estamos redirigiendo a tu interfaz operativa.</p>
       </SectionCard>
@@ -149,6 +156,14 @@ export default function StationsPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <StatusBadge status={String(station.status ?? "en_diseno")} />
+                  {station.requires_deferred_grading ? (
+                    <span
+                      className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700"
+                      title="Las respuestas se puntúan después de la rotación en la pantalla Corrección"
+                    >
+                      Corrección diferida
+                    </span>
+                  ) : null}
                   {needsKiosk ? (
                     <span
                       className="inline-flex items-center rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-semibold text-purple-700"

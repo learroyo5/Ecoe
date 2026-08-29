@@ -20,6 +20,7 @@ from app.services.authorization import (
     validate_staff_role_code,
 )
 from app.utils.helpers import (
+    MULTI_STATION_ROLE_CODES,
     ensure_primary_station_assignment,
     normalize_email,
     normalize_station_ids,
@@ -27,6 +28,40 @@ from app.utils.helpers import (
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginate_query
 
 router = APIRouter()
+
+# Roles que exigen al menos una estación asignada para tener sentido operativo.
+STATION_SCOPED_ROLE_CODES = {RoleCode.evaluador.value, RoleCode.corrector.value}
+
+
+def _resolve_staff_station_ids(
+    db: Session, *, role_code: str, ecoe_event_id: int, raw_station_ids: list[int] | None
+) -> list[int]:
+    """Normaliza y valida las estaciones de una asignación según su rol."""
+    single = role_code not in MULTI_STATION_ROLE_CODES
+    station_ids = normalize_station_ids(raw_station_ids, single=single)
+    if role_code in STATION_SCOPED_ROLE_CODES and not station_ids:
+        label = "corrector" if role_code == RoleCode.corrector.value else "evaluador"
+        detail = (
+            "El corrector debe tener al menos una estación de evaluación diferida asignada"
+            if label == "corrector"
+            else "El evaluador debe tener una estación principal asignada"
+        )
+        raise HTTPException(status_code=400, detail=detail)
+    if station_ids:
+        from app.models.entities import Station
+
+        found = db.scalars(
+            select(Station).where(
+                Station.id.in_(station_ids),
+                Station.ecoe_event_id == ecoe_event_id,
+            )
+        ).all()
+        if len(found) != len(station_ids):
+            raise HTTPException(
+                status_code=400,
+                detail="Alguna estación asignada no pertenece a este ECOE",
+            )
+    return station_ids
 
 
 @router.get("/staff/{ecoe_event_id}", response_model=Page[StaffRead])
@@ -88,14 +123,12 @@ def create_staff(
             status_code=400,
             detail="Ya existe un evaluador o colaborador con ese correo en este ECOE",
         )
-    station_ids = normalize_station_ids(payload.station_ids)
-    if normalized_role_code == RoleCode.evaluador.value and not station_ids:
-        raise HTTPException(status_code=400, detail="El evaluador debe tener una estación principal asignada")
-    if station_ids:
-        from app.models.entities import Station
-        station_obj = db.get(Station, station_ids[0])
-        if not station_obj or station_obj.ecoe_event_id != payload.ecoe_event_id:
-            raise HTTPException(status_code=400, detail="La estación asignada no pertenece a este ECOE")
+    station_ids = _resolve_staff_station_ids(
+        db,
+        role_code=normalized_role_code,
+        ecoe_event_id=payload.ecoe_event_id,
+        raw_station_ids=payload.station_ids,
+    )
     staff_data = payload.model_dump()
     staff_data["email"] = email
     staff_data["role_code"] = normalized_role_code
@@ -125,14 +158,12 @@ def update_staff(
     normalized_role_code = validate_staff_role_code(payload.role_code)
     ensure_staff_role_can_be_delegated(actor_roles, normalized_role_code)
     ensure_matching_operational_user(db, email=staff.email, expected_role=normalized_role_code)
-    station_ids = normalize_station_ids(payload.station_ids)
-    if normalized_role_code == RoleCode.evaluador.value and not station_ids:
-        raise HTTPException(status_code=400, detail="El evaluador debe tener una estación principal asignada")
-    if station_ids:
-        from app.models.entities import Station
-        station_obj = db.get(Station, station_ids[0])
-        if not station_obj or station_obj.ecoe_event_id != staff.ecoe_event_id:
-            raise HTTPException(status_code=400, detail="La estación asignada no pertenece a este ECOE")
+    station_ids = _resolve_staff_station_ids(
+        db,
+        role_code=normalized_role_code,
+        ecoe_event_id=staff.ecoe_event_id,
+        raw_station_ids=payload.station_ids,
+    )
     staff.role_code = normalized_role_code
     staff.station_ids = station_ids
     db.add(staff)

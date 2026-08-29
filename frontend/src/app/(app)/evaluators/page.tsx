@@ -44,6 +44,7 @@ export default function EvaluatorsPage() {
     email: "",
     role_code: "evaluador",
     station_id: "",
+    station_ids: [] as string[],
   });
   const [assignmentDrafts, setAssignmentDrafts] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
@@ -113,7 +114,7 @@ export default function EvaluatorsPage() {
 
       <SectionCard
         title="Equipo operativo del ECOE"
-        subtitle="Asigna una cuenta existente o genera una invitación temporal; los evaluadores además necesitan una estación principal."
+        subtitle="Asigna una cuenta existente o genera una invitación temporal; la estación principal del evaluador puede quedar pendiente y asignarse después en la tabla de abajo."
       >
         <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
           <FileImport
@@ -128,7 +129,7 @@ export default function EvaluatorsPage() {
                     <li>Los unicos campos obligatorios son: <strong>nombre, apellidos, correo, rol</strong>.</li>
                     <li>No hace falta crear las cuentas antes: si el correo no tiene cuenta, se genera una invitación de activación y el enlace aparece al terminar la importación.</li>
                     <li>Los evaluadores quedan sin estación; se asigna después en la tabla de abajo.</li>
-                    <li>Roles validos: <strong>evaluador</strong>, <strong>coeditor_docente</strong>, <strong>coordinador_operativo</strong>, <strong>cronometrador</strong>.</li>
+                    <li>Roles validos: <strong>evaluador</strong>, <strong>corrector</strong>, <strong>coeditor_docente</strong>, <strong>coordinador_operativo</strong>, <strong>cronometrador</strong>.</li>
                     <li>Guarda el archivo y arrastralo o seleccionalo en el campo de abajo.</li>
                   </ol>
                 </div>
@@ -148,7 +149,7 @@ export default function EvaluatorsPage() {
                         <tr><td className="py-1 pr-3 font-mono text-slate-700">nombre</td><td className="py-1 pr-3 text-emerald-600">Sí</td><td className="py-1 text-slate-500">Nombre de la persona</td></tr>
                         <tr><td className="py-1 pr-3 font-mono text-slate-700">apellidos</td><td className="py-1 pr-3 text-emerald-600">Sí</td><td className="py-1 text-slate-500">Apellidos completos</td></tr>
                         <tr><td className="py-1 pr-3 font-mono text-slate-700">correo</td><td className="py-1 pr-3 text-emerald-600">Sí</td><td className="py-1 text-slate-500">Correo de una cuenta institucional activa</td></tr>
-                        <tr><td className="py-1 pr-3 font-mono text-slate-700">rol</td><td className="py-1 pr-3 text-emerald-600">Sí</td><td className="py-1 text-slate-500">evaluador | coeditor_docente | coordinador_operativo | cronometrador</td></tr>
+                        <tr><td className="py-1 pr-3 font-mono text-slate-700">rol</td><td className="py-1 pr-3 text-emerald-600">Sí</td><td className="py-1 text-slate-500">evaluador | corrector | coeditor_docente | coordinador_operativo | cronometrador</td></tr>
                       </tbody>
                     </table>
                   </div>
@@ -228,7 +229,9 @@ export default function EvaluatorsPage() {
                     station_ids:
                       form.role_code === "evaluador" && form.station_id
                         ? [Number(form.station_id)]
-                        : [],
+                        : form.role_code === "corrector"
+                          ? form.station_ids.map(Number)
+                          : [],
                   },
                 );
                 await refresh();
@@ -243,6 +246,7 @@ export default function EvaluatorsPage() {
                   email: "",
                   role_code: "evaluador",
                   station_id: "",
+                  station_ids: [],
                 });
                 setKnownFullName(null);
                 setLookupMessage(null);
@@ -327,6 +331,7 @@ export default function EvaluatorsPage() {
                 }
               >
                 <option value="evaluador">Evaluador</option>
+                <option value="corrector">Corrector (evaluación diferida)</option>
                 <option value="coeditor_docente">Coeditor docente</option>
                 <option value="coordinador_operativo">Coordinador operativo</option>
                 <option value="cronometrador">Cronometrador</option>
@@ -349,8 +354,37 @@ export default function EvaluatorsPage() {
                   ))}
                 </select>
                 <p className="text-xs leading-5 text-slate-500">
-                  Obligatoria para evaluadores: define a qué estación queda habilitado en Validación,
-                  Resultados y check-in.
+                  Puede quedar pendiente: si eliges &quot;Sin estación asignada por ahora&quot; el
+                  evaluador se crea igual y la asignas después en la tabla de abajo. Define a qué
+                  estación queda habilitado en Validación, Resultados y check-in; Validación te
+                  avisará si el día del examen queda alguno sin estación.
+                </p>
+              </label>
+            ) : form.role_code === "corrector" ? (
+              <label className="space-y-2 rounded-[22px] border border-slate-200 bg-white/80 p-4 md:col-span-2">
+                <span className="text-sm font-semibold text-slate-700">
+                  Estaciones de corrección diferida asignadas
+                </span>
+                <select
+                  multiple
+                  value={form.station_ids}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      station_ids: Array.from(event.target.selectedOptions, (option) => option.value),
+                    }))
+                  }
+                  className="min-h-28"
+                >
+                  {stationOptions.map((station) => (
+                    <option key={station.id} value={station.id}>
+                      {station.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs leading-5 text-slate-500">
+                  Obligatoria: el corrector solo verá y puntuará las respuestas de estas estaciones en
+                  la pantalla Corrección. Mantén Ctrl/Cmd para elegir varias.
                 </p>
               </label>
             ) : (

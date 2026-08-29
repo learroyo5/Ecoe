@@ -82,6 +82,7 @@ export type Station = {
   evaluator_instruction: string;
   requires_evaluator: boolean;
   requires_student_form: boolean;
+  requires_deferred_grading: boolean;
   uses_multimedia: boolean;
   uses_simulated_patient: boolean;
   uses_physical_resources: boolean;
@@ -144,6 +145,7 @@ export type StationBank = {
   evaluator_instruction: string;
   requires_evaluator: boolean;
   requires_student_form: boolean;
+  requires_deferred_grading: boolean;
   uses_multimedia: boolean;
   uses_simulated_patient: boolean;
   max_score: number;
@@ -267,8 +269,32 @@ export type ActiveCheckin = {
   evaluator_instruction: string;
   confirmed_at: string;
   station_time_minutes: number;
+  /** OPT-20 F2: deadline autoritativo derivado de la fase del LiveSession
+   *  (fin de la fase de estación en curso); `null` mientras el reloj central
+   *  está en pausa. */
+  submission_deadline?: string | null;
+  /** OPT-20 F2: deadline del evaluador — incluye la fase de transición en
+   *  curso; `null` en pausa. */
+  evaluator_deadline?: string | null;
   evaluator_submission_exists: boolean;
   student_response_exists: boolean;
+};
+
+/** OPT-20 F3 (D3): un EvaluatorRecord que quedó como borrador al vencer la
+ *  fase; coordinación lo finaliza en la ventana de contingencia. */
+export type EvaluatorDraftRow = {
+  record_id: number;
+  station_id: number;
+  station_number: number | null;
+  station_name: string;
+  student_id: number;
+  student_ecoe_number: string;
+  student_name: string;
+  score_obtained: number;
+  max_score: number;
+  evaluator_name: string;
+  observation: string;
+  updated_at: string | null;
 };
 
 export type StudentAccessContext = {
@@ -287,6 +313,15 @@ export type StudentAccessContext = {
   station_time_minutes: number;
   confirmed_at: string;
   student_response_exists: boolean;
+  server_now?: string;
+  /** OPT-20 F2: deadline autoritativo derivado de la fase del LiveSession;
+   *  `null` mientras el reloj central está en pausa. */
+  submission_deadline?: string | null;
+  /** OPT-20 F1: snapshot del reloj central para la primera pintura y el
+   *  fallback sin WebSocket. */
+  live_status?: string | null;
+  current_phase_ends_at?: string | null;
+  paused?: boolean;
 };
 
 export type TraceabilityReport = {
@@ -298,6 +333,9 @@ export type TraceabilityReport = {
     confirmed_checkins: number;
     evaluator_submissions: number;
     student_submissions: number;
+    pending_evaluator_drafts?: number;
+    /** OPT-20 F4 (D4): autoenvíos del barrido sin contenido. */
+    blank_auto_submissions?: number;
     pilot_runs: number;
   };
   student_traceability: StudentTraceability[];
@@ -315,6 +353,9 @@ export type StudentTraceability = {
   student_submissions: number;
   missing_evaluations: number;
   missing_student_submissions: number;
+  pending_evaluator_drafts?: number;
+  /** OPT-20 F4 (D4): respuestas autoenviadas en blanco por el barrido. */
+  blank_auto_submissions?: number;
   completion_status: string;
   last_activity_at: string | null;
   total_score: number;
@@ -333,6 +374,9 @@ export type StationTraceability = {
   checkins_count: number;
   evaluations_count: number;
   student_submissions_count: number;
+  pending_evaluator_drafts?: number;
+  /** OPT-20 F4 (D4): respuestas autoenviadas en blanco por el barrido. */
+  blank_auto_submissions?: number;
   last_activity_at: string | null;
 };
 
@@ -343,6 +387,9 @@ export type ActivityLogEntry = {
   detail: string;
   actor: string;
   mode: string;
+  /** OPT-20 F4 (D4): solo en entradas de tipo `respuesta_estudiante`. */
+  submission_kind?: string;
+  answered?: boolean;
 };
 
 export type ECOEResult = {
@@ -357,4 +404,10 @@ export type ECOEResult = {
 
 export type ResultsResponse = {
   results: ECOEResult[];
+  /** true cuando el ECOE está cerrado/archivado y el payload sirve el
+   *  snapshot consolidado (`ECOEResult`) en vez de recalcular en vivo. */
+  frozen: boolean;
+  /** ISO 8601 de la consolidación (`ECOEResult.updated_at`); null si el
+   *  evento aún no está congelado o se cerró antes de poblar el snapshot. */
+  consolidated_at: string | null;
 } & TraceabilityReport;

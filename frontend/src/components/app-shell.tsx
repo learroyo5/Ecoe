@@ -17,7 +17,7 @@ export function AppShell({
   description: string;
   children: React.ReactNode;
 }) {
-  const { user, eventRoles, authenticated, ready, logout, eventId, setEventId, ecoeList, ecoeEvent, loadError } = useECOE();
+  const { user, eventRoles, authenticated, ready, logout, eventId, setEventId, ecoeList, ecoeEvent, loadError, noAccessibleEvents } = useECOE();
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -28,7 +28,13 @@ export function AppShell({
     ["admin_ecoe", "coeditor_docente", "coordinador_operativo"].includes(role),
   );
   const effectiveOperatorRole = !hasManagerRole
-    ? eventRoles.find((role) => role === "evaluador" || role === "estudiante" || role === "cronometrador")
+    ? eventRoles.find(
+        (role) =>
+          role === "evaluador" ||
+          role === "estudiante" ||
+          role === "cronometrador" ||
+          role === "corrector",
+      )
     : undefined;
 
   useEffect(() => {
@@ -36,9 +42,32 @@ export function AppShell({
     if (effectiveOperatorRole === "evaluador") router.replace("/evaluator");
     if (effectiveOperatorRole === "estudiante") router.replace("/student");
     if (effectiveOperatorRole === "cronometrador") router.replace("/live");
+    if (effectiveOperatorRole === "corrector") router.replace("/grading");
   }, [authenticated, effectiveOperatorRole, pathname, ready, router]);
 
   if (!ready || !authenticated) return null;
+
+  // ── Cuenta sin ECOE accesible (OPT-10 / H-roles-usuario-4) ──────────
+  if (noAccessibleEvents) {
+    return (
+      <div className="mx-auto flex min-h-[60vh] max-w-xl flex-col items-center justify-center px-4 py-12 text-center">
+        <div className="panel-card w-full space-y-4 p-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--color-primary)]">
+            Sin ECOE asignado
+          </p>
+          <h2 className="text-2xl">Todavía no tenés acceso a ningún ECOE</h2>
+          <p className="text-sm text-slate-600">
+            Tu cuenta ({user?.email}) está activa, pero no está asignada a ningún
+            ECOE. Pedile a un coordinador o administrador que te asigne a uno
+            para poder trabajar.
+          </p>
+          <button className="btn-secondary" onClick={logout} aria-label="Cerrar sesión">
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const isStationOperator = effectiveOperatorRole === "evaluador" || effectiveOperatorRole === "estudiante";
 

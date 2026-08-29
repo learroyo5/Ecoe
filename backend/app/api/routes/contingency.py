@@ -22,7 +22,7 @@ from app.models.entities import (
     Student,
     StudentResponse,
 )
-from app.models.enums import RoleCode
+from app.models.enums import RoleCode, SessionMode
 from app.schemas.common import EvaluatorSubmission, StudentResponseCreate
 from app.services.dependencies import require_roles
 from app.services.authorization import ensure_event_access
@@ -62,6 +62,53 @@ def _validated_contingency_target(
     return session_mode, station
 
 
+@router.get("/contingency/evaluator-drafts/{ecoe_event_id}")
+def list_pending_evaluator_drafts(
+    ecoe_event_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles(*CONTINGENCY_ROLES)),
+):
+    """Evaluator records left as a draft (OPT-20 F3 / D3), for coordination to
+    finalize in the contingency window."""
+    ensure_event_access(db, user, ecoe_event_id, *CONTINGENCY_ROLES)
+    rows = db.scalars(
+        select(EvaluatorRecord)
+        .where(
+            EvaluatorRecord.ecoe_event_id == ecoe_event_id,
+            EvaluatorRecord.mode == SessionMode.ejecucion.value,
+            EvaluatorRecord.is_draft.is_(True),
+        )
+        .order_by(EvaluatorRecord.station_id.asc(), EvaluatorRecord.updated_at.desc())
+    ).all()
+    stations = {
+        s.id: s
+        for s in db.scalars(select(Station).where(Station.ecoe_event_id == ecoe_event_id)).all()
+    }
+    students = {
+        s.id: s
+        for s in db.scalars(select(Student).where(Student.ecoe_event_id == ecoe_event_id)).all()
+    }
+    result = []
+    for row in rows:
+        station = stations.get(row.station_id)
+        student = students.get(row.student_id)
+        result.append({
+            "record_id": row.id,
+            "station_id": row.station_id,
+            "station_number": station.station_number if station else None,
+            "station_name": station.name if station else "",
+            "student_id": row.student_id,
+            "student_ecoe_number": student.ecoe_number if student else "",
+            "student_name": f"{student.name} {student.last_name}" if student else "",
+            "score_obtained": row.score_obtained,
+            "max_score": row.max_score,
+            "evaluator_name": row.evaluator_name,
+            "observation": row.observation,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        })
+    return {"drafts": result}
+
+
 @router.post("/contingency/evaluator-record")
 def submit_evaluator_record_by_contingency(
     payload: EvaluatorSubmission,
@@ -80,7 +127,7 @@ def submit_evaluator_record_by_contingency(
             EvaluatorRecord.mode == session_mode,
         )
     )
-    if existing_record:
+    if existing_record is not None and not existing_record.is_draft:
         raise HTTPException(
             status_code=400,
             detail="Ya existe una evaluación registrada para este estudiante en esta estación",
@@ -96,24 +143,50 @@ def submit_evaluator_record_by_contingency(
             status_code=400,
             detail=f"El puntaje obtenido debe estar entre 0 y {authoritative_max}",
         )
-    record = EvaluatorRecord(
-        **payload.model_dump(exclude={"checkin_id", "max_score", "mode", "by_contingency"}),
-        max_score=authoritative_max,
-        mode=session_mode,
-        by_contingency=True,
-    )
+    if existing_record is not None:
+        # OPT-20 F3 (D3): a half-filled draft left by the buzzer is finalized
+        # here — coordination sets the authoritative score, the row becomes a
+        # definitive by_contingency record and the action is audited.
+        record = existing_record
+        record.evaluator_name = payload.evaluator_name
+        record.score_obtained = payload.score_obtained
+        record.max_score = authoritative_max
+        record.observation = payload.observation
+        record.answers = payload.answers
+        record.is_draft = False
+        record.by_contingency = True
+        # OPT-20 F4 (D4): the record originated as a buzzer-time autosave and
+        # was completed later, so its kind is `draft_finalized` even though it
+        # was closed through the contingency flow. `by_contingency` stays the
+        # explicit audit marker of that flow (decision #9: keep both).
+        record.submission_kind = "draft_finalized"
+        action = "finalize_evaluation_draft_contingency"
+    else:
+        record = EvaluatorRecord(
+            **payload.model_dump(exclude={"checkin_id", "max_score", "mode", "by_contingency"}),
+            max_score=authoritative_max,
+            mode=session_mode,
+            by_contingency=True,
+        )
+        record.submission_kind = "contingency"
+        action = "submit_evaluation_contingency"
     db.add(record)
     db.flush()
     db.add(AuditLog(
         user_email=user.email,
-        action="submit_evaluation_contingency",
+        action=action,
         target_type="EvaluatorRecord",
         target_id=str(record.id),
         payload=payload.model_dump(),
     ))
     db.commit()
     db.refresh(record)
-    return {"saved": True, "record_id": record.id, "by_contingency": True}
+    return {
+        "saved": True,
+        "record_id": record.id,
+        "by_contingency": True,
+        "finalized_draft": action == "finalize_evaluation_draft_contingency",
+    }
 
 
 @router.post("/contingency/student-response")
@@ -143,6 +216,7 @@ def submit_student_response_by_contingency(
         **payload.model_dump(exclude={"checkin_id", "mode", "by_contingency"}),
         mode=session_mode,
         by_contingency=True,
+        submission_kind="contingency",
     )
     apply_auto_grading(response, station.student_form_definition)
     db.add(response)

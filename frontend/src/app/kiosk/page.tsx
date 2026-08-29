@@ -11,12 +11,18 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { api } from "@/lib/api";
+import { api, isAlreadySubmittedError } from "@/lib/api";
 import { clockOffsetMs, parseServerUtc } from "@/lib/time";
+import { useLiveTimer } from "@/lib/ws";
 import { ConfirmDialog, TIMER_TONE_CLASSES, timerTone } from "@/components/confirm-dialog";
 
 const TOKEN_STORAGE_KEY = "ecoe-kiosk-token";
 const POLL_INTERVAL_MS = 3000;
+// OPT-20 F2: autoguardado server-side del borrador — debounce por cambio de
+// respuesta + un latido periódico para que el barrido siempre tenga algo que
+// finalizar aunque la tablet se congele.
+const DRAFT_DEBOUNCE_MS = 800;
+const DRAFT_HEARTBEAT_MS = 10000;
 
 type KioskQuestion = {
   label: string;
@@ -44,7 +50,8 @@ type KioskActive = {
   media_assets: KioskMediaAsset[];
   station_time_minutes: number;
   confirmed_at: string;
-  submission_deadline: string;
+  // OPT-20 F2: `null` mientras el reloj central está en pausa.
+  submission_deadline: string | null;
   student_response_exists: boolean;
 };
 
@@ -56,6 +63,11 @@ type KioskContext = {
   ecoe_name: string;
   ecoe_status: string;
   server_now: string;
+  // OPT-20 F1: snapshot del reloj central para la pintura inicial y el
+  // fallback sin WebSocket (el kiosco se entera de la pausa en el próximo poll).
+  live_status: string | null;
+  current_phase_ends_at: string | null;
+  paused: boolean;
   active: KioskActive | null;
 };
 
@@ -81,6 +93,24 @@ export default function KioskPage() {
   submittedRef.current = submitted;
 
   const draftKey = current ? `kiosk-draft-${current.checkin_id}` : "";
+
+  // ── Reloj central (OPT-20 F1) ──────────────────────────────────────
+  // El kiosco sigue el estado del cronómetro por WebSocket; el polling de 3 s
+  // es el fallback (station.live_status / station.paused). En pausa: overlay,
+  // contador congelado y autoenvío suspendido.
+  const { snapshot: liveSnapshot, connected: wsConnected } = useLiveTimer(
+    station?.ecoe_event_id ?? 0,
+    {
+      kioskToken: token ?? undefined,
+      enabled: Boolean(token && station?.ecoe_event_id),
+    },
+  );
+  const liveStatus = liveSnapshot?.status ?? station?.live_status ?? null;
+  const livePaused = liveStatus === "paused" || (!wsConnected && Boolean(station?.paused));
+  // Sólo suspendemos el autoenvío cuando SABEMOS que hay un reloj y no está
+  // corriendo: si no hay LiveSession (pilotaje sin operador) el comportamiento
+  // actual se mantiene. La semántica del deadline no cambia en F1.
+  const autoSubmitAllowed = liveStatus == null || liveStatus === "running";
 
   // ── Vinculación del dispositivo ─────────────────────────────────────
   useEffect(() => {
@@ -110,6 +140,21 @@ export default function KioskPage() {
     },
     [token],
   );
+
+  // OPT-20 F2: cuando el barrido server-side ganó la carrera, el envío del
+  // cliente falla con "ya fue enviada". Es un éxito: confirmamos contra el
+  // servidor y mostramos la pantalla de respuesta enviada.
+  const reloadContext = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = (await api.kioskContext(token)) as unknown as KioskContext;
+      if (data.active?.student_response_exists) {
+        setSubmitted(true);
+      }
+    } catch {
+      /* el polling de 3 s corregirá el estado */
+    }
+  }, [token]);
 
   // ── Polling del contexto de la estación ─────────────────────────────
   useEffect(() => {
@@ -178,25 +223,63 @@ export default function KioskPage() {
     }
   }, [answers, draftKey, submitted]);
 
+  // ── Borrador server-side (OPT-20 F2) ────────────────────────────────
+  // Debounce por cada cambio de respuesta: le da al barrido server-side algo
+  // que finalizar aunque la tablet se congele después. El localStorage de
+  // arriba sigue siendo el respaldo local.
+  useEffect(() => {
+    if (!token || !current || submitted) return;
+    const checkinId = current.checkin_id;
+    const timeoutId = window.setTimeout(() => {
+      api
+        .kioskDraft(token, { checkin_id: checkinId, answers: answersRef.current })
+        .catch(() => {
+          /* mejor esfuerzo: el localStorage cubre el respaldo local */
+        });
+    }, DRAFT_DEBOUNCE_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [answers, current, submitted, token]);
+
+  // Latido periódico: reenvía el borrador cada ~10 s mientras la estación
+  // esté ocupada, incluso sin cambios recientes.
+  useEffect(() => {
+    if (!token || !current || submitted) return;
+    const checkinId = current.checkin_id;
+    const intervalId = window.setInterval(() => {
+      api
+        .kioskDraft(token, { checkin_id: checkinId, answers: answersRef.current })
+        .catch(() => {});
+    }, DRAFT_HEARTBEAT_MS);
+    return () => window.clearInterval(intervalId);
+  }, [current, submitted, token]);
+
   // ── Cronómetro (deadline autoritativo del servidor) ─────────────────
   // Se detiene al enviar: una vez respondido no hay nada más que contar, y
   // dejar el reloj corriendo confundía (parecía que seguía activo cuando el
   // estudiante ya terminó y solo falta que confirmen al siguiente).
   useEffect(() => {
-    if (!current || submitted) return;
+    if (!current || submitted || livePaused) return;
     const intervalId = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(intervalId);
-  }, [current, submitted]);
+  }, [current, submitted, livePaused]);
 
   const remainingSeconds = useMemo(() => {
     if (!current) return null;
+    // OPT-20 F2: con WebSocket activo y una fase de estación corriendo, el
+    // `phaseEndsAt` del frame WS es la fuente de verdad; el `submission_deadline`
+    // del REST es sólo el arranque/fallback (y en transición/pausa el REST ya
+    // refleja la ventana cerrada, así que no lo pisamos con el reloj de la fase
+    // siguiente).
+    if (wsConnected && liveSnapshot?.status === "running" && liveSnapshot.phaseEndsAt != null) {
+      return Math.max(0, Math.floor((liveSnapshot.phaseEndsAt - nowMs) / 1000));
+    }
+    const deadline = current.submission_deadline;
+    if (!deadline) return null;
     return Math.max(
       0,
-      Math.floor(
-        (parseServerUtc(current.submission_deadline) - (nowMs + serverOffsetMs)) / 1000,
-      ),
+      Math.floor((parseServerUtc(deadline) - (nowMs + serverOffsetMs)) / 1000),
     );
-  }, [current, nowMs, serverOffsetMs]);
+  }, [current, liveSnapshot, nowMs, serverOffsetMs, wsConnected]);
 
   const timerLabel = useMemo(() => {
     if (remainingSeconds === null) return "--:--";
@@ -210,6 +293,8 @@ export default function KioskPage() {
   // ── Autoenvío al expirar ─────────────────────────────────────────────
   useEffect(() => {
     if (!current || submitted || !timeExpired || autoSubmitAttemptedRef.current) return;
+    // OPT-20 F1: en pausa (o con el reloj central detenido) no autoenviamos.
+    if (!autoSubmitAllowed) return;
     autoSubmitAttemptedRef.current = true;
     setSubmitting(true);
     submitAnswers(current, answersRef.current)
@@ -218,10 +303,16 @@ export default function KioskPage() {
         setMessage("Se acabó el tiempo: tu respuesta fue enviada automáticamente.");
       })
       .catch((error) => {
+        if (isAlreadySubmittedError(error)) {
+          setSubmitted(true);
+          setMessage("Tu respuesta ya había sido registrada por el servidor.");
+          void reloadContext();
+          return;
+        }
         setMessage(error instanceof Error ? error.message : "No se pudo enviar automáticamente.");
       })
       .finally(() => setSubmitting(false));
-  }, [current, submitAnswers, submitted, timeExpired]);
+  }, [autoSubmitAllowed, current, reloadContext, submitAnswers, submitted, timeExpired]);
 
   // ── Multimedia ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -354,6 +445,23 @@ export default function KioskPage() {
   // ── Pantalla activa (estudiante confirmado) ──────────────────────────
   return (
     <div className="min-h-screen bg-slate-100 pb-16">
+      {livePaused ? (
+        <div
+          role="alert"
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/95 px-6 text-center text-white"
+        >
+          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-white/60">
+            Pausa
+          </p>
+          <p className="mt-6 text-3xl font-bold md:text-4xl">
+            PAUSA — el cronómetro está detenido
+          </p>
+          <p className="mt-4 max-w-xl text-lg text-white/70">
+            Espera a que coordinación reanude el examen. Tu respuesta a medio
+            escribir se conserva.
+          </p>
+        </div>
+      ) : null}
       <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-4xl items-center justify-between gap-4">
           <div className="min-w-0">
@@ -577,7 +685,13 @@ export default function KioskPage() {
             setMessage("Respuesta enviada correctamente. Puedes avanzar a tu siguiente estación.");
           } catch (error) {
             setShowSubmitConfirm(false);
-            setMessage(error instanceof Error ? error.message : "No se pudo enviar.");
+            if (isAlreadySubmittedError(error)) {
+              setSubmitted(true);
+              setMessage("Tu respuesta ya había sido registrada por el servidor.");
+              void reloadContext();
+            } else {
+              setMessage(error instanceof Error ? error.message : "No se pudo enviar.");
+            }
           } finally {
             setSubmitting(false);
           }

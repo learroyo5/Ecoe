@@ -293,6 +293,10 @@ class Station(Base, TimestampMixin):
     evaluator_instruction: Mapped[str] = mapped_column(Text, nullable=False)
     requires_evaluator: Mapped[bool] = mapped_column(Boolean, default=True)
     requires_student_form: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Corrección diferida: un `corrector` puntúa las respuestas del formulario
+    # después de la rotación, sin estar presente en la estación (ver
+    # docs/architecture/EVALUACION_DIFERIDA_FASE1.md).
+    requires_deferred_grading: Mapped[bool] = mapped_column(Boolean, default=False)
     uses_multimedia: Mapped[bool] = mapped_column(Boolean, default=False)
     uses_simulated_patient: Mapped[bool] = mapped_column(Boolean, default=False)
     uses_physical_resources: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -326,6 +330,7 @@ class StationBank(Base, TimestampMixin):
     evaluator_instruction: Mapped[str] = mapped_column(Text, nullable=False)
     requires_evaluator: Mapped[bool] = mapped_column(Boolean, default=True)
     requires_student_form: Mapped[bool] = mapped_column(Boolean, default=False)
+    requires_deferred_grading: Mapped[bool] = mapped_column(Boolean, default=False)
     uses_multimedia: Mapped[bool] = mapped_column(Boolean, default=False)
     uses_simulated_patient: Mapped[bool] = mapped_column(Boolean, default=False)
     uses_physical_resources: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -449,7 +454,37 @@ class StationCheckIn(Base, TimestampMixin):
     evaluator_email: Mapped[str] = mapped_column(String(255), nullable=False)
     evaluator_name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="confirmado")
+    # pilotaje / ejecucion: estampado al confirmar con el modo resuelto del
+    # evento, para que activity_log y los conteos de cierre distingan un
+    # check-in de ensayo de uno real sin inferir por fecha.
+    mode: Mapped[SessionMode] = mapped_column(
+        String(32), nullable=False, server_default=SessionMode.ejecucion.value,
+        default=SessionMode.ejecucion,
+    )
     confirmed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive)
+
+
+class StationResponseDraft(Base, TimestampMixin):
+    """Server-side autosave of a student's in-progress station form (OPT-20 F2).
+
+    One row per active check-in. The kiosk / student screens push it on every
+    answer change (debounced) so the server always has something to finalize
+    when the phase expires (``services/live_sweep``). It is deleted the moment
+    a definitive ``StudentResponse`` exists for the check-in.
+    """
+
+    __tablename__ = "station_response_drafts"
+    __table_args__ = (
+        UniqueConstraint("checkin_id", name="uq_station_response_draft_checkin"),
+        Index("ix_station_response_drafts_event", "ecoe_event_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    checkin_id: Mapped[int] = mapped_column(ForeignKey("station_checkins.id"), nullable=False)
+    ecoe_event_id: Mapped[int] = mapped_column(ForeignKey("ecoe_events.id"), nullable=False)
+    station_id: Mapped[int] = mapped_column(ForeignKey("stations.id"), nullable=False)
+    student_id: Mapped[int] = mapped_column(ForeignKey("students.id"), nullable=False)
+    answers: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 class EvaluatorRecord(Base, TimestampMixin):
@@ -472,6 +507,21 @@ class EvaluatorRecord(Base, TimestampMixin):
     observation: Mapped[str] = mapped_column(Text, default="")
     answers: Mapped[dict] = mapped_column(JSON, default=dict)
     by_contingency: Mapped[bool] = mapped_column(Boolean, default=False)
+    # OPT-20 F3 (D3): a record persisted while still half-filled when the
+    # evaluator's phase expires. The unique key (event, station, student, mode)
+    # means the draft *is* the row; final submit / contingency promote it to
+    # ``is_draft=False``. A draft never enters ``compute_results`` and does not
+    # count as a completed evaluation in the traceability report.
+    is_draft: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Cómo entró el registro (OPT-20 F4, D4): `manual` (envío del evaluador
+    # dentro de ventana), `contingency` (registrado de cero fuera de ventana por
+    # coordinación) o `draft_finalized` (un autoguardado del buzzer promovido a
+    # final después, vía `/evaluator/submit` o contingencia). El cliente nunca
+    # lo elige; lo estampa el servidor. `by_contingency` se mantiene como marca
+    # de auditoría del flujo de contingencia (decisión #9).
+    submission_kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="manual", default="manual",
+    )
 
 
 class StudentResponse(Base, TimestampMixin):
@@ -492,6 +542,14 @@ class StudentResponse(Base, TimestampMixin):
     submitted_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive)
     locked: Mapped[bool] = mapped_column(Boolean, default=True)
     by_contingency: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Cómo entró la respuesta: `manual` (envío del estudiante/kiosco),
+    # `auto` (barrido server-side al vencer la fase, OPT-20 F2) o
+    # `contingency` (registro fuera de ventana por coordinación). El cliente
+    # nunca lo elige; lo estampa el servidor. Un `auto` en blanco suma 0 pero
+    # queda marcado para la trazabilidad (D4).
+    submission_kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="manual", default="manual",
+    )
     # Puntuacion del formulario: score_obtained queda NULL mientras haya
     # preguntas de correccion manual pendientes; solo las respuestas con
     # puntaje resuelto entran al consolidado (ver services/grading.py).

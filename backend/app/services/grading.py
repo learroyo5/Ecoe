@@ -19,6 +19,21 @@ from app.utils.clock import utcnow_naive
 AUTO_GRADED_TYPES = {"single_choice", "multiple_choice"}
 
 
+def is_answered(value) -> bool:
+    """Whether a submitted answer carries actual content (OPT-20 F4, D4).
+
+    ``None``/empty string/empty list/empty dict = not answered. A blank
+    auto-submitted response still scores 0 over the max, but each blank item
+    is flagged so the corrector and the export can tell an omission from a
+    deliberate wrong answer.
+    """
+    if value is None:
+        return False
+    if isinstance(value, (str, list, tuple, set, dict)):
+        return len(value) > 0
+    return True
+
+
 def grade_answers(form_definition: dict | None, answers: dict | None) -> dict:
     """Compute the auto-graded portion and the pending-manual layout."""
     questions = (form_definition or {}).get("questions") or []
@@ -40,23 +55,30 @@ def grade_answers(form_definition: dict | None, answers: dict | None) -> dict:
         key = f"question_{index + 1}"
         question_type = str(question.get("type") or "")
         answer = answers.get(key)
+        answered = is_answered(answer)
 
         if question_type == "single_choice":
             auto_max += points
             correct = question.get("correct_option")
             earned = points if (correct is not None and answer == correct) else 0.0
             auto_score += earned
-            per_question[key] = {"kind": "auto", "earned": earned, "max": points}
+            per_question[key] = {
+                "kind": "auto", "earned": earned, "max": points, "answered": answered,
+            }
         elif question_type == "multiple_choice":
             auto_max += points
             correct = {str(item) for item in (question.get("correct_options") or [])}
             given = {str(item) for item in answer} if isinstance(answer, list) else set()
             earned = points if correct and given == correct else 0.0
             auto_score += earned
-            per_question[key] = {"kind": "auto", "earned": earned, "max": points}
+            per_question[key] = {
+                "kind": "auto", "earned": earned, "max": points, "answered": answered,
+            }
         else:
             manual_max += points
-            per_question[key] = {"kind": "manual", "earned": None, "max": points}
+            per_question[key] = {
+                "kind": "manual", "earned": None, "max": points, "answered": answered,
+            }
 
     return {
         "auto_score": auto_score,
@@ -99,26 +121,37 @@ def apply_manual_scores(
 ) -> None:
     """Resolve the pending manual questions of a response."""
     grading = dict(response.grading or {})
-    pending = {
+    manual = {
         key
         for key, item in grading.items()
         if isinstance(item, dict) and item.get("kind") == "manual"
     }
-    if not pending:
+    if not manual:
         raise HTTPException(
             status_code=400,
             detail="Esta respuesta no tiene preguntas de corrección manual",
         )
-    unknown = set(scores) - pending
+    unknown = set(scores) - manual
     if unknown:
         raise HTTPException(
             status_code=400,
             detail=f"Preguntas no corregibles manualmente: {', '.join(sorted(unknown))}",
         )
-    missing = {
-        key for key in pending
-        if grading[key].get("earned") is None and key not in scores
-    }
+    # Re-corrección de una pregunta ya resuelta: prohibida por este flujo. Cambiar
+    # un puntaje ya asignado exige el procedimiento de rectificación (reabrir el
+    # evento), no un reenvío silencioso de `scores`.
+    already_resolved = {key for key in manual if grading[key].get("earned") is not None}
+    regrade = set(scores) & already_resolved
+    if regrade:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"La(s) pregunta(s) {', '.join(sorted(regrade))} ya tienen puntaje; "
+                "usa el flujo de rectificación"
+            ),
+        )
+    pending = manual - already_resolved
+    missing = {key for key in pending if key not in scores}
     if missing:
         raise HTTPException(
             status_code=400,

@@ -99,6 +99,11 @@ export default function ECOEDetailPage() {
     router.push("/ecoe");
   };
 
+  const handleDuplicateECOE = () => {
+    setEventId(eventId);
+    router.push("/ecoe?duplicate=1");
+  };
+
   if (loading) {
     return (
       <div className="space-y-6 animate-pulse">
@@ -140,9 +145,7 @@ export default function ECOEDetailPage() {
           <button className="btn-primary" onClick={handleSelectECOE}>
             Editar en Gestión
           </button>
-          <button className="btn-secondary" onClick={() => {
-            router.push(`/ecoe?id=${eventId}`);
-          }}>
+          <button className="btn-secondary" onClick={handleDuplicateECOE}>
             Duplicar
           </button>
         </div>

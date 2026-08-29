@@ -12,6 +12,7 @@ import { useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
+import { submissionKindLabel } from "@/lib/labels";
 import { useApi } from "@/hooks/use-api";
 import { SectionCard } from "@/components/section-card";
 import { StatusNotice } from "@/components/forms";
@@ -21,11 +22,14 @@ type GradingItem = {
   kind: "auto" | "manual";
   earned: number | null;
   max: number;
+  answered?: boolean;
 };
 
 type GradableResponse = {
   response_id: number;
   mode: string;
+  submission_kind?: string;
+  by_contingency?: boolean;
   student_name: string;
   student_ecoe_number: string;
   station_number: number | null;
@@ -40,20 +44,47 @@ type GradableResponse = {
   questions: { label?: string; type?: string }[];
 };
 
+/** ¿La respuesta llegó incompleta (algún ítem puntuable sin responder)? */
+function hasUnansweredItems(row: GradableResponse): boolean {
+  return Object.values(row.grading ?? {}).some((item) => item?.answered === false);
+}
+
+const CLOSED_STATUSES = new Set(["cerrado", "archivado"]);
+
 export default function GradingPage() {
-  const { authenticated, eventId } = useECOE();
+  const { authenticated, eventId, ecoeEvent } = useECOE();
+  const eventClosed = ecoeEvent ? CLOSED_STATUSES.has(ecoeEvent.status) : false;
   const { data, loading, error, setData } = useApi(
-    () => api.gradingList(eventId) as Promise<{ responses: GradableResponse[]; pending_count: number }>,
-    [eventId, authenticated],
+    () =>
+      eventClosed
+        ? Promise.resolve({ responses: [] as GradableResponse[], pending_count: 0 })
+        : (api.gradingList(eventId) as Promise<{
+            responses: GradableResponse[];
+            pending_count: number;
+          }>),
+    [eventId, authenticated, eventClosed],
   );
   const [message, setMessage] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [draftScores, setDraftScores] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
+  const [stationFilter, setStationFilter] = useState<string>("");
+
   const responses = useMemo(() => data?.responses ?? [], [data]);
-  const pending = responses.filter((row) => row.pending_questions.length > 0);
-  const graded = responses.filter((row) => row.pending_questions.length === 0);
+  const stationChoices = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const row of responses) {
+      const key = String(row.station_number ?? "");
+      if (key && !seen.has(key)) seen.set(key, `Estación ${key}: ${row.station_name}`);
+    }
+    return [...seen.entries()].sort((a, b) => Number(a[0]) - Number(b[0]));
+  }, [responses]);
+  const visibleResponses = stationFilter
+    ? responses.filter((row) => String(row.station_number ?? "") === stationFilter)
+    : responses;
+  const pending = visibleResponses.filter((row) => row.pending_questions.length > 0);
+  const graded = visibleResponses.filter((row) => row.pending_questions.length === 0);
 
   const questionLabel = (row: GradableResponse, key: string) => {
     const index = Number(key.replace("question_", "")) - 1;
@@ -87,6 +118,28 @@ export default function GradingPage() {
               {row.mode === "pilotaje" ? "Pilotaje" : "Ejecución"} ·{" "}
               {new Date(row.submitted_at).toLocaleString()}
             </p>
+            {(row.submission_kind && row.submission_kind !== "manual") ||
+            hasUnansweredItems(row) ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {row.submission_kind === "auto" ? (
+                  <span
+                    className="status-badge status-badge-warning"
+                    title="El servidor cerró esta respuesta al vencer el cronómetro; no fue una entrega deliberada del estudiante."
+                  >
+                    Respuesta automática
+                  </span>
+                ) : row.submission_kind && row.submission_kind !== "manual" ? (
+                  <span className="status-badge status-badge-info">
+                    {submissionKindLabel(row.submission_kind)}
+                  </span>
+                ) : null}
+                {hasUnansweredItems(row) ? (
+                  <span className="status-badge status-badge-warning">
+                    Incompleta — ítems sin responder
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           <div className="flex items-center gap-3">
             {row.score_obtained !== null ? (
@@ -113,7 +166,12 @@ export default function GradingPage() {
           <div className="mt-4 space-y-4 border-t border-slate-100 pt-4">
             {row.pending_questions.map((key) => (
               <div key={key} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-sm font-semibold text-slate-900">{questionLabel(row, key)}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-semibold text-slate-900">{questionLabel(row, key)}</p>
+                  {row.grading[key]?.answered === false ? (
+                    <span className="status-badge status-badge-warning">Sin responder</span>
+                  ) : null}
+                </div>
                 <p className="mt-2 rounded-xl bg-white px-3 py-2 text-sm leading-6 text-slate-800">
                   {answerText(row, key)}
                 </p>
@@ -171,13 +229,53 @@ export default function GradingPage() {
     );
   };
 
+  if (eventClosed) {
+    return (
+      <div className="space-y-6">
+        <SectionCard
+          title="Corrección de formularios"
+          subtitle="El ECOE está cerrado; la cola de corrección no está disponible."
+        >
+          <div
+            data-testid="grading-closed-notice"
+            className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900"
+          >
+            <p className="font-semibold">ECOE cerrado — los resultados están consolidados.</p>
+            <p className="mt-1">
+              Para rectificar una nota, reabrí el evento (retroceso de estado) desde la pantalla del
+              ECOE. Mientras el evento siga cerrado o archivado el servidor rechaza cualquier
+              corrección.
+            </p>
+          </div>
+        </SectionCard>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <SectionCard
         title="Corrección de formularios"
-        subtitle="Las alternativas se corrigen automáticamente al enviarse; aquí resuelves las respuestas breves con puntaje. Solo lo corregido entra a Resultados."
+        subtitle="Las alternativas se corrigen automáticamente al enviarse; aquí resuelves las respuestas breves con puntaje (evaluación diferida). Solo lo corregido entra a Resultados."
       >
         <StatusNotice message={message} />
+        {stationChoices.length > 1 ? (
+          <label className="mt-3 flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-700">
+            Estación
+            <select
+              value={stationFilter}
+              onChange={(event) => setStationFilter(event.target.value)}
+              className="font-normal"
+            >
+              <option value="">Todas ({responses.length})</option>
+              {stationChoices.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </SectionCard>
 
       {loading ? (

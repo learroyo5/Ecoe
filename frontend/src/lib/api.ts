@@ -3,6 +3,7 @@ import type {
   DashboardSummary,
   ECOEEvent,
   EvaluatorContext,
+  EvaluatorDraftRow,
   Incident,
   LiveSession,
   MediaAsset,
@@ -160,8 +161,6 @@ export const api = {
   // Staff
   staff: (eventId: number, page: number = 1, pageSize: number = 50) =>
     request<Paginated<StaffAssignment>>(`/staff/${eventId}?page=${page}&page_size=${pageSize}`),
-  createStaff: (payload: Record<string, unknown>) =>
-    request<StaffAssignment>("/staff", { method: "POST", body: JSON.stringify(payload) }),
   updateStaff: (staffId: number, payload: { role_code: string; station_ids: number[] }) =>
     request<StaffAssignment>(`/staff/${staffId}`, { method: "PATCH", body: JSON.stringify(payload) }),
   deleteStaff: (staffId: number) =>
@@ -183,12 +182,51 @@ export const api = {
     request<ConfirmCheckinResult>("/station-checkins/confirm", { method: "POST", body: JSON.stringify(payload) }),
   submitEvaluator: (payload: Record<string, unknown>) =>
     request<MutationResult>("/evaluator/submit", { method: "POST", body: JSON.stringify(payload) }),
+  // OPT-20 F3 (D3): autoguardado server-side del registro del evaluador a
+  // medio llenar. El registro parcial ES la fila (is_draft=True); se promueve
+  // a definitiva al enviar o al finalizarla por contingencia.
+  evaluatorDraft: (payload: {
+    ecoe_event_id: number;
+    station_id: number;
+    student_id: number;
+    checkin_id?: number;
+    evaluator_name: string;
+    score_obtained: number;
+    observation: string;
+    answers: Record<string, unknown>;
+  }) =>
+    request<{ saved: boolean; record_id: number; is_draft: boolean; updated_at: string | null }>(
+      "/evaluator/draft",
+      { method: "PUT", body: JSON.stringify(payload) },
+    ),
+  // Coordinación: borradores de evaluador pendientes de finalizar y su cierre
+  // por contingencia (finaliza el borrador existente si lo hay).
+  pendingEvaluatorDrafts: (eventId: number) =>
+    request<{ drafts: EvaluatorDraftRow[] }>(`/contingency/evaluator-drafts/${eventId}`),
+  finalizeEvaluatorRecord: (payload: Record<string, unknown>) =>
+    request<MutationResult & { by_contingency?: boolean; finalized_draft?: boolean }>(
+      "/contingency/evaluator-record",
+      { method: "POST", body: JSON.stringify(payload) },
+    ),
 
   // Student access
   studentAccess: (payload: { ecoe_event_id: number; ecoe_number: string }) =>
     request<StudentAccessContext>("/student/access", { method: "POST", body: JSON.stringify(payload) }),
   submitStudent: (payload: Record<string, unknown>) =>
     request<MutationResult>("/student/submit", { method: "POST", body: JSON.stringify(payload) }),
+  // OPT-20 F2: autoguardado server-side del borrador del check-in activo
+  // (mejor esfuerzo; el localStorage sigue siendo el respaldo local).
+  studentDraft: (payload: {
+    ecoe_event_id: number;
+    station_id: number;
+    student_id: number;
+    checkin_id?: number;
+    answers: Record<string, unknown>;
+  }) =>
+    request<{ saved: boolean; updated_at: string | null }>("/student/draft", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
 
   // Kiosk (dispositivo compartido por estación; autentica con token propio,
   // nunca con la sesión de usuario)
@@ -203,6 +241,13 @@ export const api = {
   kioskSubmit: (token: string, payload: { checkin_id: number; answers: Record<string, unknown> }) =>
     request<MutationResult>("/kiosk/submit", {
       method: "POST",
+      headers: { "X-Kiosk-Token": token },
+      body: JSON.stringify(payload),
+    }),
+  // OPT-20 F2: autoguardado server-side del borrador (mejor esfuerzo).
+  kioskDraft: (token: string, payload: { checkin_id: number; answers: Record<string, unknown> }) =>
+    request<{ saved: boolean; updated_at: string | null }>("/kiosk/draft", {
+      method: "PUT",
       headers: { "X-Kiosk-Token": token },
       body: JSON.stringify(payload),
     }),
@@ -288,3 +333,16 @@ export const api = {
   resolveIncident: (incidentId: number, resolved: boolean) =>
     request<Incident>(`/incidents/${incidentId}/resolve`, { method: "PATCH", body: JSON.stringify({ resolved }) }),
 };
+
+/**
+ * OPT-20 F2: el backend puede rechazar un envío (manual o automático) porque
+ * la respuesta ya existe — el barrido server-side ganó la carrera. Para el
+ * cliente eso es un éxito: la respuesta quedó registrada. Detectamos el caso
+ * por el texto del `detail` (400/409 "ya fue enviada").
+ */
+export function isAlreadySubmittedError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    /ya (fue |había sido )?enviada|already submitted/i.test(error.message)
+  );
+}

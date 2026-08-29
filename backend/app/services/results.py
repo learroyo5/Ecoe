@@ -9,8 +9,11 @@ from reportlab.pdfgen import canvas
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from datetime import datetime
+
 from app.core.config import get_settings
 from app.models.entities import (
+    AuditLog,
     ContingencyExport,
     ECOEEvent,
     ECOEResult,
@@ -22,7 +25,12 @@ from app.models.entities import (
     Student,
     StudentResponse,
 )
-from app.models.enums import RoleCode, SessionMode
+from app.models.enums import ECOEStatus, RoleCode, SessionMode
+
+# Una vez cerrado/archivado el evento, los resultados oficiales son el snapshot
+# `ECOEResult` escrito al cierre: ninguna edición posterior de respuestas o
+# registros debe mover el número que sirve `/results` o el export.
+FROZEN_RESULT_STATUSES = {ECOEStatus.cerrado.value, ECOEStatus.archivado.value}
 
 
 def compute_equivalent_grade(percentage: float, passing_reference_percent: float) -> float:
@@ -57,6 +65,9 @@ def compute_results(db: Session, ecoe_event_id: int) -> list[dict]:
             .where(
                 EvaluatorRecord.ecoe_event_id == ecoe_event_id,
                 EvaluatorRecord.mode == SessionMode.ejecucion.value,
+                # OPT-20 F3 (D3): a half-filled autosaved draft never enters
+                # the consolidated score; it is promoted on final submit.
+                EvaluatorRecord.is_draft.is_(False),
             )
             .group_by(EvaluatorRecord.student_id)
         ).all()
@@ -99,7 +110,60 @@ def compute_results(db: Session, ecoe_event_id: int) -> list[dict]:
     return results
 
 
-def persist_results(db: Session, ecoe_event_id: int, *, commit: bool = True) -> list[dict]:
+def read_results(
+    db: Session, ecoe_event_id: int
+) -> tuple[list[dict], bool, datetime | None]:
+    """Vista de resultados para lectura (`/results`, export).
+
+    Si el evento está `cerrado`/`archivado` **y** existe snapshot `ECOEResult`,
+    devuelve el snapshot congelado (misma forma que `compute_results`) junto con
+    `frozen=True` y la fecha de consolidación (`ECOEResult.updated_at`). En
+    cualquier otro estado —o si el cierre no dejó snapshot— recalcula en vivo con
+    `compute_results` y `frozen=False`.
+    """
+    ecoe_event = db.get(ECOEEvent, ecoe_event_id)
+    if ecoe_event is not None and str(ecoe_event.status) in FROZEN_RESULT_STATUSES:
+        snapshots = db.scalars(
+            select(ECOEResult)
+            .where(ECOEResult.ecoe_event_id == ecoe_event_id)
+            .order_by(ECOEResult.student_id.asc())
+        ).all()
+        if snapshots:
+            students = {
+                student.id: student
+                for student in db.scalars(
+                    select(Student).where(Student.ecoe_event_id == ecoe_event_id)
+                ).all()
+            }
+            consolidated_at = max(
+                (snap.updated_at for snap in snapshots if snap.updated_at is not None),
+                default=None,
+            )
+            results = []
+            for snap in snapshots:
+                student = students.get(snap.student_id)
+                results.append({
+                    "student_id": snap.student_id,
+                    "student_name": (
+                        f"{student.name} {student.last_name}" if student else ""
+                    ),
+                    "ecoe_number": student.ecoe_number if student else None,
+                    "total_score": round(snap.total_score, 2),
+                    "max_score": round(snap.max_score, 2),
+                    "percentage": round(snap.percentage, 2),
+                    "equivalent_grade": round(snap.equivalent_grade, 2),
+                })
+            return results, True, consolidated_at
+    return compute_results(db, ecoe_event_id), False, None
+
+
+def persist_results(
+    db: Session,
+    ecoe_event_id: int,
+    *,
+    commit: bool = True,
+    actor_email: str | None = None,
+) -> list[dict]:
     results = compute_results(db, ecoe_event_id)
     db.query(ECOEResult).filter(ECOEResult.ecoe_event_id == ecoe_event_id).delete()
     for item in results:
@@ -110,6 +174,14 @@ def persist_results(db: Session, ecoe_event_id: int, *, commit: bool = True) -> 
             max_score=item["max_score"],
             percentage=item["percentage"],
             equivalent_grade=item["equivalent_grade"],
+        ))
+    if actor_email:
+        db.add(AuditLog(
+            user_email=actor_email,
+            action="consolidate_results",
+            target_type="ECOEEvent",
+            target_id=str(ecoe_event_id),
+            payload={"student_count": len(results)},
         ))
     if commit:
         db.commit()
@@ -129,15 +201,33 @@ def build_traceability_report(
         .order_by(Station.station_number.asc(), Station.id.asc())
     ).all()
     checkins = db.scalars(
-        select(StationCheckIn).where(StationCheckIn.ecoe_event_id == ecoe_event_id)
+        select(StationCheckIn).where(
+            StationCheckIn.ecoe_event_id == ecoe_event_id,
+            StationCheckIn.mode == SessionMode.ejecucion.value,
+        )
         .order_by(StationCheckIn.confirmed_at.desc(), StationCheckIn.id.desc())
     ).all()
-    evaluator_records = db.scalars(
-        select(EvaluatorRecord).where(EvaluatorRecord.ecoe_event_id == ecoe_event_id)
+    # Trazabilidad y checklist de cierre son sobre la EJECUCIÓN REAL: los
+    # registros de pilotaje no cuentan para completitud, faltantes ni el
+    # consolidado (mismo criterio que `compute_results`). Un estudiante que
+    # solo pilotó y faltó a la ejecución debe verse como "sin actividad".
+    all_evaluator_rows = db.scalars(
+        select(EvaluatorRecord).where(
+            EvaluatorRecord.ecoe_event_id == ecoe_event_id,
+            EvaluatorRecord.mode == SessionMode.ejecucion.value,
+        )
         .order_by(EvaluatorRecord.created_at.desc(), EvaluatorRecord.id.desc())
     ).all()
+    # OPT-20 F3 (D3): only a finalized record counts as a completed evaluation
+    # and shows up in the activity log; a draft is tracked apart as pending
+    # work to be finalized in the contingency window.
+    evaluator_records = [row for row in all_evaluator_rows if not row.is_draft]
+    evaluator_drafts = [row for row in all_evaluator_rows if row.is_draft]
     student_responses = db.scalars(
-        select(StudentResponse).where(StudentResponse.ecoe_event_id == ecoe_event_id)
+        select(StudentResponse).where(
+            StudentResponse.ecoe_event_id == ecoe_event_id,
+            StudentResponse.mode == SessionMode.ejecucion.value,
+        )
         .order_by(StudentResponse.submitted_at.desc(), StudentResponse.id.desc())
     ).all()
     pilot_runs = db.scalars(
@@ -195,6 +285,10 @@ def build_traceability_report(
     expected_evaluations_total = 0
     expected_student_submissions_total = 0
 
+    deferred_grading_station_ids = {
+        station.id for station in stations if station.requires_deferred_grading
+    }
+
     student_traceability: list[dict] = []
     for student in students:
         required_evaluator_station_count, required_student_form_station_count = (
@@ -204,6 +298,7 @@ def build_traceability_report(
         expected_student_submissions_total += required_student_form_station_count
         student_checkins = [item for item in checkins if item.student_id == student.id]
         student_evaluations = [item for item in evaluator_records if item.student_id == student.id]
+        student_evaluator_drafts = [item for item in evaluator_drafts if item.student_id == student.id]
         student_form_responses = [item for item in student_responses if item.student_id == student.id]
         latest_checkin = student_checkins[0].confirmed_at if student_checkins else None
         latest_evaluation = student_evaluations[0].created_at if student_evaluations else None
@@ -214,9 +309,37 @@ def build_traceability_report(
         )
         has_expected_evaluations = len(student_evaluations) >= required_evaluator_station_count
         has_expected_student_responses = len(student_form_responses) >= required_student_form_station_count
-        if not student_checkins and not student_evaluations and not student_form_responses:
+        # Respuestas en estaciones de corrección diferida aún sin puntaje
+        # definitivo: el estudiante no está "completo" hasta que se corrijan.
+        pending_deferred_gradings = sum(
+            1
+            for item in student_form_responses
+            if item.station_id in deferred_grading_station_ids
+            and item.max_score is not None
+            and item.score_obtained is None
+        )
+        pending_evaluator_drafts = len(student_evaluator_drafts)
+        # OPT-20 F4 (D4): respuestas autoenviadas por el barrido sin contenido —
+        # suman 0/max al consolidado como cualquiera, pero se marcan para que
+        # coordinación distinga una omisión de una entrega real.
+        blank_auto_submissions = sum(
+            1
+            for item in student_form_responses
+            if item.submission_kind == "auto" and not item.answers
+        )
+        if (
+            not student_checkins
+            and not student_evaluations
+            and not student_form_responses
+            and not student_evaluator_drafts
+        ):
             completion_status = "sin actividad"
-        elif has_expected_evaluations and has_expected_student_responses:
+        elif (
+            has_expected_evaluations
+            and has_expected_student_responses
+            and pending_deferred_gradings == 0
+            and pending_evaluator_drafts == 0
+        ):
             completion_status = "completo"
         else:
             completion_status = "parcial"
@@ -231,6 +354,9 @@ def build_traceability_report(
             "student_submissions": len(student_form_responses),
             "missing_evaluations": max(0, required_evaluator_station_count - len(student_evaluations)),
             "missing_student_submissions": max(0, required_student_form_station_count - len(student_form_responses)),
+            "pending_deferred_gradings": pending_deferred_gradings,
+            "pending_evaluator_drafts": pending_evaluator_drafts,
+            "blank_auto_submissions": blank_auto_submissions,
             "completion_status": completion_status,
             "last_checkin_at": latest_checkin.isoformat() if latest_checkin else None,
             "last_evaluation_at": latest_evaluation.isoformat() if latest_evaluation else None,
@@ -245,7 +371,13 @@ def build_traceability_report(
     for station in stations:
         station_checkins = [item for item in checkins if item.station_id == station.id]
         station_evaluations = [item for item in evaluator_records if item.station_id == station.id]
+        station_evaluator_drafts = [item for item in evaluator_drafts if item.station_id == station.id]
         station_form_responses = [item for item in student_responses if item.station_id == station.id]
+        station_blank_auto_submissions = sum(
+            1
+            for item in station_form_responses
+            if item.submission_kind == "auto" and not item.answers
+        )
         latest_station_activity = max(
             [item for item in [
                 station_checkins[0].confirmed_at if station_checkins else None,
@@ -270,7 +402,9 @@ def build_traceability_report(
             "assigned_evaluator": station_primary_evaluator.get(station.id, "Sin asignar"),
             "checkins_count": len(station_checkins),
             "evaluations_count": len(station_evaluations),
+            "pending_evaluator_drafts": len(station_evaluator_drafts),
             "student_submissions_count": len(station_form_responses),
+            "blank_auto_submissions": station_blank_auto_submissions,
             "last_activity_at": latest_station_activity.isoformat() if latest_station_activity else None,
         })
 
@@ -291,7 +425,7 @@ def build_traceability_report(
             "timestamp": checkin.confirmed_at.isoformat(), "type": "checkin",
             "label": "Ingreso confirmado",
             "detail": f"{student.ecoe_number} - {student.name} {student.last_name} en estación {station.station_number}: {station.name}.",
-            "actor": checkin.evaluator_name, "mode": "ejecucion",
+            "actor": checkin.evaluator_name, "mode": checkin.mode,
         })
     for record in evaluator_records:
         student = students_by_id.get(record.student_id)
@@ -304,16 +438,49 @@ def build_traceability_report(
             "detail": f"{student.ecoe_number} - {student.name} {student.last_name} evaluado en estación {station.station_number}: {station.name}.",
             "actor": record.evaluator_name, "mode": record.mode,
         })
+    for draft in evaluator_drafts:
+        student = students_by_id.get(draft.student_id)
+        station = stations_by_id.get(draft.station_id)
+        if not student or not station:
+            continue
+        activity_log.append({
+            "timestamp": draft.updated_at.isoformat() if draft.updated_at else draft.created_at.isoformat(),
+            "type": "evaluacion_borrador",
+            "label": "Evaluación en borrador (sin finalizar)",
+            "detail": (
+                f"{student.ecoe_number} - {student.name} {student.last_name}: registro del evaluador "
+                f"en estación {station.station_number}: {station.name} quedó como borrador; "
+                "debe finalizarse por contingencia."
+            ),
+            "actor": draft.evaluator_name, "mode": draft.mode,
+        })
     for response in student_responses:
         student = students_by_id.get(response.student_id)
         station = stations_by_id.get(response.station_id)
         if not student or not station:
             continue
+        # OPT-20 F4 (D4): etiquetar el origen de la respuesta y si llegó vacía.
+        kind = response.submission_kind or "manual"
+        is_blank = not response.answers
+        if kind == "auto" and is_blank:
+            label = "Respuesta del estudiante (automática, sin respuesta)"
+            verb = "no alcanzó a responder (autoenvío en blanco) en"
+        elif kind == "auto":
+            label = "Respuesta del estudiante (automática)"
+            verb = "quedó autoenviada en"
+        elif kind == "contingency":
+            label = "Respuesta del estudiante (por contingencia)"
+            verb = "fue registrada por contingencia en"
+        else:
+            label = "Respuesta del estudiante"
+            verb = "respondió en"
         activity_log.append({
             "timestamp": response.submitted_at.isoformat(), "type": "respuesta_estudiante",
-            "label": "Respuesta del estudiante",
-            "detail": f"{student.ecoe_number} - {student.name} {student.last_name} respondió en estación {station.station_number}: {station.name}.",
+            "label": label,
+            "detail": f"{student.ecoe_number} - {student.name} {student.last_name} {verb} estación {station.station_number}: {station.name}.",
             "actor": f"{student.name} {student.last_name}", "mode": response.mode,
+            "submission_kind": kind,
+            "answered": not is_blank,
         })
     activity_log.sort(key=lambda item: item["timestamp"], reverse=True)
 
@@ -325,7 +492,13 @@ def build_traceability_report(
             "expected_student_submissions": expected_student_submissions_total,
             "confirmed_checkins": len(checkins),
             "evaluator_submissions": len(evaluator_records),
+            "pending_evaluator_drafts": len(evaluator_drafts),
             "student_submissions": len(student_responses),
+            "blank_auto_submissions": sum(
+                1
+                for item in student_responses
+                if item.submission_kind == "auto" and not item.answers
+            ),
             "pilot_runs": len(pilot_runs),
         },
         "student_traceability": student_traceability,
@@ -334,12 +507,69 @@ def build_traceability_report(
     }
 
 
+_SUBMISSION_KIND_LABELS = {
+    "manual": "Manual",
+    "auto": "Automático",
+    "contingency": "Contingencia",
+    "draft_finalized": "Borrador finalizado",
+}
+
+
+def _submission_trace_rows(db: Session, ecoe_event_id: int) -> list[dict]:
+    """Un indicador por respuesta de la ejecución real (OPT-20 F4, D4).
+
+    Marca origen (`manual`/`auto`/`contingencia`) y si la respuesta llegó en
+    blanco. Es metadato de trazabilidad, no de nota: se calcula en vivo aun
+    con el consolidado congelado. El rediseño completo del export es OPT-19;
+    aquí solo se agrega este indicador mínimo en una hoja aparte.
+    """
+    students = {
+        s.id: s
+        for s in db.scalars(select(Student).where(Student.ecoe_event_id == ecoe_event_id)).all()
+    }
+    stations = {
+        s.id: s
+        for s in db.scalars(select(Station).where(Station.ecoe_event_id == ecoe_event_id)).all()
+    }
+    responses = db.scalars(
+        select(StudentResponse)
+        .where(
+            StudentResponse.ecoe_event_id == ecoe_event_id,
+            StudentResponse.mode == SessionMode.ejecucion.value,
+        )
+        .order_by(StudentResponse.station_id.asc(), StudentResponse.id.asc())
+    ).all()
+    rows: list[dict] = []
+    for response in responses:
+        student = students.get(response.student_id)
+        station = stations.get(response.station_id)
+        kind = response.submission_kind or "manual"
+        answered = bool(response.answers)
+        rows.append({
+            "ecoe_number": student.ecoe_number if student else None,
+            "student_name": f"{student.name} {student.last_name}" if student else "",
+            "station_number": station.station_number if station else None,
+            "station_name": station.name if station else "",
+            "origen": _SUBMISSION_KIND_LABELS.get(kind, kind),
+            "en_blanco": "Sí" if (kind == "auto" and not answered) else "No",
+            "score_obtained": response.score_obtained,
+            "max_score": response.max_score,
+            "by_contingency": response.by_contingency,
+        })
+    return rows
+
+
 def export_results_excel(db: Session, ecoe_event_id: int, *, persist: bool = False) -> bytes:
-    data = persist_results(db, ecoe_event_id) if persist else compute_results(db, ecoe_event_id)
+    if persist:
+        data = persist_results(db, ecoe_event_id)
+    else:
+        data, _, _ = read_results(db, ecoe_event_id)
     df = pd.DataFrame(data)
+    trace_df = pd.DataFrame(_submission_trace_rows(db, ecoe_event_id))
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="consolidado")
+        trace_df.to_excel(writer, index=False, sheet_name="trazabilidad_envios")
     return buffer.getvalue()
 
 

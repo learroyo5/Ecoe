@@ -2,10 +2,11 @@
 
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
-import { modeLabel } from "@/lib/labels";
+import { modeLabel, submissionKindLabel } from "@/lib/labels";
 import { useApi } from "@/hooks/use-api";
 import { DataTable } from "@/components/data-table";
 import { SectionCard } from "@/components/section-card";
+import type { ResultsResponse } from "@/lib/types";
 
 function formatTimestamp(value: unknown) {
   if (!value || typeof value !== "string") {
@@ -23,21 +24,16 @@ function formatTimestamp(value: unknown) {
 
 export default function ResultsPage() {
   const { authenticated, eventId } = useECOE();
-  const { data, loading, error } = useApi(
-    () =>
-      api.results(eventId) as Promise<{
-        results: Record<string, unknown>[];
-        summary: Record<string, unknown>;
-        student_traceability: Record<string, unknown>[];
-        station_traceability: Record<string, unknown>[];
-        activity_log: Record<string, unknown>[];
-      }>,
+  const { data, loading, error } = useApi<ResultsResponse>(
+    () => api.results(eventId),
     [eventId, authenticated],
   );
-  const summary = (data?.summary as Record<string, unknown> | undefined) ?? {};
-  const studentTraceability = (data?.student_traceability as Record<string, unknown>[] | undefined) ?? [];
-  const stationTraceability = (data?.station_traceability as Record<string, unknown>[] | undefined) ?? [];
-  const activityLog = (data?.activity_log as Record<string, unknown>[] | undefined) ?? [];
+  const summary: Partial<ResultsResponse["summary"]> = data?.summary ?? {};
+  const studentTraceability = data?.student_traceability ?? [];
+  const stationTraceability = data?.station_traceability ?? [];
+  const activityLog = data?.activity_log ?? [];
+  const frozen = data?.frozen === true;
+  const consolidatedLabel = frozen && data?.consolidated_at ? formatTimestamp(data.consolidated_at) : null;
 
   return (
     <div className="space-y-6">
@@ -68,7 +64,25 @@ export default function ResultsPage() {
           </div>
         </div>
       </SectionCard>
-      <SectionCard title="Resultados y exportación" subtitle="Consolidación automática de puntajes, porcentaje y nota equivalente">
+      <SectionCard
+        title="Resultados y exportación"
+        subtitle={
+          frozen
+            ? "Los resultados están consolidados: la app sirve el acta congelada al cierre, no un recálculo en vivo."
+            : "Consolidación automática de puntajes, porcentaje y nota equivalente"
+        }
+      >
+        {frozen ? (
+          <div
+            data-testid="results-frozen-chip"
+            className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-800"
+          >
+            <span aria-hidden>🔒</span>
+            {consolidatedLabel
+              ? `Resultados consolidados el ${consolidatedLabel}`
+              : "Resultados consolidados"}
+          </div>
+        ) : null}
         <div className="flex flex-wrap gap-3">
           <a
             className="btn-primary"
@@ -84,13 +98,19 @@ export default function ResultsPage() {
             target="_blank"
             rel="noreferrer"
           >
-            Exportar PDF contingencia
+            Descargar respaldo de contingencia (PDF)
           </a>
         </div>
+        <p className="mt-3 text-xs leading-5 text-slate-500">
+          El Excel consolidado es el que contiene los resultados (puntajes, porcentaje y nota por
+          estudiante). El PDF de contingencia <strong>no</strong> trae resultados: es la hoja
+          imprimible con instrucciones, materiales y listado de estaciones para operar el examen si
+          se cae la plataforma.
+        </p>
       </SectionCard>
       <SectionCard title="Consolidado por estudiante" subtitle="Vista tipo ficha de resultados, pensada para una lectura académica clara y una exportación segura.">
         {loading ? (
-          <p>Calculando resultados...</p>
+          <p>{frozen ? "Cargando resultados consolidados..." : "Calculando resultados..."}</p>
         ) : error ? (
           <p>{error}</p>
         ) : (
@@ -139,6 +159,23 @@ export default function ResultsPage() {
               { key: "evaluator_submissions", label: "Evaluaciones" },
               { key: "student_submissions", label: "Respuestas" },
               {
+                key: "blank_auto_submissions",
+                label: "Autoenvíos en blanco",
+                render: (row) => {
+                  const n = row.blank_auto_submissions ?? 0;
+                  return n > 0 ? (
+                    <span
+                      className="status-badge status-badge-warning"
+                      title="Respuestas cerradas por el servidor al vencer el cronómetro, sin contenido. Suman 0 al consolidado; no fueron entregas deliberadas."
+                    >
+                      {n}
+                    </span>
+                  ) : (
+                    <span className="text-[var(--color-text-muted)]">—</span>
+                  );
+                },
+              },
+              {
                 key: "last_activity_at",
                 label: "Última actividad",
                 render: (row) => formatTimestamp(row.last_activity_at),
@@ -165,6 +202,18 @@ export default function ResultsPage() {
               { key: "checkins_count", label: "Check-ins" },
               { key: "evaluations_count", label: "Evaluaciones" },
               { key: "student_submissions_count", label: "Respuestas" },
+              {
+                key: "blank_auto_submissions",
+                label: "Autoenvíos en blanco",
+                render: (row) => {
+                  const n = row.blank_auto_submissions ?? 0;
+                  return n > 0 ? (
+                    <span className="status-badge status-badge-warning">{n}</span>
+                  ) : (
+                    <span className="text-[var(--color-text-muted)]">—</span>
+                  );
+                },
+              },
               {
                 key: "status",
                 label: "Estado",
@@ -203,6 +252,19 @@ export default function ResultsPage() {
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="status-badge status-badge-info">{String(item.type ?? "actividad")}</span>
                   <p className="text-sm font-semibold text-[var(--color-text-main)]">{String(item.label ?? "")}</p>
+                  {item.submission_kind && item.submission_kind !== "manual" ? (
+                    <span
+                      className={
+                        item.submission_kind === "auto" && item.answered === false
+                          ? "status-badge status-badge-warning"
+                          : "status-badge status-badge-muted"
+                      }
+                    >
+                      {item.submission_kind === "auto" && item.answered === false
+                        ? "Automática · sin respuesta"
+                        : submissionKindLabel(item.submission_kind)}
+                    </span>
+                  ) : null}
                   <span className="text-xs text-[var(--color-text-muted)]">{formatTimestamp(item.timestamp)}</span>
                 </div>
                 <p className="mt-2 text-sm text-[var(--color-text-secondary)]">{String(item.detail ?? "")}</p>

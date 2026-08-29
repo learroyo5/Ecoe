@@ -31,9 +31,14 @@ Guía operativa para correr un ECOE real con esta plataforma servida desde
 
 ## Durante el examen
 
-- Rotación normal: el evaluador confirma por número ECOE → evalúa → el sistema se limpia para el siguiente. El evaluador tiene **tiempo de estación + transición** para terminar de registrar (el semáforo pasa a ámbar/rojo).
-- Kioscos: no requieren intervención; muestran al estudiante confirmado y se autoenvían al expirar el tiempo.
-- Incidencia que detiene el circuito: **Pausar** en el panel en vivo + registrar la incidencia. OJO: la pausa NO extiende las ventanas de envío de la rotación en curso — si a alguien se le venció la ventana por la pausa, el coordinador registra ese caso por **contingencia** (queda auditado y marcado).
+- **El cronómetro del panel en vivo es el reloj de todo el circuito** (OPT-20 F2). La ventana de envío de cada estación es *el fin de la fase actual del panel*, no "hora de check-in + tiempo de estación". Consecuencias operativas:
+  - **El que entra tarde a una estación tiene menos tiempo**: su deadline es el de la rotación en curso, no un cronómetro propio que arranca al confirmarlo.
+  - **Pausar CONGELA la ventana para todos**: mientras el panel está en pausa no se vence ninguna estación y los kioscos no autoenvían. Al **Reanudar**, la ventana sigue desde donde quedó. Ya no hace falta correr a registrar por contingencia a cada estudiante tras una pausa.
+  - El que **entra después de reanudar** hereda el tiempo que reste de esa fase (menos tiempo), no la fase completa.
+- Rotación normal: el evaluador confirma por número ECOE → evalúa → el sistema se limpia para el siguiente. El evaluador tiene hasta el **fin de la fase de transición** para terminar de registrar (el semáforo pasa a ámbar/rojo).
+- Kioscos: no requieren intervención; muestran al estudiante confirmado. El servidor autoenvía las respuestas al vencer la fase aunque la tablet esté bloqueada o sin conexión: lo que el estudiante alcanzó a escribir queda guardado en el servidor de forma continua. Una estación sin ninguna respuesta queda marcada como **"sin respuesta"** (suma 0, pero se distingue de un 0 real en la trazabilidad).
+- **Buzzer / cortar una fase antes de tiempo**: la acción `expire_phase` del panel en vivo cierra las ventanas de esa fase y dispara el autoenvío **sin** avanzar el número de estación. Útil cuando una fase debe cerrarse ya pero la rotación aún no avanza.
+- Incidencia que detiene el circuito: **Pausar** en el panel en vivo + registrar la incidencia. La pausa ya congela las ventanas (ver arriba); solo quedan para contingencia los casos de papel (caída de red) o un envío que se venció **antes** de alcanzar a pausar.
 - Caída de red en una estación: seguir en papel (PDF de contingencia); transcribir después por contingencia, ANTES de cerrar el ECOE.
 - Si el panel en vivo muestra "Reconectando" en rojo por más de un minuto: revisar red del puesto de coordinación; el cronómetro del servidor sigue corriendo y se resincroniza solo al volver.
 

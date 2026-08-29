@@ -1,17 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
-import { resolveLiveWsUrl } from "@/lib/ws";
+import { useLiveTimer } from "@/lib/ws";
 import { SectionCard } from "@/components/section-card";
 import { StatusNotice } from "@/components/forms";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { EvaluatorDraftsPanel } from "@/components/evaluator-drafts-panel";
 import type { Incident } from "@/lib/types";
-
-const WS_RETRY_MS = 5000;
 
 type TimerState = {
   status: string;
@@ -47,8 +46,13 @@ function ProjectorEscape({ onExit }: { onExit: () => void }) {
 }
 
 export default function LivePage() {
-  const { authenticated, eventId } = useECOE();
-  const wsRef = useRef<WebSocket | null>(null);
+  const { authenticated, eventId, user, eventRoles } = useECOE();
+  // El panel de contingencia solo lo opera coordinación (mismo gate que
+  // /contingency/evaluator-record); un cronometrador no lo ve.
+  const canRunContingency =
+    user?.role === "admin_global" ||
+    eventRoles.includes("admin_ecoe") ||
+    eventRoles.includes("coordinador_operativo");
   const [timerState, setTimerState] = useState<TimerState>({
     status: "sin_sesion",
     remaining_seconds: 0,
@@ -58,8 +62,9 @@ export default function LivePage() {
   });
 
   const [controlMessage, setControlMessage] = useState<string | null>(null);
-  const [wsConnected, setWsConnected] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showStartConfirm, setShowStartConfirm] = useState(false);
+  const [showExpireConfirm, setShowExpireConfirm] = useState(false);
   const [projectorMode, setProjectorMode] = useState(false);
 
   // Incident form state
@@ -122,91 +127,56 @@ export default function LivePage() {
     return () => clearInterval(intervalId);
   }, [timerState, receivedAt]);
 
-  // WebSocket en tiempo real con reconexión automática: si la conexión cae,
-  // el indicador lo muestra y se reintenta cada pocos segundos en vez de
-  // dejar el panel congelado en silencio.
-  useEffect(() => {
-    let disposed = false;
-    let retryTimer: number | null = null;
+  // WebSocket en tiempo real con reconexión automática (hook compartido
+  // useLiveTimer): el timer_update alimenta timerState y receivedAt, los
+  // frames de incidencias van por onMessage, y al (re)conectar se resincroniza
+  // el estado vía REST por si cambió mientras estuvimos desconectados.
+  const handleLiveMessage = useCallback((data: Record<string, unknown>) => {
+    if (data.type === "incident_created") {
+      const incident = data.incident as Incident;
+      setIncidents((prev) => [
+        { ...incident, ecoe_event_id: Number(data.ecoe_event_id) } as Incident,
+        ...prev,
+      ]);
+    } else if (data.type === "incident_resolved") {
+      setIncidents((prev) =>
+        prev.map((inc) =>
+          inc.id === data.incident_id ? { ...inc, resolved: Boolean(data.resolved) } : inc,
+        ),
+      );
+    }
+  }, []);
 
-    const connect = () => {
-      if (disposed) return;
-      const wsUrl = resolveLiveWsUrl(eventId);
-      let ws: WebSocket | null = null;
-      try {
-        ws = new WebSocket(wsUrl);
-        wsRef.current = ws;
-      } catch {
-        setWsConnected(false);
-        retryTimer = window.setTimeout(connect, WS_RETRY_MS);
-        return;
-      }
-
-      ws.onopen = () => {
-        setWsConnected(true);
-        // Resincroniza el estado al reconectar: pudo cambiar mientras
-        // estuvimos desconectados.
-        api.live(eventId).then((data) => {
-          setTimerState((prev) => ({
-            ...prev,
-            status: String(data.status ?? prev.status),
-            remaining_seconds: Number(data.remaining_seconds ?? prev.remaining_seconds),
-            current_station_index: Number(data.current_station_index ?? prev.current_station_index),
-            station_time_seconds: Number(data.station_time_seconds ?? prev.station_time_seconds),
-            transition_time_seconds: Number(data.transition_time_seconds ?? prev.transition_time_seconds),
-          }));
-          setReceivedAt(Date.now());
-        }).catch(() => { /* el WS seguirá empujando updates */ });
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === "timer_update") {
-            setTimerState({
-              status: data.status,
-              remaining_seconds: data.remaining_seconds,
-              current_station_index: data.current_station_index,
-              station_time_seconds: data.station_time_seconds,
-              transition_time_seconds: data.transition_time_seconds,
-            });
-            setReceivedAt(Date.now());
-          } else if (data.type === "incident_created") {
-            setIncidents((prev) => [
-              { ...data.incident, ecoe_event_id: data.ecoe_event_id } as Incident,
-              ...prev,
-            ]);
-          } else if (data.type === "incident_resolved") {
-            setIncidents((prev) =>
-              prev.map((inc) =>
-                inc.id === data.incident_id ? { ...inc, resolved: data.resolved } : inc,
-              ),
-            );
-          }
-        } catch {
-          // Ignore malformed messages
-        }
-      };
-
-      ws.onclose = () => {
-        setWsConnected(false);
-        if (!disposed) {
-          retryTimer = window.setTimeout(connect, WS_RETRY_MS);
-        }
-      };
-      ws.onerror = () => {
-        try { ws?.close(); } catch { /* onclose reintenta */ }
-      };
-    };
-
-    connect();
-
-    return () => {
-      disposed = true;
-      if (retryTimer) window.clearTimeout(retryTimer);
-      try { wsRef.current?.close(); } catch { /* ignore */ }
-    };
+  const resyncFromRest = useCallback(() => {
+    api.live(eventId).then((data) => {
+      setTimerState((prev) => ({
+        ...prev,
+        status: String(data.status ?? prev.status),
+        remaining_seconds: Number(data.remaining_seconds ?? prev.remaining_seconds),
+        current_station_index: Number(data.current_station_index ?? prev.current_station_index),
+        station_time_seconds: Number(data.station_time_seconds ?? prev.station_time_seconds),
+        transition_time_seconds: Number(data.transition_time_seconds ?? prev.transition_time_seconds),
+      }));
+      setReceivedAt(Date.now());
+    }).catch(() => { /* el WS seguirá empujando updates */ });
   }, [eventId]);
+
+  const { snapshot: liveSnapshot, connected: wsConnected } = useLiveTimer(eventId, {
+    onMessage: handleLiveMessage,
+    onReconnect: resyncFromRest,
+  });
+
+  useEffect(() => {
+    if (!liveSnapshot) return;
+    setTimerState({
+      status: liveSnapshot.status,
+      remaining_seconds: liveSnapshot.remainingSeconds,
+      current_station_index: liveSnapshot.currentStationIndex,
+      station_time_seconds: liveSnapshot.stationTimeSeconds,
+      transition_time_seconds: liveSnapshot.transitionTimeSeconds,
+    });
+    setReceivedAt(liveSnapshot.receivedAt);
+  }, [liveSnapshot]);
 
   const sendAction = useCallback(async (action: string) => {
     setControlMessage(null);
@@ -261,6 +231,22 @@ export default function LivePage() {
     const mins = Math.floor(totalSeconds / 60);
     const secs = totalSeconds % 60;
     return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  // OPT-9 / H-vivo-8: "Iniciar" resetea el reloj a tiempo completo para todos
+  // los paneles. Si la rotación ya está en curso (o pausada / en transición, o
+  // más allá de la estación 1) un click accidental es destructivo → pedir
+  // confirmación como en "Reiniciar". El primer arranque no tiene fricción.
+  const timerAlreadyRunning =
+    ["running", "paused", "transition"].includes(timerState.status) ||
+    timerState.current_station_index > 1;
+
+  const handleStartClick = () => {
+    if (timerAlreadyRunning) {
+      setShowStartConfirm(true);
+    } else {
+      sendAction("start");
+    }
   };
 
   const activeIncidents = incidents.filter((i) => !i.resolved);
@@ -355,7 +341,11 @@ export default function LivePage() {
                   key={action}
                   className={action === "start" ? "btn-primary" : "btn-secondary"}
                   onClick={() =>
-                    action === "reset" ? setShowResetConfirm(true) : sendAction(action)
+                    action === "reset"
+                      ? setShowResetConfirm(true)
+                      : action === "start"
+                        ? handleStartClick()
+                        : sendAction(action)
                   }
                 >
                   {action === "start" ? "Iniciar" :
@@ -372,6 +362,15 @@ export default function LivePage() {
                 🖥 Vista proyector
               </button>
             </div>
+            {/* OPT-20 F2: el buzzer — cierra la ventana de envío de la estación
+                en curso sin avanzar de estación. El servidor recoge los
+                formularios pendientes (autoenvío). */}
+            <button
+              className="mt-3 inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-500/90 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-500"
+              onClick={() => setShowExpireConfirm(true)}
+            >
+              ⏹ Finalizar la estación en curso ahora
+            </button>
           </div>
           <div className="clinical-panel">
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--color-primary)]">
@@ -397,6 +396,30 @@ export default function LivePage() {
             sendAction("reset");
           }}
           onCancel={() => setShowResetConfirm(false)}
+        />
+        <ConfirmDialog
+          open={showStartConfirm}
+          title="Reiniciar el cronómetro con Iniciar"
+          message="El cronómetro ya está en marcha. Iniciar lo vuelve a poner en el tiempo completo de la estación actual para todos los paneles conectados. Si querés reanudar tras una pausa, usá Reanudar. ¿Continuar?"
+          confirmLabel="Iniciar de nuevo"
+          severity="danger"
+          onConfirm={() => {
+            setShowStartConfirm(false);
+            sendAction("start");
+          }}
+          onCancel={() => setShowStartConfirm(false)}
+        />
+        <ConfirmDialog
+          open={showExpireConfirm}
+          title="Finalizar la estación en curso ahora"
+          message="Se cierra la ventana de envío de la estación actual y el servidor recoge automáticamente los formularios de estudiante que quedaron sin enviar. El cronómetro NO avanza a la siguiente estación. ¿Continuar?"
+          confirmLabel="Finalizar estación"
+          severity="danger"
+          onConfirm={() => {
+            setShowExpireConfirm(false);
+            sendAction("expire_phase");
+          }}
+          onCancel={() => setShowExpireConfirm(false)}
         />
       </SectionCard>
 
@@ -471,6 +494,9 @@ export default function LivePage() {
           </div>
         )}
       </SectionCard>
+
+      {/* OPT-20 F3: contingencia de coordinación — finalizar borradores de evaluador */}
+      {canRunContingency ? <EvaluatorDraftsPanel eventId={eventId} /> : null}
     </div>
   );
 }

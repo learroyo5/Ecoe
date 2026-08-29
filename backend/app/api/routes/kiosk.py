@@ -26,10 +26,12 @@ from app.models.entities import (
     StudentResponse,
 )
 from app.models.enums import RoleCode
-from app.schemas.common import KioskSubmit
+from app.schemas.common import KioskDraftUpsert, KioskSubmit
 from app.services.authorization import ensure_event_access
 from app.services.dependencies import require_roles
+from app.services.drafts import discard_checkin_draft, upsert_checkin_draft
 from app.services.grading import apply_auto_grading
+from app.services.live_sweep import sweep_expired_phases
 from app.services.kiosk import (
     authenticate_kiosk_token,
     issue_kiosk_token,
@@ -37,10 +39,12 @@ from app.services.kiosk import (
 )
 from app.utils.clock import utcnow_naive
 from app.utils.helpers import (
-    checkin_submission_deadline,
     ensure_checkin_within_time,
     ensure_submission_stage,
+    isoformat_or_none as _isoformat_or_none,
+    live_phase_snapshot,
     resolve_session_mode,
+    resolve_submission_deadline,
 )
 from app.utils.serializers import serialize_media_asset
 
@@ -121,6 +125,10 @@ def kiosk_context(
 ):
     station = db.get(Station, kiosk.station_id)
     ecoe_event = db.get(ECOEEvent, kiosk.ecoe_event_id)
+    # OPT-20 F2 safety net: finalize any check-in whose live phase already
+    # expired (a tablet that died mid-station, an operator who advanced the
+    # clock). Idempotent and a no-op while the phase is still open or paused.
+    sweep_expired_phases(db, ecoe_event)
     base = {
         "station_id": station.id,
         "station_number": station.station_number,
@@ -129,6 +137,10 @@ def kiosk_context(
         "ecoe_name": ecoe_event.name,
         "ecoe_status": str(ecoe_event.status),
         "server_now": utcnow_naive().isoformat(),
+        # OPT-20 F1: live-clock snapshot for the first paint and the no-WS
+        # fallback (a kiosk without WebSocket still learns about a pause on the
+        # next 3s poll).
+        **live_phase_snapshot(db, kiosk.ecoe_event_id),
     }
     checkin = db.scalar(
         select(StationCheckIn)
@@ -173,7 +185,9 @@ def kiosk_context(
             "media_assets": [serialize_media_asset(asset) for asset in media_assets],
             "station_time_minutes": station.station_time_minutes,
             "confirmed_at": checkin.confirmed_at.isoformat(),
-            "submission_deadline": checkin_submission_deadline(checkin, station).isoformat(),
+            "submission_deadline": _isoformat_or_none(
+                resolve_submission_deadline(db, ecoe_event, checkin, station)
+            ),
             "student_response_exists": response_exists,
         },
     }
@@ -188,14 +202,28 @@ def kiosk_submit(
     ecoe_event = db.get(ECOEEvent, kiosk.ecoe_event_id)
     session_mode = ensure_submission_stage(ecoe_event)
     station = db.get(Station, kiosk.station_id)
-    # Lookup by id without status filter: if the evaluator already confirmed
-    # the next student, the previous check-in is "cerrado" but its answer is
-    # still valid while its own time window holds (identity is fixed by the
-    # check-in row, so nothing can be submitted on someone else's behalf).
     checkin = db.get(StationCheckIn, payload.checkin_id)
     if not checkin or checkin.station_id != kiosk.station_id:
         raise HTTPException(status_code=400, detail="El check-in no corresponde a esta estación")
-    ensure_checkin_within_time(checkin, station)
+    # El kiosco solo acepta el ingreso `confirmado` vigente de la estación.
+    # Si la rotación ya avanzó (el evaluador confirmó al siguiente estudiante,
+    # cerrando este ingreso), el envío tardío del estudiante anterior va por
+    # contingencia, no por el kiosco (ver docs/OPERACION_DIA_EXAMEN.md). Así
+    # una request armada a mano no puede atribuir respuestas a un estudiante
+    # previo cuya ventana de tiempo siga abierta (OPT-8 / H-vivo-5).
+    active_checkin = db.scalar(
+        select(StationCheckIn)
+        .where(
+            StationCheckIn.station_id == kiosk.station_id,
+            StationCheckIn.status == "confirmado",
+        )
+        .order_by(StationCheckIn.confirmed_at.desc(), StationCheckIn.id.desc())
+    )
+    if not active_checkin or active_checkin.id != payload.checkin_id:
+        raise HTTPException(
+            status_code=409, detail="No hay un ingreso activo para esta estación"
+        )
+    ensure_checkin_within_time(db, ecoe_event, checkin, station)
     existing_response = db.scalar(
         select(StudentResponse).where(
             StudentResponse.ecoe_event_id == kiosk.ecoe_event_id,
@@ -217,10 +245,12 @@ def kiosk_submit(
         answers=payload.answers,
         locked=True,
         by_contingency=False,
+        submission_kind="manual",
     )
     apply_auto_grading(response, station.student_form_definition)
     db.add(response)
     db.flush()
+    discard_checkin_draft(db, checkin.id)
     db.add(AuditLog(
         user_email=f"kiosk:station-{kiosk.station_id}",
         action="submit_student_response_kiosk",
@@ -236,6 +266,34 @@ def kiosk_submit(
     db.commit()
     db.refresh(response)
     return {"saved": True, "response_id": response.id}
+
+
+@router.put("/kiosk/draft")
+def kiosk_draft(
+    payload: KioskDraftUpsert,
+    db: Session = Depends(get_db),
+    kiosk: StationKioskSession = Depends(_kiosk_session),
+):
+    """Best-effort server-side autosave of the kiosk's in-progress answers."""
+    ecoe_event = db.get(ECOEEvent, kiosk.ecoe_event_id)
+    ensure_submission_stage(ecoe_event)
+    checkin = db.get(StationCheckIn, payload.checkin_id)
+    if not checkin or checkin.station_id != kiosk.station_id:
+        raise HTTPException(status_code=400, detail="El check-in no corresponde a esta estación")
+    active_checkin = db.scalar(
+        select(StationCheckIn)
+        .where(
+            StationCheckIn.station_id == kiosk.station_id,
+            StationCheckIn.status == "confirmado",
+        )
+        .order_by(StationCheckIn.confirmed_at.desc(), StationCheckIn.id.desc())
+    )
+    if not active_checkin or active_checkin.id != payload.checkin_id:
+        raise HTTPException(status_code=409, detail="No hay un ingreso activo para esta estación")
+    draft = upsert_checkin_draft(db, checkin, payload.answers)
+    db.commit()
+    db.refresh(draft)
+    return {"saved": True, "updated_at": draft.updated_at.isoformat() if draft.updated_at else None}
 
 
 @router.get("/kiosk/media/{asset_id}")

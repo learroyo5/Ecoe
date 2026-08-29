@@ -5,6 +5,7 @@ export type RoleCode =
   | "coeditor_docente"
   | "coordinador_operativo"
   | "evaluador"
+  | "corrector"
   | "estudiante"
   | "cronometrador";
 
@@ -28,7 +29,7 @@ export const NAV_ITEMS: { label: string; href: string; allowedFor: RoleCode[] }[
   { label: "Panel en vivo", href: "/live", allowedFor: ["admin_global", "admin_ecoe", "coordinador_operativo", "cronometrador"] },
   { label: "Evaluador", href: "/evaluator", allowedFor: ["evaluador", "admin_ecoe", "coordinador_operativo"] },
   { label: "Estudiante", href: "/student", allowedFor: ["estudiante"] },
-  { label: "Corrección", href: "/grading", allowedFor: ["admin_global", "admin_ecoe", "coeditor_docente"] },
+  { label: "Corrección", href: "/grading", allowedFor: ["admin_global", "admin_ecoe", "coeditor_docente", "corrector"] },
   { label: "Resultados", href: "/results", allowedFor: ["admin_global", "admin_ecoe", "coeditor_docente", "coordinador_operativo"] },
 ];
 
@@ -36,6 +37,8 @@ export function defaultRouteForRole(role: string): string {
   switch (role) {
     case "evaluador":
       return "/evaluator";
+    case "corrector":
+      return "/grading";
     case "estudiante":
       return "/student";
     case "cronometrador":

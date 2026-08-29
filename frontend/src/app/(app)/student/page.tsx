@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { api } from "@/lib/api";
+import { api, isAlreadySubmittedError } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
 import { clockOffsetMs, parseServerUtc } from "@/lib/time";
+import { useLiveTimer } from "@/lib/ws";
 import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 import { ConfirmDialog, TIMER_TONE_CLASSES, timerTone } from "@/components/confirm-dialog";
@@ -26,6 +27,11 @@ type ResolvedMediaAsset = MediaAsset & {
   objectUrl: string;
 };
 
+// OPT-20 F2: autoguardado server-side del borrador — debounce por cambio +
+// latido periódico, además del respaldo en localStorage.
+const DRAFT_DEBOUNCE_MS = 800;
+const DRAFT_HEARTBEAT_MS = 10000;
+
 export default function StudentPage() {
   const { authenticated, eventId } = useECOE();
   const [ecoeNumber, setEcoeNumber] = useState("");
@@ -41,6 +47,8 @@ export default function StudentPage() {
   const [resolvedMediaAssets, setResolvedMediaAssets] = useState<ResolvedMediaAsset[]>([]);
   const [expandedImage, setExpandedImage] = useState<ResolvedMediaAsset | null>(null);
   const autoSubmitAttemptedRef = useRef(false);
+  const answersRef = useRef(answers);
+  answersRef.current = answers;
 
   const confirmedAt = String(context?.confirmed_at ?? "");
   const serverNow = String(context?.server_now ?? "");
@@ -56,6 +64,16 @@ export default function StudentPage() {
   const submissionDeadline = String(context?.submission_deadline ?? "");
   const draftStorageKey = context ? `student-station-draft-${String(context.checkin_id)}` : "";
   const submitted = Boolean(context?.student_response_exists);
+
+  // ── Reloj central (OPT-20 F1) ──────────────────────────────────────
+  const { snapshot: liveSnapshot, connected: wsConnected } = useLiveTimer(eventId, {
+    enabled: authenticated,
+  });
+  const liveStatus =
+    liveSnapshot?.status ?? (context?.live_status as string | null | undefined) ?? null;
+  const livePaused =
+    liveStatus === "paused" || (!wsConnected && Boolean(context?.paused));
+  const autoSubmitAllowed = liveStatus == null || liveStatus === "running";
   const questions = useMemo(() => {
     const rawQuestions = (
       context?.student_form_definition as { questions?: StudentFormQuestion[] } | undefined
@@ -129,8 +147,39 @@ export default function StudentPage() {
     }
   }, [answers, draftStorageKey, submitted]);
 
+  // ── Borrador server-side (OPT-20 F2) ────────────────────────────────
+  // Mejor esfuerzo: le da al barrido server-side algo que finalizar aunque
+  // el navegador se congele. El localStorage de arriba sigue siendo el
+  // respaldo local.
+  const pushDraft = useCallback(() => {
+    if (!context) return;
+    api
+      .studentDraft({
+        ecoe_event_id: eventId,
+        station_id: Number(context.station_id),
+        student_id: Number(context.student_id),
+        checkin_id: Number(context.checkin_id),
+        answers: answersRef.current,
+      })
+      .catch(() => {
+        /* el localStorage cubre el respaldo local */
+      });
+  }, [context, eventId]);
+
   useEffect(() => {
-    if (!context || !confirmedAt || !timerDurationSeconds) {
+    if (!context || submitted) return;
+    const timeoutId = window.setTimeout(pushDraft, DRAFT_DEBOUNCE_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [answers, context, submitted, pushDraft]);
+
+  useEffect(() => {
+    if (!context || submitted) return;
+    const intervalId = window.setInterval(pushDraft, DRAFT_HEARTBEAT_MS);
+    return () => window.clearInterval(intervalId);
+  }, [context, submitted, pushDraft]);
+
+  useEffect(() => {
+    if (!context || !confirmedAt || !timerDurationSeconds || livePaused) {
       return;
     }
 
@@ -138,11 +187,21 @@ export default function StudentPage() {
       setNowMs(Date.now());
     }, 1000);
     return () => window.clearInterval(intervalId);
-  }, [context, confirmedAt, timerDurationSeconds]);
+  }, [context, confirmedAt, timerDurationSeconds, livePaused]);
 
   const remainingSeconds = useMemo(() => {
     if (!context) {
       return null;
+    }
+    // OPT-20 F2: con WebSocket activo y una fase de estación corriendo, el
+    // `phaseEndsAt` del frame WS manda; el `submission_deadline` del REST es
+    // sólo el arranque/fallback.
+    if (
+      wsConnected &&
+      liveSnapshot?.status === "running" &&
+      liveSnapshot.phaseEndsAt != null
+    ) {
+      return Math.max(0, Math.floor((liveSnapshot.phaseEndsAt - nowMs) / 1000));
     }
     if (submissionDeadline) {
       return Math.max(
@@ -158,7 +217,16 @@ export default function StudentPage() {
       Math.floor((nowMs + serverClockOffsetMs - parseServerUtc(confirmedAt)) / 1000),
     );
     return Math.max(timerDurationSeconds - elapsedSeconds, 0);
-  }, [confirmedAt, context, nowMs, serverClockOffsetMs, submissionDeadline, timerDurationSeconds]);
+  }, [
+    confirmedAt,
+    context,
+    liveSnapshot,
+    nowMs,
+    serverClockOffsetMs,
+    submissionDeadline,
+    timerDurationSeconds,
+    wsConnected,
+  ]);
 
   const timerLabel = useMemo(() => {
     if (remainingSeconds === null) {
@@ -185,16 +253,31 @@ export default function StudentPage() {
       return;
     }
     const currentDraftStorageKey = draftStorageKey;
-    await api.submitStudent(
-      {
-        checkin_id: Number(context.checkin_id),
-        ecoe_event_id: eventId,
-        station_id: Number(context.station_id),
-        student_id: Number(context.student_id),
-        answers,
-        locked: true,
-      },
-    );
+    try {
+      await api.submitStudent(
+        {
+          checkin_id: Number(context.checkin_id),
+          ecoe_event_id: eventId,
+          station_id: Number(context.station_id),
+          student_id: Number(context.student_id),
+          answers,
+          locked: true,
+        },
+      );
+    } catch (error) {
+      // OPT-20 F2: el barrido server-side ganó la carrera — la respuesta ya
+      // quedó registrada. Para el estudiante es un éxito: cerramos igual.
+      if (isAlreadySubmittedError(error)) {
+        if (currentDraftStorageKey && typeof window !== "undefined") {
+          window.localStorage.removeItem(currentDraftStorageKey);
+        }
+        resetToIdentification(
+          "La respuesta de esta estación ya había sido enviada y quedó registrada.",
+        );
+        return;
+      }
+      throw error;
+    }
     if (currentDraftStorageKey && typeof window !== "undefined") {
       window.localStorage.removeItem(currentDraftStorageKey);
     }
@@ -209,6 +292,10 @@ export default function StudentPage() {
     if (!context || submitted || autoSubmitting || remainingSeconds !== 0 || autoSubmitAttemptedRef.current) {
       return;
     }
+    // OPT-20 F1: en pausa (o con el reloj central detenido) no autoenviamos.
+    if (!autoSubmitAllowed) {
+      return;
+    }
     autoSubmitAttemptedRef.current = true;
     const timeoutId = window.setTimeout(() => {
       setAutoSubmitting(true);
@@ -220,7 +307,7 @@ export default function StudentPage() {
         .finally(() => setAutoSubmitting(false));
     }, 0);
     return () => window.clearTimeout(timeoutId);
-  }, [autoSubmitting, context, remainingSeconds, submitResponse, submitted]);
+  }, [autoSubmitAllowed, autoSubmitting, context, remainingSeconds, submitResponse, submitted]);
 
   const updateAnswer = (questionIndex: number, value: string | string[]) => {
     setAnswers((current) => ({
@@ -298,6 +385,23 @@ export default function StudentPage() {
       title="Interfaz del estudiante"
       subtitle="Primero verifica tu número ECOE y tu nombre; solo después de la confirmación del evaluador se habilita el envío."
     >
+      {livePaused ? (
+        <div
+          role="alert"
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/95 px-6 text-center text-white"
+        >
+          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-white/60">
+            Pausa
+          </p>
+          <p className="mt-6 text-3xl font-bold md:text-4xl">
+            PAUSA — el cronómetro está detenido
+          </p>
+          <p className="mt-4 max-w-xl text-lg text-white/70">
+            Espera a que coordinación reanude el examen. Tu respuesta a medio
+            escribir se conserva.
+          </p>
+        </div>
+      ) : null}
       {expandedImage ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 p-4"

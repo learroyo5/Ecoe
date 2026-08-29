@@ -16,19 +16,26 @@ from app.models.entities import (
     StudentResponse,
 )
 from app.models.enums import RoleCode
-from app.schemas.common import EvaluatorSubmission, StationCheckInCreate
+from app.schemas.common import (
+    EvaluatorDraftUpsert,
+    EvaluatorSubmission,
+    StationCheckInCreate,
+)
 from app.services.dependencies import get_current_user, require_roles
 from app.services.authorization import ensure_event_access
+from app.services.live_sweep import sweep_expired_phases
 from app.utils.helpers import (
-    checkin_submission_deadline,
     ensure_checkin_within_time,
     ensure_primary_station_assignment,
     ensure_submission_stage,
     find_student_by_ecoe_number,
+    isoformat_or_none,
+    live_phase_snapshot,
     get_active_checkin,
     normalize_email,
     resolve_session_mode,
     resolve_station_max_score,
+    resolve_submission_deadline,
     utcnow_naive,
 )
 from app.utils.serializers import serialize_assessment_tool
@@ -101,10 +108,25 @@ def evaluator_context(
             .order_by(StationCheckIn.confirmed_at.desc(), StationCheckIn.id.desc())
         )
 
+    ecoe_event = db.get(ECOEEvent, ecoe_event_id)
+    # OPT-20 F2 safety net: finalize expired student phases before reporting
+    # the evaluator's window. Idempotent; never touches evaluator records.
+    if sweep_expired_phases(db, ecoe_event).get("closed_checkins"):
+        # A swept check-in may have been this station's active one.
+        if focus_station:
+            active_checkin = db.scalar(
+                select(StationCheckIn)
+                .where(
+                    StationCheckIn.ecoe_event_id == ecoe_event_id,
+                    StationCheckIn.station_id == focus_station.id,
+                    StationCheckIn.status == "confirmado",
+                )
+                .order_by(StationCheckIn.confirmed_at.desc(), StationCheckIn.id.desc())
+            )
+
     student = db.get(Student, active_checkin.student_id) if active_checkin else None
     station = db.get(Station, active_checkin.station_id) if active_checkin else None
     assessment_tool = serialize_assessment_tool(db, station.assessment_tool_id if station else None)
-    ecoe_event = db.get(ECOEEvent, ecoe_event_id)
     # Scoped by the current session mode: a submission recorded during the
     # pilotaje must not mark the station as "already sent" for the real run.
     current_mode = resolve_session_mode(ecoe_event)
@@ -145,15 +167,20 @@ def evaluator_context(
             "evaluator_instruction": station.evaluator_instruction if station else "",
             "confirmed_at": active_checkin.confirmed_at.isoformat(),
             "station_time_minutes": station.station_time_minutes if station else 0,
-            "submission_deadline": checkin_submission_deadline(active_checkin, station).isoformat(),
-            "evaluator_deadline": checkin_submission_deadline(
-                active_checkin, station,
-                extra_minutes=float(station.transition_time_minutes or 0),
-            ).isoformat(),
+            "submission_deadline": isoformat_or_none(
+                resolve_submission_deadline(db, ecoe_event, active_checkin, station)
+            ),
+            "evaluator_deadline": isoformat_or_none(
+                resolve_submission_deadline(
+                    db, ecoe_event, active_checkin, station, for_evaluator=True
+                )
+            ),
             "evaluator_submission_exists": evaluator_submission_exists,
             "student_response_exists": student_response_exists,
         } if active_checkin and student and station else None,
         "server_now": utcnow_naive().isoformat(),
+        # OPT-20 F1: live-clock snapshot for the first paint + no-WS fallback.
+        **live_phase_snapshot(db, ecoe_event_id),
     }
 
 
@@ -168,7 +195,7 @@ def confirm_station_checkin(
                         RoleCode.coordinador_operativo.value,
                         RoleCode.evaluador.value)
     ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
-    ensure_submission_stage(ecoe_event)
+    session_mode = ensure_submission_stage(ecoe_event)
     station = db.get(Station, payload.station_id)
     if not station or station.ecoe_event_id != payload.ecoe_event_id:
         raise HTTPException(status_code=404, detail="Estación no encontrada")
@@ -214,6 +241,7 @@ def confirm_station_checkin(
         evaluator_email=normalize_email(user.email),
         evaluator_name=user.full_name,
         status="confirmado",
+        mode=session_mode,
     )
     db.add(checkin)
     db.flush()
@@ -244,14 +272,136 @@ def confirm_station_checkin(
         "assessment_tool": serialize_assessment_tool(db, station.assessment_tool_id),
         "station_time_minutes": station.station_time_minutes,
         "confirmed_at": checkin.confirmed_at.isoformat(),
-        "submission_deadline": checkin_submission_deadline(checkin, station).isoformat(),
-        "evaluator_deadline": checkin_submission_deadline(
-            checkin, station,
-            extra_minutes=float(station.transition_time_minutes or 0),
-        ).isoformat(),
+        "submission_deadline": isoformat_or_none(
+            resolve_submission_deadline(db, ecoe_event, checkin, station)
+        ),
+        "evaluator_deadline": isoformat_or_none(
+            resolve_submission_deadline(
+                db, ecoe_event, checkin, station, for_evaluator=True
+            )
+        ),
         "server_now": utcnow_naive().isoformat(),
         "evaluator_submission_exists": False,
         "student_response_exists": False,
+    }
+
+
+def _ensure_station_assigned_to_evaluator(
+    db: Session, user, event_roles: set[str], ecoe_event_id: int, station_id: int
+) -> None:
+    """An evaluador may only write for their own principal station.
+
+    admin_ecoe / coordinador_operativo operate any station (contingency,
+    an unstaffed station); an evaluador stays scoped to their assignment.
+    """
+    if event_roles & {RoleCode.admin_ecoe.value, RoleCode.coordinador_operativo.value}:
+        return
+    assignment = db.scalar(
+        select(StaffAssignment).where(
+            StaffAssignment.ecoe_event_id == ecoe_event_id,
+            StaffAssignment.email == normalize_email(user.email),
+            StaffAssignment.role_code == RoleCode.evaluador.value,
+        )
+    )
+    assigned_station_ids, _ = ensure_primary_station_assignment(assignment)
+    if not assignment or station_id not in assigned_station_ids:
+        raise HTTPException(
+            status_code=403,
+            detail="No puedes registrar evaluaciones para una estación no asignada a tu cuenta",
+        )
+
+
+@router.put("/evaluator/draft")
+def upsert_evaluator_draft(
+    payload: EvaluatorDraftUpsert,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("evaluador", "coordinador_operativo", "admin_ecoe")),
+):
+    """Best-effort server-side autosave of a half-filled evaluator record (D3).
+
+    The unique key (event, station, student, mode) means the draft *is* the
+    row: a later ``POST /evaluator/submit`` (or a contingency finalization)
+    promotes it to ``is_draft=False``. Passes through the stage gate, the
+    evaluator's own station scope and the evaluator submission window.
+    """
+    event_roles = ensure_event_access(db, user, payload.ecoe_event_id,
+                        RoleCode.admin_ecoe.value,
+                        RoleCode.coordinador_operativo.value,
+                        RoleCode.evaluador.value)
+    ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
+    session_mode = ensure_submission_stage(ecoe_event)
+    station = db.get(Station, payload.station_id)
+    if not station or station.ecoe_event_id != payload.ecoe_event_id:
+        raise HTTPException(status_code=400, detail="La estación no pertenece al ECOE indicado")
+    _ensure_station_assigned_to_evaluator(
+        db, user, event_roles, payload.ecoe_event_id, payload.station_id
+    )
+    checkin = get_active_checkin(db, payload.ecoe_event_id, payload.station_id,
+                                 payload.student_id, payload.checkin_id)
+    if not checkin:
+        raise HTTPException(
+            status_code=400,
+            detail="El borrador solo puede guardarse para un estudiante confirmado en esta estación",
+        )
+    ensure_checkin_within_time(db, ecoe_event, checkin, station, for_evaluator=True)
+    authoritative_max = resolve_station_max_score(db, station)
+    if authoritative_max <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="La estación no tiene un puntaje máximo válido configurado",
+        )
+    provisional_score = max(0.0, min(float(payload.score_obtained), authoritative_max))
+
+    record = db.scalar(
+        select(EvaluatorRecord).where(
+            EvaluatorRecord.ecoe_event_id == payload.ecoe_event_id,
+            EvaluatorRecord.station_id == payload.station_id,
+            EvaluatorRecord.student_id == payload.student_id,
+            EvaluatorRecord.mode == session_mode,
+        )
+    )
+    if record is not None and not record.is_draft:
+        raise HTTPException(
+            status_code=409,
+            detail="La evaluación de esta estación ya fue enviada y no admite borrador",
+        )
+    if record is None:
+        record = EvaluatorRecord(
+            ecoe_event_id=payload.ecoe_event_id,
+            station_id=payload.station_id,
+            student_id=payload.student_id,
+            mode=session_mode,
+            is_draft=True,
+            by_contingency=False,
+            submission_kind="manual",
+        )
+    record.evaluator_name = payload.evaluator_name
+    record.score_obtained = provisional_score
+    record.max_score = authoritative_max
+    record.observation = payload.observation
+    record.answers = payload.answers
+    db.add(record)
+    db.flush()
+    db.add(
+        AuditLog(
+            user_email=user.email,
+            action="save_evaluation_draft",
+            target_type="EvaluatorRecord",
+            target_id=str(record.id),
+            payload={
+                "ecoe_event_id": payload.ecoe_event_id,
+                "station_id": payload.station_id,
+                "student_id": payload.student_id,
+            },
+        )
+    )
+    db.commit()
+    db.refresh(record)
+    return {
+        "saved": True,
+        "record_id": record.id,
+        "is_draft": True,
+        "updated_at": isoformat_or_none(record.updated_at),
     }
 
 
@@ -278,27 +428,11 @@ def submit_evaluator_record(
     if not station or station.ecoe_event_id != payload.ecoe_event_id:
         raise HTTPException(status_code=400, detail="La estación no pertenece al ECOE indicado")
     # The evaluator records after the student leaves, so the window also
-    # includes the transition time.
-    ensure_checkin_within_time(
-        checkin, station, extra_minutes=float(station.transition_time_minutes or 0)
+    # spans the transition phase (see resolve_submission_deadline).
+    ensure_checkin_within_time(db, ecoe_event, checkin, station, for_evaluator=True)
+    _ensure_station_assigned_to_evaluator(
+        db, user, event_roles, payload.ecoe_event_id, payload.station_id
     )
-    if not event_roles & {
-        RoleCode.admin_ecoe.value,
-        RoleCode.coordinador_operativo.value,
-    }:
-        evaluator_assignment = db.scalar(
-            select(StaffAssignment).where(
-                StaffAssignment.ecoe_event_id == payload.ecoe_event_id,
-                StaffAssignment.email == normalize_email(user.email),
-                StaffAssignment.role_code == RoleCode.evaluador.value,
-            )
-        )
-        assigned_station_ids, _ = ensure_primary_station_assignment(evaluator_assignment)
-        if not evaluator_assignment or payload.station_id not in assigned_station_ids:
-            raise HTTPException(
-                status_code=403,
-                detail="No puedes enviar evaluaciones para una estación no asignada a tu cuenta",
-            )
     # Duplicates are scoped by mode: a record saved during the pilotaje must
     # not block the same student/station during the real execution.
     existing_record = db.scalar(
@@ -309,7 +443,7 @@ def submit_evaluator_record(
             EvaluatorRecord.mode == session_mode,
         )
     )
-    if existing_record:
+    if existing_record is not None and not existing_record.is_draft:
         raise HTTPException(
             status_code=400,
             detail="La evaluación de esta estación ya fue enviada y no puede modificarse durante el ECOE",
@@ -327,18 +461,36 @@ def submit_evaluator_record(
             status_code=400,
             detail=f"El puntaje obtenido debe estar entre 0 y {authoritative_max}",
         )
-    record = EvaluatorRecord(
-        **payload.model_dump(exclude={"checkin_id", "max_score", "mode", "by_contingency"}),
-        max_score=authoritative_max,
-        mode=session_mode,
-        by_contingency=False,
-    )
+    if existing_record is not None:
+        # OPT-20 F3: promote an autosaved draft to a final record. The max
+        # score is recomputed authoritatively, never trusting the draft.
+        record = existing_record
+        record.evaluator_name = payload.evaluator_name
+        record.score_obtained = payload.score_obtained
+        record.max_score = authoritative_max
+        record.observation = payload.observation
+        record.answers = payload.answers
+        record.is_draft = False
+        # OPT-20 F4 (D4): a record that started as a buzzer-time autosave and
+        # was completed afterwards is traceable as `draft_finalized`, distinct
+        # from a `manual` submit made within the window.
+        record.submission_kind = "draft_finalized"
+        action = "submit_evaluation_from_draft"
+    else:
+        record = EvaluatorRecord(
+            **payload.model_dump(exclude={"checkin_id", "max_score", "mode", "by_contingency"}),
+            max_score=authoritative_max,
+            mode=session_mode,
+            by_contingency=False,
+            submission_kind="manual",
+        )
+        action = "submit_evaluation"
     db.add(record)
     db.flush()
     db.add(
         AuditLog(
             user_email=user.email,
-            action="submit_evaluation",
+            action=action,
             target_type="EvaluatorRecord",
             target_id=str(record.id),
             payload=payload.model_dump(),

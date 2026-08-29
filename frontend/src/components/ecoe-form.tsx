@@ -9,11 +9,6 @@ const CIRCUIT_MODES = [
   { value: "mixto", label: "Mixto", description: "Combinación de modalidades según necesidad pedagógica de cada estación." },
 ] as const;
 
-const STATUS_OPTIONS = [
-  "borrador", "en_configuracion", "listo_para_pilotaje", "en_pilotaje",
-  "pilotaje_validado", "publicado", "en_ejecucion", "cerrado", "archivado",
-] as const;
-
 /** Shared field wrapper — consistent layout across all ECOE forms */
 export function FormField({
   label,
@@ -95,12 +90,10 @@ export function validateECOEPayload(values: Record<string, string>): Record<stri
 export function ECOEFormFields({
   values,
   onChange,
-  includeStatus = false,
   errors = {},
 }: {
   values: Record<string, string>;
   onChange: (name: string, value: string) => void;
-  includeStatus?: boolean;
   errors?: Record<string, string>;
 }) {
   const update = (name: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -165,7 +158,7 @@ export function ECOEFormFields({
         })()}
       </FormField>
 
-      <FormField label="Total de estaciones" description="Número total de estaciones del ECOE (mín. 1)." error={errors.total_stations}>
+      <FormField label="Estaciones estimadas" description="Estimación para planificación. La validación de completitud usa el número real de estaciones construidas, no este valor." error={errors.total_stations}>
         <input type="number" min="1" value={values.total_stations ?? ""} onChange={update("total_stations")} />
       </FormField>
 
@@ -173,7 +166,7 @@ export function ECOEFormFields({
         <input type="number" min="1" value={values.total_groups ?? ""} onChange={update("total_groups")} />
       </FormField>
 
-      <FormField label="Total de estudiantes" description="Cantidad total estimada de estudiantes (0 = aún sin definir).">
+      <FormField label="Estudiantes estimados" description="Estimación para planificación. La nómina real se carga en la sección Estudiantes; este valor no la reemplaza.">
         <input type="number" min="0" value={values.total_students ?? ""} onChange={update("total_students")} />
       </FormField>
 
@@ -194,22 +187,6 @@ export function ECOEFormFields({
       <FormField label="Porcentaje de aprobación" description="Nota mínima en porcentaje para considerar aprobado." error={errors.passing_reference_percent}>
         <input type="number" min="0" max="100" step="0.1" value={values.passing_reference_percent ?? ""} onChange={update("passing_reference_percent")} />
       </FormField>
-
-      {/* ── Estado (solo edición) ── */}
-      {includeStatus ? (
-        <FormField
-          label="Estado del ECOE"
-          description="Puedes ajustar el estado aquí; si el backend detecta una transición inválida, te devolverá el error correspondiente."
-        >
-          <select value={values.status ?? "borrador"} onChange={update("status")}>
-            {STATUS_OPTIONS.map((status) => (
-              <option key={status} value={status}>
-                {status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
-              </option>
-            ))}
-          </select>
-        </FormField>
-      ) : null}
     </div>
   );
 }
@@ -254,7 +231,7 @@ export function toEditableValues(ecoeEvent: Record<string, unknown> | null): Rec
   };
 }
 
-export { STATUS_OPTIONS, CIRCUIT_MODES };
+export { CIRCUIT_MODES };
 
 // ── Status transition UI ─────────────────────────────────────────────
 
@@ -330,9 +307,11 @@ interface StatusTransitionBarProps {
   onTransition: (targetStatus: string) => void;
   disabled?: boolean;
   loading?: boolean;
+  /** Números de estación con corrección diferida sin puntuar: se advierte al cerrar. */
+  pendingDeferredGradingStations?: number[];
 }
 
-export function StatusTransitionBar({ currentStatus, onTransition, disabled = false, loading = false }: StatusTransitionBarProps) {
+export function StatusTransitionBar({ currentStatus, onTransition, disabled = false, loading = false, pendingDeferredGradingStations = [] }: StatusTransitionBarProps) {
   const [confirming, setConfirming] = useState<TransitionAction | null>(null);
 
   const transitions = STATUS_TRANSITIONS[currentStatus] ?? [];
@@ -386,6 +365,13 @@ export function StatusTransitionBar({ currentStatus, onTransition, disabled = fa
           <div className="mx-4 w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl animate-fade-in" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-semibold text-slate-900">{confirming.confirmTitle}</h3>
             <p className="mt-2 text-sm text-slate-600">{confirming.confirmMessage}</p>
+            {confirming.target === "cerrado" && pendingDeferredGradingStations.length > 0 ? (
+              <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Hay corrección diferida pendiente en la(s) estación(es){" "}
+                {pendingDeferredGradingStations.join(", ")}. Esas respuestas no sumarán a Resultados si
+                cierras ahora.
+              </p>
+            ) : null}
             <div className="mt-6 flex gap-3 justify-end">
               <button className="btn-secondary" onClick={() => setConfirming(null)}>Cancelar</button>
               <button
