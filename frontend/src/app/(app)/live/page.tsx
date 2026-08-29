@@ -46,7 +46,13 @@ function ProjectorEscape({ onExit }: { onExit: () => void }) {
 }
 
 export default function LivePage() {
-  const { authenticated, eventId } = useECOE();
+  const { authenticated, eventId, user, eventRoles } = useECOE();
+  // El panel de contingencia solo lo opera coordinación (mismo gate que
+  // /contingency/evaluator-record); un cronometrador no lo ve.
+  const canRunContingency =
+    user?.role === "admin_global" ||
+    eventRoles.includes("admin_ecoe") ||
+    eventRoles.includes("coordinador_operativo");
   const [timerState, setTimerState] = useState<TimerState>({
     status: "sin_sesion",
     remaining_seconds: 0,
@@ -457,7 +463,7 @@ export default function LivePage() {
       </SectionCard>
 
       {/* OPT-20 F3: contingencia de coordinación — finalizar borradores de evaluador */}
-      <EvaluatorDraftsPanel eventId={eventId} />
+      {canRunContingency ? <EvaluatorDraftsPanel eventId={eventId} /> : null}
     </div>
   );
 }

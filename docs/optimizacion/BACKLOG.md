@@ -237,7 +237,7 @@ frontend). Plan redactado: `PLANES/OPT-20__cronometro-sincronico.md`.
     `GET /contingency/evaluator-drafts/{id}` para coordinación; advertencia de cierre en
     `compute_ecoe_validation`. Frontend: autosave del borrador en `/evaluator` (debounce + latido + onBlur)
     con indicador, mensaje "quedó como borrador" al vencer la fase, y panel de finalización por contingencia
-    en `/live` (`EvaluatorDraftsPanel`). `pytest` SQLite (268) + Postgres verdes; alembic up/down/up desde
+    en `/live` (`EvaluatorDraftsPanel`). `pytest` SQLite (259) + Postgres verdes; alembic up/down/up desde
     base limpia; lint + build + vitest (47) verdes. **Pendiente**: `./scripts/run_e2e.sh` (necesita Docker,
     no ejecutable en la sesión)._
   - **F4** (M) — `submission_kind` en `student_responses` y `evaluator_records` + flag `answered` por pregunta

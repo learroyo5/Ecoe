@@ -464,7 +464,7 @@ persista como **borrador** (no como 0 final) y se pueda completar en contingenci
 > - [x] Tests: `tests/test_opt20_f3_evaluator_draft.py` (10, con negativos: estación no asignada 403, fuera
 >   de etapa 409, registro final ya existente 409, lectura de coordinación por evaluador 403). Ningún test
 >   previo debilitado (el default `is_draft=False` mantiene la semántica anterior).
-> - [x] `python3 -m pytest` SQLite (268) y Postgres verdes · alembic upgrade/downgrade/upgrade desde base
+> - [x] `python3 -m pytest` SQLite (259) y Postgres verdes · alembic upgrade/downgrade/upgrade desde base
 >   limpia OK · `npm run lint && npm run build && npx vitest run` (47) verdes.
 > - [ ] `./scripts/run_e2e.sh` — escenario de borrador de evaluador (sandbox sin Docker).
 
