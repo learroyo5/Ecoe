@@ -265,7 +265,7 @@ comportamiento observable el día del examen** (D2).
 > - [x] Backend d) acción `expire_phase` en `TimerAction` (valida contra `TIMER_ACTIONS`, no toca
 >   el grafo del ECOE) + barrido disparado en `start`/`reset`/`next_transition` (grace normal) y
 >   `expire_phase` (forzado, grace 0); barrido perezoso en `/kiosk/context`,
->   `/evaluator/context/{id}`, `/live/{id}`, `/student/access`.
+>   `/evaluator/context/{id}`, `/live/{id}`.
 > - [x] Tests: `tests/test_opt20_f2_deadline_and_sweep.py` (18, con negativos) · `python3 -m pytest`
 >   SQLite y Postgres verdes (249) · alembic upgrade/downgrade/upgrade desde base limpia OK ·
 >   ningún test previo debilitado.
