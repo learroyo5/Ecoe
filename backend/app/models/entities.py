@@ -513,8 +513,12 @@ class EvaluatorRecord(Base, TimestampMixin):
     # ``is_draft=False``. A draft never enters ``compute_results`` and does not
     # count as a completed evaluation in the traceability report.
     is_draft: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    # Cómo entró el registro: `manual` (envío del evaluador), `contingency`
-    # (finalizado fuera de ventana por coordinación). El cliente nunca lo elige.
+    # Cómo entró el registro (OPT-20 F4, D4): `manual` (envío del evaluador
+    # dentro de ventana), `contingency` (registrado de cero fuera de ventana por
+    # coordinación) o `draft_finalized` (un autoguardado del buzzer promovido a
+    # final después, vía `/evaluator/submit` o contingencia). El cliente nunca
+    # lo elige; lo estampa el servidor. `by_contingency` se mantiene como marca
+    # de auditoría del flujo de contingencia (decisión #9).
     submission_kind: Mapped[str] = mapped_column(
         String(16), nullable=False, server_default="manual", default="manual",
     )

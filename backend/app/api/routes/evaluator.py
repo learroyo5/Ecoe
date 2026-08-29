@@ -471,7 +471,10 @@ def submit_evaluator_record(
         record.observation = payload.observation
         record.answers = payload.answers
         record.is_draft = False
-        record.submission_kind = "manual"
+        # OPT-20 F4 (D4): a record that started as a buzzer-time autosave and
+        # was completed afterwards is traceable as `draft_finalized`, distinct
+        # from a `manual` submit made within the window.
+        record.submission_kind = "draft_finalized"
         action = "submit_evaluation_from_draft"
     else:
         record = EvaluatorRecord(
@@ -479,6 +482,7 @@ def submit_evaluator_record(
             max_score=authoritative_max,
             mode=session_mode,
             by_contingency=False,
+            submission_kind="manual",
         )
         action = "submit_evaluation"
     db.add(record)

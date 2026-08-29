@@ -325,7 +325,9 @@ def test_evaluator_draft_and_promotion_via_submit(client):
             assert record.is_draft is False
             assert record.score_obtained == 14
             assert record.max_score == 20  # recalculado, no el 999 del cliente
-            assert record.submission_kind == "manual"
+            # OPT-20 F4 (plan §"FASE 4", D4): un borrador del buzzer promovido a
+            # final vía /evaluator/submit se marca `draft_finalized`, no `manual`.
+            assert record.submission_kind == "draft_finalized"
             rows = db.scalars(
                 select(EvaluatorRecord).where(
                     EvaluatorRecord.ecoe_event_id == 1,
@@ -458,7 +460,10 @@ def test_contingency_finalizes_evaluator_draft(client):
             record = db.get(EvaluatorRecord, record_id)
             assert record.is_draft is False
             assert record.by_contingency is True
-            assert record.submission_kind == "contingency"
+            # OPT-20 F4 (plan §"FASE 4", D4): reconciliación de F3 — un borrador
+            # finalizado por contingencia se marca `draft_finalized` (antes
+            # `contingency`); `by_contingency` sigue siendo la marca del flujo.
+            assert record.submission_kind == "draft_finalized"
             assert record.score_obtained == 13
             assert record.max_score == 20
             row = next(

@@ -155,7 +155,11 @@ def submit_evaluator_record_by_contingency(
         record.answers = payload.answers
         record.is_draft = False
         record.by_contingency = True
-        record.submission_kind = "contingency"
+        # OPT-20 F4 (D4): the record originated as a buzzer-time autosave and
+        # was completed later, so its kind is `draft_finalized` even though it
+        # was closed through the contingency flow. `by_contingency` stays the
+        # explicit audit marker of that flow (decision #9: keep both).
+        record.submission_kind = "draft_finalized"
         action = "finalize_evaluation_draft_contingency"
     else:
         record = EvaluatorRecord(
