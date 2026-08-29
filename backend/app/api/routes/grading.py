@@ -98,6 +98,10 @@ def list_gradable_responses(
         rows.append({
             "response_id": response.id,
             "mode": str(response.mode),
+            # OPT-20 F4 (D4): origen del envío para que el corrector sepa si la
+            # respuesta fue automática/en blanco y no una entrega deliberada.
+            "submission_kind": response.submission_kind or "manual",
+            "by_contingency": response.by_contingency,
             "student_id": response.student_id,
             "student_name": f"{student.name} {student.last_name}" if student else "",
             "student_ecoe_number": student.ecoe_number if student else "",

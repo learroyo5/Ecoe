@@ -319,6 +319,14 @@ def build_traceability_report(
             and item.score_obtained is None
         )
         pending_evaluator_drafts = len(student_evaluator_drafts)
+        # OPT-20 F4 (D4): respuestas autoenviadas por el barrido sin contenido —
+        # suman 0/max al consolidado como cualquiera, pero se marcan para que
+        # coordinación distinga una omisión de una entrega real.
+        blank_auto_submissions = sum(
+            1
+            for item in student_form_responses
+            if item.submission_kind == "auto" and not item.answers
+        )
         if (
             not student_checkins
             and not student_evaluations
@@ -348,6 +356,7 @@ def build_traceability_report(
             "missing_student_submissions": max(0, required_student_form_station_count - len(student_form_responses)),
             "pending_deferred_gradings": pending_deferred_gradings,
             "pending_evaluator_drafts": pending_evaluator_drafts,
+            "blank_auto_submissions": blank_auto_submissions,
             "completion_status": completion_status,
             "last_checkin_at": latest_checkin.isoformat() if latest_checkin else None,
             "last_evaluation_at": latest_evaluation.isoformat() if latest_evaluation else None,
@@ -364,6 +373,11 @@ def build_traceability_report(
         station_evaluations = [item for item in evaluator_records if item.station_id == station.id]
         station_evaluator_drafts = [item for item in evaluator_drafts if item.station_id == station.id]
         station_form_responses = [item for item in student_responses if item.station_id == station.id]
+        station_blank_auto_submissions = sum(
+            1
+            for item in station_form_responses
+            if item.submission_kind == "auto" and not item.answers
+        )
         latest_station_activity = max(
             [item for item in [
                 station_checkins[0].confirmed_at if station_checkins else None,
@@ -390,6 +404,7 @@ def build_traceability_report(
             "evaluations_count": len(station_evaluations),
             "pending_evaluator_drafts": len(station_evaluator_drafts),
             "student_submissions_count": len(station_form_responses),
+            "blank_auto_submissions": station_blank_auto_submissions,
             "last_activity_at": latest_station_activity.isoformat() if latest_station_activity else None,
         })
 
@@ -444,11 +459,28 @@ def build_traceability_report(
         station = stations_by_id.get(response.station_id)
         if not student or not station:
             continue
+        # OPT-20 F4 (D4): etiquetar el origen de la respuesta y si llegó vacía.
+        kind = response.submission_kind or "manual"
+        is_blank = not response.answers
+        if kind == "auto" and is_blank:
+            label = "Respuesta del estudiante (automática, sin respuesta)"
+            verb = "no alcanzó a responder (autoenvío en blanco) en"
+        elif kind == "auto":
+            label = "Respuesta del estudiante (automática)"
+            verb = "quedó autoenviada en"
+        elif kind == "contingency":
+            label = "Respuesta del estudiante (por contingencia)"
+            verb = "fue registrada por contingencia en"
+        else:
+            label = "Respuesta del estudiante"
+            verb = "respondió en"
         activity_log.append({
             "timestamp": response.submitted_at.isoformat(), "type": "respuesta_estudiante",
-            "label": "Respuesta del estudiante",
-            "detail": f"{student.ecoe_number} - {student.name} {student.last_name} respondió en estación {station.station_number}: {station.name}.",
+            "label": label,
+            "detail": f"{student.ecoe_number} - {student.name} {student.last_name} {verb} estación {station.station_number}: {station.name}.",
             "actor": f"{student.name} {student.last_name}", "mode": response.mode,
+            "submission_kind": kind,
+            "answered": not is_blank,
         })
     activity_log.sort(key=lambda item: item["timestamp"], reverse=True)
 
@@ -462,6 +494,11 @@ def build_traceability_report(
             "evaluator_submissions": len(evaluator_records),
             "pending_evaluator_drafts": len(evaluator_drafts),
             "student_submissions": len(student_responses),
+            "blank_auto_submissions": sum(
+                1
+                for item in student_responses
+                if item.submission_kind == "auto" and not item.answers
+            ),
             "pilot_runs": len(pilot_runs),
         },
         "student_traceability": student_traceability,
@@ -470,15 +507,69 @@ def build_traceability_report(
     }
 
 
+_SUBMISSION_KIND_LABELS = {
+    "manual": "Manual",
+    "auto": "Automático",
+    "contingency": "Contingencia",
+    "draft_finalized": "Borrador finalizado",
+}
+
+
+def _submission_trace_rows(db: Session, ecoe_event_id: int) -> list[dict]:
+    """Un indicador por respuesta de la ejecución real (OPT-20 F4, D4).
+
+    Marca origen (`manual`/`auto`/`contingencia`) y si la respuesta llegó en
+    blanco. Es metadato de trazabilidad, no de nota: se calcula en vivo aun
+    con el consolidado congelado. El rediseño completo del export es OPT-19;
+    aquí solo se agrega este indicador mínimo en una hoja aparte.
+    """
+    students = {
+        s.id: s
+        for s in db.scalars(select(Student).where(Student.ecoe_event_id == ecoe_event_id)).all()
+    }
+    stations = {
+        s.id: s
+        for s in db.scalars(select(Station).where(Station.ecoe_event_id == ecoe_event_id)).all()
+    }
+    responses = db.scalars(
+        select(StudentResponse)
+        .where(
+            StudentResponse.ecoe_event_id == ecoe_event_id,
+            StudentResponse.mode == SessionMode.ejecucion.value,
+        )
+        .order_by(StudentResponse.station_id.asc(), StudentResponse.id.asc())
+    ).all()
+    rows: list[dict] = []
+    for response in responses:
+        student = students.get(response.student_id)
+        station = stations.get(response.station_id)
+        kind = response.submission_kind or "manual"
+        answered = bool(response.answers)
+        rows.append({
+            "ecoe_number": student.ecoe_number if student else None,
+            "student_name": f"{student.name} {student.last_name}" if student else "",
+            "station_number": station.station_number if station else None,
+            "station_name": station.name if station else "",
+            "origen": _SUBMISSION_KIND_LABELS.get(kind, kind),
+            "en_blanco": "Sí" if (kind == "auto" and not answered) else "No",
+            "score_obtained": response.score_obtained,
+            "max_score": response.max_score,
+            "by_contingency": response.by_contingency,
+        })
+    return rows
+
+
 def export_results_excel(db: Session, ecoe_event_id: int, *, persist: bool = False) -> bytes:
     if persist:
         data = persist_results(db, ecoe_event_id)
     else:
         data, _, _ = read_results(db, ecoe_event_id)
     df = pd.DataFrame(data)
+    trace_df = pd.DataFrame(_submission_trace_rows(db, ecoe_event_id))
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="consolidado")
+        trace_df.to_excel(writer, index=False, sheet_name="trazabilidad_envios")
     return buffer.getvalue()
 
 
