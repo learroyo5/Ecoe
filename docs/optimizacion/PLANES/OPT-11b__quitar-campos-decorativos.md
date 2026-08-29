@@ -169,10 +169,10 @@ totales ya no se renderizan; el submit no manda esas claves) y de
 
 ## Verificación
 
-- [ ] `cd backend && python3 -m pytest`
-- [ ] `TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q` (opción a: obligatorio por la migración)
-- [ ] opción (a): `alembic upgrade head` + `downgrade -1` + `upgrade head` desde base limpia (SQLite + Postgres)
-- [ ] `cd frontend && npm run lint && npm run build && npx vitest run`
+- [x] `cd backend && python3 -m pytest` — 366 passed (SQLite)
+- [x] `TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q` — 366 passed (Postgres, migraciones reales)
+- [x] `alembic upgrade head` desde base limpia — OK, sin migración nueva (opción b)
+- [x] `cd frontend && npm run lint && npm run build && npx vitest run` — lint sin errores, build OK, 61 vitest passed
 
 ## Decisiones para el usuario
 
@@ -186,4 +186,28 @@ totales ya no se renderizan; el submit no manda esas claves) y de
 ## Estado de aprobación
 
 - Propuesto por: optimizador — 2026-08-29
-- Aprobado por usuario: ⬜ pendiente
+- Aprobado por usuario: ✅ opción (b), `total_students` = sólo `is_active`, columnas legadas se conservan
+- Implementado por: implementador — 2026-08-29 · rama `opt/OPT-11b-campos-derivados` · `en-verificación`
+
+## Notas de implementación
+
+- **Columnas ORM**: se conservan en `ecoe_events` (sin migración). Marcadas como
+  legadas y no autoritativas en el docstring de `entities.py`. Se siguen
+  escribiendo con su `default=0` y quedan huérfanas; ningún código las lee.
+- **Schema**: `total_stations`/`total_students` salieron de `ECOEEventBase` →
+  `ECOEEventCreate`/`ECOEEventUpdate` ya no los aceptan (Pydantic ignora las
+  claves extra, sin `extra="forbid"`). Se agregaron a `ECOEEventRead` como
+  campos derivados.
+- **Handlers**: `_with_counts(db, event)` (detalle/create/update/timing/duplicate)
+  y `_with_counts_bulk(db, events)` (lista, dos `GROUP BY`, sin N+1) en
+  `api/routes/ecoe.py`. Asignan en memoria antes de serializar, sin `commit`.
+- **`duplicate_ecoe`** y **`seed.py`**: dejan de setear los campos.
+- **Tests existentes**: ninguno requirió cambios. Los ~15 que pasan
+  `total_stations=` al constructor `ECOEEvent(...)` siguen válidos (la columna
+  existe); los ~7 que lo mandan en el body de `POST`/`PUT` no rompen (Pydantic
+  ignora extras) y no asertan sobre el valor de respuesta.
+- **Test nuevo**: `backend/tests/test_ecoe_counts_opt11b.py` — 7 casos:
+  contrato (create/update ignoran los totales del cliente), lectura refleja
+  filas reales, estudiante inactivo no cuenta, agregar estación sube el conteo,
+  lista por evento, `duplicate` reporta las estaciones copiadas y 0 estudiantes,
+  regresión de `compute_ecoe_validation`.
