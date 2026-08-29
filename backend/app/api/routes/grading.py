@@ -13,7 +13,7 @@ from app.models.entities import (
     Student,
     StudentResponse,
 )
-from app.models.enums import ECOEStatus, RoleCode
+from app.models.enums import ECOEStatus, RoleCode, SessionMode
 from app.schemas.common import ManualGradeSubmit
 from app.services.authorization import ensure_event_access
 from app.services.dependencies import require_roles
@@ -61,8 +61,12 @@ def list_gradable_responses(
 ):
     event_roles = ensure_event_access(db, user, ecoe_event_id, *GRADING_ROLES)
     station_scope = _corrector_station_scope(db, user, ecoe_event_id, event_roles)
+    # La corrección diferida solo aplica a la ejecución real: las respuestas
+    # de pilotaje no entran a la cola (corregirlas sería trabajo perdido y no
+    # alimentan el consolidado).
     filters = [
         StudentResponse.ecoe_event_id == ecoe_event_id,
+        StudentResponse.mode == SessionMode.ejecucion.value,
         StudentResponse.max_score.is_not(None),
     ]
     if station_scope is not None:

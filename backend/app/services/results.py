@@ -201,12 +201,22 @@ def build_traceability_report(
         select(StationCheckIn).where(StationCheckIn.ecoe_event_id == ecoe_event_id)
         .order_by(StationCheckIn.confirmed_at.desc(), StationCheckIn.id.desc())
     ).all()
+    # Trazabilidad y checklist de cierre son sobre la EJECUCIÓN REAL: los
+    # registros de pilotaje no cuentan para completitud, faltantes ni el
+    # consolidado (mismo criterio que `compute_results`). Un estudiante que
+    # solo pilotó y faltó a la ejecución debe verse como "sin actividad".
     evaluator_records = db.scalars(
-        select(EvaluatorRecord).where(EvaluatorRecord.ecoe_event_id == ecoe_event_id)
+        select(EvaluatorRecord).where(
+            EvaluatorRecord.ecoe_event_id == ecoe_event_id,
+            EvaluatorRecord.mode == SessionMode.ejecucion.value,
+        )
         .order_by(EvaluatorRecord.created_at.desc(), EvaluatorRecord.id.desc())
     ).all()
     student_responses = db.scalars(
-        select(StudentResponse).where(StudentResponse.ecoe_event_id == ecoe_event_id)
+        select(StudentResponse).where(
+            StudentResponse.ecoe_event_id == ecoe_event_id,
+            StudentResponse.mode == SessionMode.ejecucion.value,
+        )
         .order_by(StudentResponse.submitted_at.desc(), StudentResponse.id.desc())
     ).all()
     pilot_runs = db.scalars(

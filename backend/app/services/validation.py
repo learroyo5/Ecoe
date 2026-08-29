@@ -16,7 +16,7 @@ from app.models.entities import (
     StudentResponse,
     User,
 )
-from app.models.enums import ECOEStatus, RoleCode, StationStatus
+from app.models.enums import ECOEStatus, RoleCode, SessionMode, StationStatus
 from app.utils.helpers import normalize_email
 
 # Etiquetas legibles de los estados internos, para textos visibles al usuario.
@@ -224,6 +224,10 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
                 .where(
                     StudentResponse.ecoe_event_id == ecoe_event.id,
                     StudentResponse.station_id.in_(deferred_ids),
+                    # Solo la ejecución real dispara la advertencia de cierre:
+                    # una respuesta de pilotaje sin puntuar no es trabajo
+                    # pendiente del corrector del evento real.
+                    StudentResponse.mode == SessionMode.ejecucion.value,
                     StudentResponse.score_obtained.is_(None),
                     StudentResponse.max_score.is_not(None),
                 )
@@ -442,6 +446,19 @@ def update_ecoe_status(
     commit: bool = True,
     actor_email: str | None = None,
 ) -> ECOEEvent:
+    """Aplica una transición del grafo `ALLOWED_STATUS_TRANSITIONS` y sus
+    efectos colaterales dentro de la misma transacción:
+
+    - `→ publicado`: crea la `LiveSession` inicial y pasa las estaciones a
+      `publicada`.
+    - `→ en_ejecucion`: cierra todos los `StationCheckIn` `confirmado` que
+      queden (son residuos del pilotaje — el gate de envíos no permite
+      check-ins reales antes de este punto), así el panel del evaluador y el
+      kiosco no muestran un estudiante viejo como "activo" y esos check-ins
+      no cuentan en la trazabilidad de la ejecución real.
+    - `→ cerrado`: consolida resultados (`persist_results`) y fuerza el cierre
+      de todos los check-ins abiertos, congelando la operación.
+    """
     validation = compute_ecoe_validation(db, ecoe_event)
     current_status = str(ecoe_event.status)
     if target_status not in ALLOWED_STATUS_TRANSITIONS:
@@ -480,6 +497,23 @@ def update_ecoe_status(
             }:
                 station.status = StationStatus.publicada.value
                 db.add(station)
+
+    if (
+        target_status == ECOEStatus.en_ejecucion.value
+        and current_status != ECOEStatus.en_ejecucion.value
+    ):
+        # Al entrar a la ejecución real, cualquier check-in `confirmado` que
+        # sobreviva es residuo del pilotaje: ciérralo para que no aparezca
+        # como sesión activa ni sume a los conteos de la ejecución.
+        residual_checkins = db.scalars(
+            select(StationCheckIn).where(
+                StationCheckIn.ecoe_event_id == ecoe_event.id,
+                StationCheckIn.status == "confirmado",
+            )
+        ).all()
+        for checkin in residual_checkins:
+            checkin.status = "cerrado"
+            db.add(checkin)
 
     if target_status == ECOEStatus.cerrado.value and current_status != ECOEStatus.cerrado.value:
         # Closing freezes the event: consolidate results in the same
