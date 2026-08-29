@@ -348,6 +348,19 @@ class KioskSubmit(BaseModel):
     answers: dict[str, Any]
 
 
+class KioskDraftUpsert(BaseModel):
+    checkin_id: int
+    answers: dict[str, Any] = {}
+
+
+class StudentDraftUpsert(BaseModel):
+    ecoe_event_id: int
+    station_id: int
+    student_id: int
+    checkin_id: int | None = None
+    answers: dict[str, Any] = {}
+
+
 class ManualGradeSubmit(BaseModel):
     scores: dict[str, float]
 

@@ -464,6 +464,29 @@ class StationCheckIn(Base, TimestampMixin):
     confirmed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive)
 
 
+class StationResponseDraft(Base, TimestampMixin):
+    """Server-side autosave of a student's in-progress station form (OPT-20 F2).
+
+    One row per active check-in. The kiosk / student screens push it on every
+    answer change (debounced) so the server always has something to finalize
+    when the phase expires (``services/live_sweep``). It is deleted the moment
+    a definitive ``StudentResponse`` exists for the check-in.
+    """
+
+    __tablename__ = "station_response_drafts"
+    __table_args__ = (
+        UniqueConstraint("checkin_id", name="uq_station_response_draft_checkin"),
+        Index("ix_station_response_drafts_event", "ecoe_event_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    checkin_id: Mapped[int] = mapped_column(ForeignKey("station_checkins.id"), nullable=False)
+    ecoe_event_id: Mapped[int] = mapped_column(ForeignKey("ecoe_events.id"), nullable=False)
+    station_id: Mapped[int] = mapped_column(ForeignKey("stations.id"), nullable=False)
+    student_id: Mapped[int] = mapped_column(ForeignKey("students.id"), nullable=False)
+    answers: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 class EvaluatorRecord(Base, TimestampMixin):
     __tablename__ = "evaluator_records"
     __table_args__ = (
@@ -504,6 +527,14 @@ class StudentResponse(Base, TimestampMixin):
     submitted_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive)
     locked: Mapped[bool] = mapped_column(Boolean, default=True)
     by_contingency: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Cómo entró la respuesta: `manual` (envío del estudiante/kiosco),
+    # `auto` (barrido server-side al vencer la fase, OPT-20 F2) o
+    # `contingency` (registro fuera de ventana por coordinación). El cliente
+    # nunca lo elige; lo estampa el servidor. Un `auto` en blanco suma 0 pero
+    # queda marcado para la trazabilidad (D4).
+    submission_kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="manual", default="manual",
+    )
     # Puntuacion del formulario: score_obtained queda NULL mientras haya
     # preguntas de correccion manual pendientes; solo las respuestas con
     # puntaje resuelto entran al consolidado (ver services/grading.py).
