@@ -43,7 +43,7 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 |----|--------|-------------------|-----------|---------|--------------|--------|------|
 | OPT-16 | Resultado por estación (poblar `StationResult`) + desglose `by_station` | H-dato-1 | alta (capacidad) | ancla del análisis final; hoy imposible ver desempeño por estación | M · sin migración (tabla ya existe) | **en-verificación** (`opt/OPT-16-station-results`) | `PLANES/OPT-16__resultado-por-estacion.md` |
 | OPT-17 | Normalización por estación (promedio de %-de-logro) | H-dato-3 | alta (capacidad) | una estación de `max_score` alto domina la nota agregada | S/M · sin migración (bajó de L: decisiones metodológicas tomadas) | **en-verificación** (`opt/OPT-17-normalizacion`) | `PLANES/OPT-17__normalizacion-por-estacion.md` |
-| OPT-18 | Analítica psicométrica (ejecución + pilotaje, item analysis por criterio) | H-dato-2 | alta (capacidad) | `pilotaje_validado` es un click sin respaldo cuantitativo | L–XL · sin migración · 3 sub-fases | **aprobado** | `PLANES/OPT-18__psicometria.md` |
+| OPT-18 | Analítica psicométrica (ejecución + pilotaje, item analysis por criterio) | H-dato-2 | alta (capacidad) | `pilotaje_validado` es un click sin respaldo cuantitativo | L–XL · sin migración · 3 sub-fases | **en-verificación** (`opt/OPT-18-psicometria`) — F1+F2+F3 | `PLANES/OPT-18__psicometria.md` |
 | OPT-19 | Export Excel enriquecido (multi-hoja) + limpieza `persist` muerto | H-dato-4 | media (capacidad) | análisis externo imposible; arg muerto viola "GET sin mutación" | M · sin migración (etiqueta ya hecha en `e642abd`) | **aprobado** | `PLANES/OPT-19__export-enriquecido.md` |
 
 ---
@@ -477,6 +477,18 @@ metodológicas (registradas en cada plan) y los tres planes están redactados:
 post-OPT-16 y correr en paralelo a la ventana de revisión de OPT-17 (ambos tocan `results.py` y
 `results/page.tsx`, conflicto pequeño y mecánico; rebasar OPT-18 sobre OPT-17 antes de merge). OPT-19
 estrictamente al final.
+
+**Actualización 2026-08-29 · OPT-18 → `en-verificación`** (rama `opt/OPT-18-psicometria`, desde
+`opt/OPT-17-normalizacion`). F1: `services/psychometrics.py` (por estación: n, media/DE, histograma de
+nota 1–7; inter-estación: α de Cronbach listwise + discriminación estación-total corregida; item
+analysis por criterio de pauta: dificultad + punto-biserial ítem-resto; casos degenerados → `None`).
+`GET /api/analytics/{id}/psychometrics?mode=ejecucion|pilotaje` (router nuevo `routes/analytics.py`,
+auth = `/results`). F2: `components/psychometrics-section.tsx` en `/results` y `/pilotage`. F3: el modal
+«Validar pilotaje» fetchea la analítica de pilotaje y muestra advertencias no bloqueantes;
+`AuditLog(validate_pilot)` en `update_ecoe_status`. Sin migración; `numpy>=1.26` explícito en
+`requirements.txt`. `ALLOWED_STATUS_TRANSITIONS` y `compute_ecoe_validation` sin tocar. Backend 347
+passed (SQLite + Postgres), frontend 61 passed / lint / build. Falta: validación cruzada en R/planilla
+y `run_e2e.sh` (sandbox sin red).
 
 **Actualización 2026-08-29 · OPT-17 → `en-verificación`** (rama `opt/OPT-17-normalizacion`, desde
 `opt/OPT-16-station-results`). `compute_results` reescrito sobre `compute_station_results`: `percentage`

@@ -289,15 +289,74 @@ renderizan con métricas presentes y **degradan** (sin romper) con
 
 ## Verificación
 
-- [ ] `cd backend && python3 -m pytest` (SQLite) — incluye `test_psychometrics.py`.
-- [ ] `TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q`
-- [ ] `DATABASE_URL=sqlite:////tmp/ecoe_alembic_check.db SECRET_KEY=test-secret ENVIRONMENT=test AUTO_SEED_DEMO=false alembic upgrade head`
-      llega a head **sin revisión nueva**.
-- [ ] `cd frontend && npm run lint && npm run build && npx vitest run`
+- [x] `cd backend && python3 -m pytest` (SQLite) — **347 passed** (24 nuevos en
+      `test_psychometrics.py`).
+- [x] `TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q` — **347 passed**.
+- [x] `DATABASE_URL=sqlite:////tmp/ecoe_opt18_check.db SECRET_KEY=test-secret ENVIRONMENT=test AUTO_SEED_DEMO=false alembic upgrade head`
+      llega a head (`n4o5p6q7r8s9`) **sin revisión nueva** — OPT-18 es sin
+      migración (solo `numpy` explícito en `requirements.txt`).
+- [x] `cd frontend && npm run lint` (0 errores, 2 warnings preexistentes)
+      `&& npm run build` (OK) `&& npx vitest run` — **61 passed** (2 nuevos).
 - [ ] Validación cruzada: exportar la matriz de %-por-estación de un evento demo,
       recalcular α y discriminación en R/planilla, comparar con el endpoint.
-- [ ] `./scripts/run_e2e.sh --grep "pilotaje|results"` sobre el stack de ramas
-      (si aplica).
+- [ ] `./scripts/run_e2e.sh --grep "pilotaje|results"` sobre el stack de ramas —
+      no corrido (restricción de sandbox de red en la sesión de implementación).
+
+## Sub-fases
+
+- [x] **F1** — `services/psychometrics.py` (por estación + inter-estación + item
+      analysis), `GET /api/analytics/{id}/psychometrics?mode=`, `numpy` explícito,
+      `AuditLog(validate_pilot)`. Rama `opt/OPT-18-psicometria` desde
+      `opt/OPT-17-normalizacion`.
+- [x] **F2** — `components/psychometrics-section.tsx` (compartido) en `/results`
+      (`mode=ejecucion`) y `/pilotage` (`mode=pilotaje`): tabla por estación +
+      histograma 1–7 + α + discriminación + item analysis + advertencias.
+- [x] **F3** — el modal «Validar pilotaje» (`ecoe-form.tsx` +
+      `app/(app)/ecoe/page.tsx`) hace su propio `GET .../psychometrics?mode=pilotaje`
+      y muestra las métricas fuera de umbral como advertencias no bloqueantes.
+      `AuditLog(validate_pilot)` en `update_ecoe_status` (rama a
+      `pilotaje_validado`).
+
+## Notas de implementación (2026-08-29)
+
+- Rama `opt/OPT-18-psicometria` desde `opt/OPT-17-normalizacion` (`8c48318`).
+- **α de Cronbach** (listwise): `α = k/(k−1)·(1 − Σvar_j / var_total)` con
+  varianza **poblacional** (`numpy.var`, ddof=0), sobre los `n_complete`
+  estudiantes con % en todas las estaciones del circuito con `max > 0`. `None`
+  si `k < 2`, `n_complete < 2` o `var_total = 0`. Se reporta `n_complete` y
+  `n_total`.
+- **Discriminación estación-total corregida**: `r_j = pearson(P[:,j],
+  Σ_{m≠j} P[:,m])` sobre `n_complete`. Pearson a mano vía `numpy.corrcoef`;
+  `None` si DE = 0 en cualquiera de los dos vectores.
+- **Dificultad de criterio**: `p = media(earned / max)` sobre los alumnos con
+  dato (pairwise, se reporta `n`).
+- **Punto-biserial de criterio**: `pearson(earned_i, T_i − earned_i)` con `T_i`
+  el total del alumno en **esa estación** (corrección ítem-resto). `None` si
+  varianza 0.
+- **Histograma**: por tramo de nota 1.0–7.0 (`compute_equivalent_grade` por
+  estación, agrupado por parte entera; 7.0 en el tramo 7).
+- **Item analysis (best-effort)**: solo estaciones con `assessment_tool` +
+  ítems (lee `EvaluatorRecord.answers["item_scores"]`, `is_draft == False`;
+  clave resuelta contra `AssessmentItem.id` **o** `order_index`) o con
+  formulario puntuable (`StudentResponse.grading`, `score_obtained IS NOT NULL`).
+  El `score_obtained` del evaluador es client-supplied y `item_scores` no se
+  valida contra él → documentado en la UI. Estaciones con puntaje libre no
+  aparecen.
+- **`mode=ejecucion`** usa `read_station_results` (snapshot-aware): evento
+  cerrado con snapshot `StationResult` → métricas sobre el acta congelada
+  (`frozen: true`). **`mode=pilotaje`** siempre en vivo.
+- **n listwise en el evento demo (id 1)**: `n_complete = 0` / `n_total = 0`
+  (el seed no registra `EvaluatorRecord`/`StudentResponse` puntuados de
+  ejecución ni de pilotaje), así que `cronbach_alpha = None` y el panel muestra
+  "Aún no hay datos suficientes". Las métricas se ejercitan con datos sintéticos
+  en `test_psychometrics.py`.
+- **`numpy` en requirements.txt**: **sí**, `numpy>=1.26` (ya presente 2.4.6 vía
+  `pandas==2.3.2`; ahora explícito). `scipy` sigue fuera.
+- **Endpoint**: router nuevo `routes/analytics.py`, montado en
+  `api/routes/__init__.py`. Auth `ensure_event_access(*ADMIN_EVENT_ROLE_CODES)`.
+- **F3 = fetch separado** desde `ecoe/page.tsx` (`useApi` solo cuando el estado
+  es `en_pilotaje`); **no** se tocó `compute_ecoe_validation` ni
+  `ALLOWED_STATUS_TRANSITIONS`.
 
 ## Estado de aprobación
 
@@ -310,6 +369,8 @@ renderizan con métricas presentes y **degradan** (sin romper) con
 - **Plan técnico, umbrales por defecto y decisiones de implementación: ✅
   2026-08-29 — aprobado; decisiones de implementación = las recomendadas
   (incluida la tabla de umbrales por defecto propuesta).**
+- Implementado por: implementador — 2026-08-29 → `en-verificación` (rama
+  `opt/OPT-18-psicometria`). F1 + F2 + F3 completas.
 - Decisiones de implementación abiertas:
   1. **Umbrales por defecto**: confirmar la tabla propuesta (α<0.6,
      discriminación<0.2, dificultad fuera de [0.2, 0.9], punto-biserial<0.2).
