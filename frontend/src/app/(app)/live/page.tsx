@@ -56,6 +56,7 @@ export default function LivePage() {
 
   const [controlMessage, setControlMessage] = useState<string | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showExpireConfirm, setShowExpireConfirm] = useState(false);
   const [projectorMode, setProjectorMode] = useState(false);
 
   // Incident form state
@@ -333,6 +334,15 @@ export default function LivePage() {
                 🖥 Vista proyector
               </button>
             </div>
+            {/* OPT-20 F2: el buzzer — cierra la ventana de envío de la estación
+                en curso sin avanzar de estación. El servidor recoge los
+                formularios pendientes (autoenvío). */}
+            <button
+              className="mt-3 inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-500/90 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-500"
+              onClick={() => setShowExpireConfirm(true)}
+            >
+              ⏹ Finalizar la estación en curso ahora
+            </button>
           </div>
           <div className="clinical-panel">
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--color-primary)]">
@@ -358,6 +368,18 @@ export default function LivePage() {
             sendAction("reset");
           }}
           onCancel={() => setShowResetConfirm(false)}
+        />
+        <ConfirmDialog
+          open={showExpireConfirm}
+          title="Finalizar la estación en curso ahora"
+          message="Se cierra la ventana de envío de la estación actual y el servidor recoge automáticamente los formularios de estudiante que quedaron sin enviar. El cronómetro NO avanza a la siguiente estación. ¿Continuar?"
+          confirmLabel="Finalizar estación"
+          severity="danger"
+          onConfirm={() => {
+            setShowExpireConfirm(false);
+            sendAction("expire_phase");
+          }}
+          onCancel={() => setShowExpireConfirm(false)}
         />
       </SectionCard>
 
