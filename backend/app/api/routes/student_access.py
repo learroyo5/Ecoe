@@ -24,6 +24,7 @@ from app.utils.helpers import (
     ensure_checkin_within_time,
     ensure_submission_stage,
     get_active_checkin,
+    live_phase_snapshot,
     normalize_ecoe_lookup,
     normalize_email,
     resolve_session_mode,
@@ -105,6 +106,8 @@ def student_access_context(
         "submission_deadline": checkin_submission_deadline(checkin, station).isoformat(),
         "server_now": utcnow_naive().isoformat(),
         "student_response_exists": student_response_exists,
+        # OPT-20 F1: live-clock snapshot for the first paint + no-WS fallback.
+        **live_phase_snapshot(db, payload.ecoe_event_id),
     }
 
 

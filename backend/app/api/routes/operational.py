@@ -28,6 +28,7 @@ from app.schemas.common import (
     TimerAction,
 )
 from app.services.dependencies import authenticate_session_token, get_current_user, require_roles
+from app.services.kiosk import authenticate_kiosk_token
 from app.services.ecoe import (
     build_dashboard,
     build_traceability_report,
@@ -56,7 +57,11 @@ router = APIRouter()
 # ── WebSocket: Live Timer ──────────────────────────────────────────────
 
 @router.websocket("/ws/live/{ecoe_event_id}")
-async def websocket_live_timer(websocket: WebSocket, ecoe_event_id: int):
+async def websocket_live_timer(
+    websocket: WebSocket,
+    ecoe_event_id: int,
+    kiosk_token: str | None = Query(default=None),
+):
     settings = get_settings()
     origin = websocket.headers.get("origin")
     allowed_origins = {
@@ -67,30 +72,46 @@ async def websocket_live_timer(websocket: WebSocket, ecoe_event_id: int):
     if origin and origin.rstrip("/") not in allowed_origins:
         await websocket.close(code=1008)
         return
-    token = None
-    authorization = websocket.headers.get("authorization", "")
-    if authorization.lower().startswith("bearer "):
-        token = authorization.split(" ", 1)[1].strip()
-    if not token:
-        token = websocket.cookies.get(settings.auth_cookie_name)
-    if not token:
-        cookie_header = websocket.headers.get("cookie", "")
-        parsed_cookie = SimpleCookie()
-        parsed_cookie.load(cookie_header)
-        morsel = parsed_cookie.get(settings.auth_cookie_name)
-        token = morsel.value if morsel else None
 
+    # OPT-20 F1: besides event coordination, the operational screens
+    # (kiosko / evaluador / estudiante) subscribe here read-only to follow the
+    # central clock and freeze on pause. This handler never mutates state:
+    # inbound frames are keep-alive only and are ignored. Timer control stays
+    # exclusively on the authenticated POST /live/control.
     with SessionLocal() as db:
         try:
-            user = authenticate_session_token(db, token)
-            ensure_event_access(
-                db,
-                user,
-                ecoe_event_id,
-                RoleCode.admin_ecoe.value,
-                RoleCode.coordinador_operativo.value,
-                RoleCode.cronometrador.value,
-            )
+            if kiosk_token is not None:
+                # A browser cannot attach custom headers to a WebSocket, so the
+                # station-scoped kiosk token travels as a query param. Risk: it
+                # may land in reverse-proxy / access logs; accepted because the
+                # token has a short TTL and is scoped to a single station.
+                kiosk = authenticate_kiosk_token(db, kiosk_token)
+                if kiosk.ecoe_event_id != ecoe_event_id:
+                    raise HTTPException(status_code=403, detail="Token de otro evento")
+            else:
+                token = None
+                authorization = websocket.headers.get("authorization", "")
+                if authorization.lower().startswith("bearer "):
+                    token = authorization.split(" ", 1)[1].strip()
+                if not token:
+                    token = websocket.cookies.get(settings.auth_cookie_name)
+                if not token:
+                    cookie_header = websocket.headers.get("cookie", "")
+                    parsed_cookie = SimpleCookie()
+                    parsed_cookie.load(cookie_header)
+                    morsel = parsed_cookie.get(settings.auth_cookie_name)
+                    token = morsel.value if morsel else None
+                user = authenticate_session_token(db, token)
+                ensure_event_access(
+                    db,
+                    user,
+                    ecoe_event_id,
+                    RoleCode.admin_ecoe.value,
+                    RoleCode.coordinador_operativo.value,
+                    RoleCode.cronometrador.value,
+                    RoleCode.evaluador.value,
+                    RoleCode.estudiante.value,
+                )
         except HTTPException:
             await websocket.close(code=1008)
             return
@@ -98,7 +119,7 @@ async def websocket_live_timer(websocket: WebSocket, ecoe_event_id: int):
     await live_timer.connect(ecoe_event_id, websocket)
     try:
         while True:
-            # Keep connection alive; client can send ping/pong
+            # Keep connection alive; any received frame is ignored (read-only).
             await websocket.receive_text()
     except WebSocketDisconnect:
         live_timer.disconnect(ecoe_event_id, websocket)

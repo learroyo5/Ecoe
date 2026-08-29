@@ -157,6 +157,33 @@ def compute_remaining_seconds(session) -> int:
     return session.remaining_seconds
 
 
+def live_phase_snapshot(db: Session, ecoe_event_id: int) -> dict:
+    """Read-only public view of the live clock for operational screens (OPT-20 F1).
+
+    Purely additive: it does NOT change the submission deadline (writes still
+    go through ``ensure_checkin_within_time`` / ``checkin_submission_deadline``).
+    The kiosk / evaluador / estudiante screens use this for the first paint and
+    as a no-WebSocket fallback so a pause still freezes their local countdown.
+    """
+    from app.models.entities import LiveSession
+
+    session = db.scalar(
+        select(LiveSession).where(LiveSession.ecoe_event_id == ecoe_event_id).limit(1)
+    )
+    if not session:
+        return {"live_status": None, "current_phase_ends_at": None, "paused": False}
+    ends_at = None
+    if session.status in LIVE_RUNNING_STATUSES and session.phase_started_at:
+        ends_at = (
+            utcnow_naive() + timedelta(seconds=compute_remaining_seconds(session))
+        ).isoformat()
+    return {
+        "live_status": session.status,
+        "current_phase_ends_at": ends_at,
+        "paused": session.status == "paused",
+    }
+
+
 def resolve_session_mode(ecoe_event) -> str:
     """Server-side session mode for READS: en_pilotaje maps to pilotaje.
 

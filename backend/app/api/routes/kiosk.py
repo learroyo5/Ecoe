@@ -40,6 +40,7 @@ from app.utils.helpers import (
     checkin_submission_deadline,
     ensure_checkin_within_time,
     ensure_submission_stage,
+    live_phase_snapshot,
     resolve_session_mode,
 )
 from app.utils.serializers import serialize_media_asset
@@ -129,6 +130,10 @@ def kiosk_context(
         "ecoe_name": ecoe_event.name,
         "ecoe_status": str(ecoe_event.status),
         "server_now": utcnow_naive().isoformat(),
+        # OPT-20 F1: live-clock snapshot for the first paint and the no-WS
+        # fallback (a kiosk without WebSocket still learns about a pause on the
+        # next 3s poll).
+        **live_phase_snapshot(db, kiosk.ecoe_event_id),
     }
     checkin = db.scalar(
         select(StationCheckIn)

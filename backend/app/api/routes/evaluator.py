@@ -25,6 +25,7 @@ from app.utils.helpers import (
     ensure_primary_station_assignment,
     ensure_submission_stage,
     find_student_by_ecoe_number,
+    live_phase_snapshot,
     get_active_checkin,
     normalize_email,
     resolve_session_mode,
@@ -154,6 +155,8 @@ def evaluator_context(
             "student_response_exists": student_response_exists,
         } if active_checkin and student and station else None,
         "server_now": utcnow_naive().isoformat(),
+        # OPT-20 F1: live-clock snapshot for the first paint + no-WS fallback.
+        **live_phase_snapshot(db, ecoe_event_id),
     }
 
 
