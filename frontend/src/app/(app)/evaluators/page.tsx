@@ -47,6 +47,8 @@ export default function EvaluatorsPage() {
     station_ids: [] as string[],
   });
   const [assignmentDrafts, setAssignmentDrafts] = useState<Record<string, string>>({});
+  // El corrector es multi-estación: su draft de reasignación es una lista.
+  const [correctorDrafts, setCorrectorDrafts] = useState<Record<string, string[]>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [lookupMessage, setLookupMessage] = useState<string | null>(null);
   const [knownFullName, setKnownFullName] = useState<string | null>(null);
@@ -528,6 +530,17 @@ export default function EvaluatorsPage() {
                 label: "Estación principal",
                 render: (row) => {
                   const staff = row as { role_code?: string; station_ids?: number[] };
+                  if (staff.role_code === "corrector") {
+                    const labels = (staff.station_ids ?? [])
+                      .map((id) => stationOptions.find((item) => item.id === String(id))?.label)
+                      .filter((label): label is string => Boolean(label));
+                    if (!labels.length) return "Sin asignar";
+                    return (
+                      <span title={labels.join(" · ")}>
+                        {labels.length === 1 ? labels[0] : `${labels.length} estaciones`}
+                      </span>
+                    );
+                  }
                   if (staff.role_code !== "evaluador") return "No aplica";
                   const stationId = String((staff.station_ids ?? [])[0] ?? "");
                   const station = stationOptions.find((item) => item.id === stationId);
@@ -543,6 +556,65 @@ export default function EvaluatorsPage() {
                     role_code?: string;
                     station_ids?: number[];
                   };
+                  if (staff.role_code === "corrector") {
+                    const staffId = String(staff.id ?? "");
+                    const current = (staff.station_ids ?? []).map(String);
+                    const selected = correctorDrafts[staffId] ?? current;
+                    return (
+                      <div className="flex min-w-[260px] flex-wrap items-center gap-2">
+                        <select
+                          multiple
+                          aria-label="Estaciones de corrección diferida"
+                          className="min-h-24 min-w-[180px]"
+                          value={selected}
+                          onChange={(event) =>
+                            setCorrectorDrafts((prev) => ({
+                              ...prev,
+                              [staffId]: Array.from(
+                                event.target.selectedOptions,
+                                (option) => option.value,
+                              ),
+                            }))
+                          }
+                        >
+                          {stationOptions.map((station) => (
+                            <option key={station.id} value={station.id}>
+                              {station.label}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          disabled={
+                            processingAction === `assign-${staffId}` || selected.length === 0
+                          }
+                          onClick={async () => {
+                            setProcessingAction(`assign-${staffId}`);
+                            setMessage(null);
+                            try {
+                              await api.updateStaff(Number(staff.id), {
+                                role_code: "corrector",
+                                station_ids: selected.map(Number),
+                              });
+                              await refresh();
+                              setMessage("Estaciones del corrector actualizadas correctamente.");
+                            } catch (actionError) {
+                              setMessage(
+                                actionError instanceof Error
+                                  ? actionError.message
+                                  : "No se pudieron actualizar las estaciones del corrector.",
+                              );
+                            } finally {
+                              setProcessingAction(null);
+                            }
+                          }}
+                        >
+                          {processingAction === `assign-${staffId}` ? "Guardando..." : "Guardar"}
+                        </button>
+                      </div>
+                    );
+                  }
                   if (staff.role_code !== "evaluador") {
                     return <span className="text-xs text-slate-500">No aplica (rol de evento completo)</span>;
                   }
