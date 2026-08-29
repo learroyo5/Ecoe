@@ -431,6 +431,43 @@ los context endpoints captura a los que no enviaron una vez pasado el grace. El
 **Objetivo:** que el registro del evaluador a medio llenar cuando suena el buzzer se
 persista como **borrador** (no como 0 final) y se pueda completar en contingencia.
 
+> **Estado 2026-08-29 — F3 completa (backend + frontend), en-verificación total.**
+> Rama `opt/OPT-20-F3` (desde el HEAD de `opt/OPT-20-F2-frontend`). Solo resta el e2e con Docker.
+> - [x] Migración `m3n4o5p6q7r8`: `evaluator_records.is_draft` (`Boolean`, `nullable=False`,
+>   `server_default=false`) + `submission_kind` (`String(16)`, `server_default='manual'`, backfill
+>   `by_contingency → 'contingency'`) + modelo. `submission_kind` se adelanta de F4 porque el barrido y la
+>   finalización por contingencia ya lo necesitan (mismo criterio que F2 con `student_responses`).
+> - [x] `PUT /evaluator/draft` — upsert de `EvaluatorRecord` parcial con `is_draft=True`,
+>   `by_contingency=False`, `submission_kind='manual'`. Pasa por `ensure_submission_stage`, scoping por
+>   estación asignada del evaluador (`_ensure_station_assigned_to_evaluator`) y la ventana del evaluador
+>   (`ensure_checkin_within_time(..., for_evaluator=True)`). El `UniqueConstraint` implica que el borrador ES la fila.
+> - [x] `POST /evaluator/submit` — si existe fila `is_draft=True` para la tupla, la **promueve**
+>   (flip `is_draft=False`, `max_score` autoritativo recalculado, rango validado, `AuditLog`
+>   `submit_evaluation_from_draft`); una fila final sigue devolviendo 400.
+> - [x] `services/live_sweep.py` — sin cambios de lógica (nunca tocó `EvaluatorRecord`): un borrador queda
+>   `is_draft=True`, no se crea fila si no hay borrador. Docstring actualizado a F3.
+> - [x] `compute_results` — filtro `EvaluatorRecord.is_draft == False`. `build_traceability_report` — un
+>   borrador no cuenta como evaluación completa; contadores `pending_evaluator_drafts` (por estudiante, por
+>   estación y en el resumen) + entrada `evaluacion_borrador` en la bitácora.
+> - [x] `/contingency/evaluator-record` — rama nueva: si el registro existente es `is_draft=True`, lo
+>   finaliza (`is_draft=False`, score autoritativo, `by_contingency=True`, `submission_kind='contingency'`,
+>   `AuditLog` `finalize_evaluation_draft_contingency`). Se reusó el endpoint existente (viable, sin
+>   `/finalize` separado). `GET /contingency/evaluator-drafts/{id}` nuevo para la lista de coordinación.
+> - [x] `compute_ecoe_validation` — advertencia "N registros de evaluador en borrador sin finalizar" +
+>   claves `pending_evaluator_draft_count` / `pending_evaluator_draft_stations`.
+> - [x] Frontend: `evaluator/page.tsx` autosave (`PUT /evaluator/draft`, debounce ~0,8 s + latido 10 s +
+>   `onBlur`), indicador "✓ Borrador guardado hh:mm:ss", mensaje "Tiempo agotado — tu registro quedó
+>   guardado como borrador" al vencer la fase. `components/evaluator-drafts-panel.tsx` (lista + finalización
+>   por contingencia) montado en `/live` — decisión: `/live` es el hub de coordinación durante la ejecución
+>   y no había pantalla de contingencia previa. `api.ts` (`evaluatorDraft`, `pendingEvaluatorDrafts`,
+>   `finalizeEvaluatorRecord`), `types.ts` (`EvaluatorDraftRow`).
+> - [x] Tests: `tests/test_opt20_f3_evaluator_draft.py` (10, con negativos: estación no asignada 403, fuera
+>   de etapa 409, registro final ya existente 409, lectura de coordinación por evaluador 403). Ningún test
+>   previo debilitado (el default `is_draft=False` mantiene la semántica anterior).
+> - [x] `python3 -m pytest` SQLite (268) y Postgres verdes · alembic upgrade/downgrade/upgrade desde base
+>   limpia OK · `npm run lint && npm run build && npx vitest run` (47) verdes.
+> - [ ] `./scripts/run_e2e.sh` — escenario de borrador de evaluador (sandbox sin Docker).
+
 ### Backend
 
 - **Migración**: `evaluator_records.is_draft` (`Boolean`, `nullable=False`,

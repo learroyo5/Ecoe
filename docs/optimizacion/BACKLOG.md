@@ -33,7 +33,7 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 | OPT-6 | Visibilidad de pausa del cronómetro en evaluador y kiosko | H-vivo-3 | media | carga operativa: 1 contingencia por estudiante del circuito por cada pausa | M–L · decisión de enfoque | **absorbido por OPT-20** | `PLANES/OPT-20__cronometro-sincronico.md` (F1) |
 | OPT-7 | CRUD de instrumentos / plantillas / pacientes simulados | H-admin-ecoe-4 | media | banco institucional se llena de pautas muertas; no se corrige una pauta con error | M · impacto cross-event | triado | — |
 | OPT-15 | Fricción del corrector (cola personal, siguiente-pendiente, rúbrica de referencia) | H-corr-5, H-corr-6 | media | corrección diferida a escala; gap vs. diseño FASE1 §Decisión 4 | M · sin migración | triado | — |
-| OPT-20 | Cronómetro sincrónico único + autoguardado/autoenvío (absorbe OPT-6) | mini-auditoría OPT-20 (H-opt20-1..6, D1–D8) + H-vivo-3 | media (capacidad + carga operativa) | día del examen: el buzzer no garantiza captura; cada pausa dispara reingresos por contingencia; el registro del evaluador a medio llenar se pierde | XL · 4 fases (M + L + M–L + M) · 3 migraciones (F2/F3/F4) — gate humano · cambia comportamiento observable (D2) | **implementando** (F1 + F2 completas —backend + frontend— en-verificación; solo falta e2e con Docker; F3–F4 pendientes) | `PLANES/OPT-20__cronometro-sincronico.md` |
+| OPT-20 | Cronómetro sincrónico único + autoguardado/autoenvío (absorbe OPT-6) | mini-auditoría OPT-20 (H-opt20-1..6, D1–D8) + H-vivo-3 | media (capacidad + carga operativa) | día del examen: el buzzer no garantiza captura; cada pausa dispara reingresos por contingencia; el registro del evaluador a medio llenar se pierde | XL · 4 fases (M + L + M–L + M) · 3 migraciones (F2/F3/F4) — gate humano · cambia comportamiento observable (D2) | **implementando** (F1 + F2 + F3 completas —backend + frontend— en-verificación; solo falta e2e con Docker; F4 pendiente) | `PLANES/OPT-20__cronometro-sincronico.md` |
 
 ## Grupo C — Capacidad de análisis de datos (Fase 2 — features grandes, requieren dimensionamiento y definición metodológica del usuario)
 
@@ -226,7 +226,20 @@ frontend). Plan redactado: `PLANES/OPT-20__cronometro-sincronico.md`.
     vitest (47) verdes; `pytest -q` sigue en 249. **Pendiente**: `./scripts/run_e2e.sh` (escenario de
     autoenvío server-side; necesita Docker, no ejecutable en la sesión de implementación)._
   - **F3** (M–L) — borrador del `EvaluatorRecord` (`is_draft`) + finalización por contingencia + filtro en
-    `compute_results`/trazabilidad. Migración: `evaluator_records.is_draft`.
+    `compute_results`/trazabilidad. Migración: `evaluator_records.is_draft` + `submission_kind`.
+    _Estado 2026-08-29: **F3 completa (backend + frontend), en-verificación total.** Rama `opt/OPT-20-F3`
+    (desde `opt/OPT-20-F2-frontend`). Migración `m3n4o5p6q7r8` (`is_draft` bool server_default false +
+    `submission_kind` String(16) default 'manual', backfill `by_contingency → 'contingency'`).
+    `PUT /evaluator/draft` (upsert parcial, scoping por estación asignada, ventana del evaluador, gate de
+    etapa); `POST /evaluator/submit` promueve el borrador en vez de rechazarlo; `compute_results` filtra
+    `is_draft == False`; `build_traceability_report` cuenta `pending_evaluator_drafts` (estudiante/estación/
+    resumen) + entrada de bitácora; `/contingency/evaluator-record` finaliza un borrador existente;
+    `GET /contingency/evaluator-drafts/{id}` para coordinación; advertencia de cierre en
+    `compute_ecoe_validation`. Frontend: autosave del borrador en `/evaluator` (debounce + latido + onBlur)
+    con indicador, mensaje "quedó como borrador" al vencer la fase, y panel de finalización por contingencia
+    en `/live` (`EvaluatorDraftsPanel`). `pytest` SQLite (268) + Postgres verdes; alembic up/down/up desde
+    base limpia; lint + build + vitest (47) verdes. **Pendiente**: `./scripts/run_e2e.sh` (necesita Docker,
+    no ejecutable en la sesión)._
   - **F4** (M) — `submission_kind` en `student_responses` y `evaluator_records` + flag `answered` por pregunta
     + marcado en trazabilidad/export. Migración: 2 columnas.
 - **Toca**: máquina de estados (efecto colateral nuevo en `/live/control`, acción `expire_phase`; **no** el
