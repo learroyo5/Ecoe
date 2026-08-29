@@ -242,20 +242,47 @@ Frontend: `frontend/src/app/(app)/results/__tests__/page.test.tsx` — la tarjet
 
 ## Verificación
 
-- [ ] `cd backend && python3 -m pytest` (SQLite) — incluye
-      `tests/test_station_results_opt16.py`
-- [ ] `TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q`
-      (toca la `UniqueConstraint` de `station_results`, que SQLite no valida)
-- [ ] Migración desde base limpia sin cambios:
-      `DATABASE_URL=sqlite:////tmp/ecoe_alembic_check.db SECRET_KEY=test-secret ENVIRONMENT=test AUTO_SEED_DEMO=false alembic upgrade head`
-      llega a head **sin revisión nueva** (OPT-16 es sin migración)
-- [ ] `cd frontend && npm run lint && npm run build && npx vitest run`
-- [ ] `./scripts/run_e2e.sh --grep "results"` sobre el stack de ramas (si aplica)
+- [x] `cd backend && python3 -m pytest` (SQLite) — incluye
+      `tests/test_station_results_opt16.py` — **312 passed** (15 nuevos)
+- [x] `TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q`
+      (toca la `UniqueConstraint` de `station_results`, que SQLite no valida) —
+      **312 passed**
+- [x] Migración desde base limpia sin cambios:
+      `DATABASE_URL=sqlite:////tmp/ecoe_opt16_check.db SECRET_KEY=test-secret ENVIRONMENT=test AUTO_SEED_DEMO=false alembic upgrade head`
+      llega a head (`n4o5p6q7r8s9`) **sin revisión nueva** — OPT-16 es sin migración
+- [x] `cd frontend && npm run lint && npm run build && npx vitest run` —
+      lint sin errores (2 warnings preexistentes), build OK, **57 passed**
+- [ ] `./scripts/run_e2e.sh --grep "results"` sobre el stack de ramas — no corrido
+      (restricción de sandbox de red en la sesión de implementación)
+
+## Notas de implementación (2026-08-29)
+
+- Rama `opt/OPT-16-station-results` desde `opt/fase2-analisis` (`1cfd820`).
+- `compute_station_results(db, ecoe_event_id, *, mode="ejecucion")` quedó como
+  **función de módulo** en `app/services/results.py` (no anidada) — OPT-17 la
+  usará para reescribir `compute_results`; OPT-18 la llama con `mode="pilotaje"`.
+  El test `test_compute_station_results_is_reusable_module_function_with_mode`
+  fija esa firma.
+- `read_station_results(db, ecoe_event_id) -> tuple[list[dict], bool]`.
+- `build_station_score_block(station_rows, stations, students) -> dict` — puro
+  Python; `students` es `dict[int, Student]`. DE muestral (`statistics.stdev`),
+  `None` si `n < 2`; agregado de %/DE sobre `percent_score`, `mean_score` sobre
+  el puntaje crudo.
+- Hoja Excel `resultados_por_estacion`: **formato largo** (una fila por
+  estudiante × estación: `n_ecoe`, `estudiante`, `estacion_numero`, `estacion`,
+  `puntaje`, `maximo`, `porcentaje`). Se inserta entre `consolidado` y
+  `trazabilidad_envios`.
+- `get_results` / `consolidate_results` agregan la clave `by_station` vía el
+  helper `_by_station_block` en `operational.py` (aditivo, sin `response_model`).
+- Sin migración, sin endpoint nuevo, sin permiso nuevo, sin tocar
+  `ALLOWED_STATUS_TRANSITIONS`, sin tocar `compute_results` /
+  `compute_equivalent_grade`.
 
 ## Estado de aprobación
 
 - Propuesto por: optimizador — 2026-08-29
 - Aprobado por usuario: ✅ 2026-08-29 — plan aprobado, decisiones de implementación = las recomendadas (DE muestral, agregado sobre percent_score, hoja Excel incluida, nota por estación informativa).
+- Implementado por: implementador — 2026-08-29 → `en-verificación` (rama `opt/OPT-16-station-results`).
 - Decisiones que el usuario debe revisar antes de implementar:
   1. **DE**: muestral (n−1, `None` si n<2) — recomendado — vs. poblacional.
   2. **Base del agregado**: `percent_score` (recomendado, estaciones con distinto
