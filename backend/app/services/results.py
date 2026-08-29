@@ -714,13 +714,77 @@ _SUBMISSION_KIND_LABELS = {
 }
 
 
-def _submission_trace_rows(db: Session, ecoe_event_id: int) -> list[dict]:
-    """Un indicador por respuesta de la ejecución real (OPT-20 F4, D4).
+_TRACE_COLUMNS = [
+    "n_ecoe",
+    "estudiante",
+    "estacion_numero",
+    "estacion",
+    "circuito",
+    "tipo_registro",
+    "mode",
+    "submission_kind",
+    "origen",
+    "borrador",
+    "en_blanco",
+    "by_contingency",
+    "score_obtained",
+    "max_score",
+    "porcentaje",
+    "evaluador",
+    "corrector",
+    "enviado_at",
+    "corregido_at",
+    "actualizado_at",
+]
 
-    Marca origen (`manual`/`auto`/`contingencia`) y si la respuesta llegó en
-    blanco. Es metadato de trazabilidad, no de nota: se calcula en vivo aun
-    con el consolidado congelado. El rediseño completo del export es OPT-19;
-    aquí solo se agrega este indicador mínimo en una hoja aparte.
+_ITEM_ANALYSIS_COLUMNS = [
+    "estacion_numero",
+    "estacion",
+    "criterio",
+    "n",
+    "dificultad",
+    "punto_biserial",
+    "maximo",
+    "fuera_de_umbral",
+]
+
+_STATION_SCORE_COLUMNS = [
+    "n_ecoe",
+    "estudiante",
+    "estacion_numero",
+    "estacion",
+    "puntaje",
+    "maximo",
+    "porcentaje",
+]
+
+
+def _pct(obtained: float | None, maximo: float | None) -> float | None:
+    try:
+        if obtained is not None and maximo:
+            return round(obtained / maximo * 100, 2)
+    except (TypeError, ZeroDivisionError):
+        return None
+    return None
+
+
+def _iso(value) -> str | None:
+    return value.isoformat() if value else None
+
+
+def _submission_trace_rows(db: Session, ecoe_event_id: int) -> list[dict]:
+    """Trazabilidad por registro de la ejecución real (OPT-19; amplía OPT-20 F4).
+
+    Una fila por cada `StudentResponse` (`tipo_registro = "formulario"`) y cada
+    `EvaluatorRecord` (`tipo_registro = "evaluador"`) de `mode == ejecucion`. Los
+    borradores del evaluador (`is_draft = True`) entran con `borrador = "Sí"` —
+    el analista necesita ver qué quedó sin finalizar. Cada fila lleva la
+    identidad del evaluador (`evaluator_name`) o del corrector
+    (`graded_by_email`; `"auto"` para autocorrección), los timestamps, el `mode`,
+    el `submission_kind` y `by_contingency`.
+
+    Es metadato de trazabilidad, no de nota: se calcula siempre en vivo, aun con
+    el consolidado congelado.
     """
     students = {
         s.id: s
@@ -730,6 +794,8 @@ def _submission_trace_rows(db: Session, ecoe_event_id: int) -> list[dict]:
         s.id: s
         for s in db.scalars(select(Station).where(Station.ecoe_event_id == ecoe_event_id)).all()
     }
+    rows: list[dict] = []
+
     responses = db.scalars(
         select(StudentResponse)
         .where(
@@ -738,34 +804,154 @@ def _submission_trace_rows(db: Session, ecoe_event_id: int) -> list[dict]:
         )
         .order_by(StudentResponse.station_id.asc(), StudentResponse.id.asc())
     ).all()
-    rows: list[dict] = []
     for response in responses:
         student = students.get(response.student_id)
         station = stations.get(response.station_id)
         kind = response.submission_kind or "manual"
         answered = bool(response.answers)
         rows.append({
-            "ecoe_number": student.ecoe_number if student else None,
-            "student_name": f"{student.name} {student.last_name}" if student else "",
-            "station_number": station.station_number if station else None,
-            "station_name": station.name if station else "",
+            "n_ecoe": student.ecoe_number if student else None,
+            "estudiante": f"{student.name} {student.last_name}" if student else "",
+            "estacion_numero": station.station_number if station else None,
+            "estacion": station.name if station else "",
+            "circuito": station.circuit_name if station else "",
+            "tipo_registro": "formulario",
+            "mode": str(response.mode),
+            "submission_kind": kind,
             "origen": _SUBMISSION_KIND_LABELS.get(kind, kind),
+            "borrador": "No",
             "en_blanco": "Sí" if (kind == "auto" and not answered) else "No",
+            "by_contingency": bool(response.by_contingency),
             "score_obtained": response.score_obtained,
             "max_score": response.max_score,
-            "by_contingency": response.by_contingency,
+            "porcentaje": _pct(response.score_obtained, response.max_score),
+            "evaluador": None,
+            "corrector": response.graded_by_email,
+            "enviado_at": _iso(response.submitted_at),
+            "corregido_at": _iso(response.graded_at),
+            "actualizado_at": _iso(response.updated_at),
+        })
+
+    records = db.scalars(
+        select(EvaluatorRecord)
+        .where(
+            EvaluatorRecord.ecoe_event_id == ecoe_event_id,
+            EvaluatorRecord.mode == SessionMode.ejecucion.value,
+        )
+        .order_by(EvaluatorRecord.station_id.asc(), EvaluatorRecord.id.asc())
+    ).all()
+    for record in records:
+        student = students.get(record.student_id)
+        station = stations.get(record.station_id)
+        kind = record.submission_kind or "manual"
+        rows.append({
+            "n_ecoe": student.ecoe_number if student else None,
+            "estudiante": f"{student.name} {student.last_name}" if student else "",
+            "estacion_numero": station.station_number if station else None,
+            "estacion": station.name if station else "",
+            "circuito": station.circuit_name if station else "",
+            "tipo_registro": "evaluador",
+            "mode": str(record.mode),
+            "submission_kind": kind,
+            "origen": _SUBMISSION_KIND_LABELS.get(kind, kind),
+            "borrador": "Sí" if record.is_draft else "No",
+            "en_blanco": "No",
+            "by_contingency": bool(record.by_contingency),
+            "score_obtained": record.score_obtained,
+            "max_score": record.max_score,
+            "porcentaje": _pct(record.score_obtained, record.max_score),
+            "evaluador": record.evaluator_name,
+            "corrector": None,
+            "enviado_at": _iso(record.created_at),
+            "corregido_at": None,
+            "actualizado_at": _iso(record.updated_at),
+        })
+    return rows
+
+
+def _metadata_rows(db: Session, ecoe_event_id: int) -> list[dict]:
+    """Hoja `metadatos` (OPT-19): clave–valor con el encabezado del acta.
+
+    Solo campos que existen en `ECOEEvent` más los agregados de `read_results`
+    (`frozen`, `consolidated_at`) y los conteos de estudiantes activos y
+    estaciones. No se inventan campos.
+    """
+    event = db.get(ECOEEvent, ecoe_event_id)
+    _, frozen, consolidated_at = read_results(db, ecoe_event_id)
+    active_students = db.scalar(
+        select(func.count(Student.id)).where(
+            Student.ecoe_event_id == ecoe_event_id, Student.is_active.is_(True)
+        )
+    ) or 0
+    station_count = db.scalar(
+        select(func.count(Station.id)).where(Station.ecoe_event_id == ecoe_event_id)
+    ) or 0
+    pairs: list[tuple[str, object]] = []
+    if event is not None:
+        pairs.extend([
+            ("Nombre del ECOE", event.name),
+            ("Curso", event.course_name),
+            ("Escuela / institución", event.school_name),
+            ("Docente responsable", event.responsible_teacher),
+            ("Correo de contacto", event.contact_email),
+            ("Fecha", _iso(event.date)),
+            ("Estado", str(event.status)),
+            ("Modo de circuito", event.circuit_mode),
+            ("Minutos por estación", event.station_time_minutes),
+            ("Minutos de transición", event.transition_time_minutes),
+            (
+                "Porcentaje de referencia de aprobación (nota 4,0)",
+                event.passing_reference_percent,
+            ),
+        ])
+    pairs.extend([
+        ("Estudiantes activos", int(active_students)),
+        ("Estaciones", int(station_count)),
+        ("Resultados congelados (snapshot del acta)", "Sí" if frozen else "No"),
+        ("Consolidado el", _iso(consolidated_at)),
+    ])
+    return [{"campo": key, "valor": value} for key, value in pairs]
+
+
+def _item_analysis_rows(db: Session, ecoe_event_id: int) -> list[dict]:
+    """Hoja `item_analysis` (OPT-19): una fila por criterio de pauta, `mode=ejecucion`.
+
+    Reusa `build_psychometrics_block` de OPT-18 (best-effort: solo estaciones con
+    pauta estructurada o formulario puntuable). Se calcula siempre en vivo — el
+    item analysis es un derivado, no parte del acta congelada. La columna
+    `fuera_de_umbral` marca los criterios con advertencia de dificultad o
+    punto-biserial según `PSYCHO_THRESHOLDS`.
+    """
+    from app.services.psychometrics import build_psychometrics_block
+
+    block = build_psychometrics_block(db, ecoe_event_id, SessionMode.ejecucion.value)
+    flagged = {
+        (warning.get("station_id"), warning.get("criterion_key"))
+        for warning in block.get("warnings", [])
+        if warning.get("criterion_key") is not None
+    }
+    rows: list[dict] = []
+    for item in block.get("item_analysis", []):
+        key = (item.get("station_id"), item.get("criterion_key"))
+        rows.append({
+            "estacion_numero": item.get("station_number"),
+            "estacion": item.get("station_name"),
+            "criterio": item.get("criterion_label"),
+            "n": item.get("n"),
+            "dificultad": item.get("difficulty"),
+            "punto_biserial": item.get("point_biserial"),
+            "maximo": item.get("max"),
+            "fuera_de_umbral": "Sí" if key in flagged else "No",
         })
     return rows
 
 
 def _station_score_rows(db: Session, ecoe_event_id: int) -> list[dict]:
-    """Hoja `resultados_por_estacion` (OPT-16), formato largo.
+    """Hoja `por_estacion` (OPT-16 → renombrada en OPT-19), formato largo.
 
     Una fila por (estudiante, estación) con puntaje obtenido, máximo y %.
     Sigue el mismo patrón `frozen` que el consolidado: sirve el snapshot
-    `StationResult` con el evento cerrado, recalcula en vivo si no. El rediseño
-    completo del export (item-analysis, metadatos) es OPT-19, que absorbe esta
-    hoja.
+    `StationResult` con el evento cerrado, recalcula en vivo si no.
     """
     station_rows, _ = read_station_results(db, ecoe_event_id)
     students = {
@@ -793,18 +979,39 @@ def _station_score_rows(db: Session, ecoe_event_id: int) -> list[dict]:
     ]
 
 
-def export_results_excel(db: Session, ecoe_event_id: int, *, persist: bool = False) -> bytes:
-    if persist:
-        data = persist_results(db, ecoe_event_id)
-    else:
-        data, _, _ = read_results(db, ecoe_event_id)
-    df = pd.DataFrame(data)
-    trace_df = pd.DataFrame(_submission_trace_rows(db, ecoe_event_id))
-    station_df = pd.DataFrame(_station_score_rows(db, ecoe_event_id))
+def export_results_excel(db: Session, ecoe_event_id: int) -> bytes:
+    """Export multi-hoja de Resultados (OPT-19). Es un GET: **nunca escribe**.
+
+    Hojas, en este orden: ``metadatos`` · ``consolidado`` · ``por_estacion`` ·
+    ``item_analysis`` · ``trazabilidad_envios``.
+
+    - ``consolidado`` y ``por_estacion`` respetan el snapshot congelado del acta
+      (``read_results`` / ``read_station_results``): con el evento
+      ``cerrado``/``archivado`` salen del snapshot, antes se recalculan en vivo.
+    - ``item_analysis`` y ``trazabilidad_envios`` son **derivados** (no forman
+      parte del acta) y se calculan siempre en vivo.
+
+    El parámetro ``persist`` de versiones anteriores se eliminó: un endpoint GET
+    no puede consolidar (AGENTS.md — "Resultados sin mutación en endpoints GET").
+    """
+    consolidated, _, _ = read_results(db, ecoe_event_id)
+    meta_df = pd.DataFrame(_metadata_rows(db, ecoe_event_id), columns=["campo", "valor"])
+    consolidated_df = pd.DataFrame(consolidated)
+    station_df = pd.DataFrame(
+        _station_score_rows(db, ecoe_event_id), columns=_STATION_SCORE_COLUMNS
+    )
+    item_df = pd.DataFrame(
+        _item_analysis_rows(db, ecoe_event_id), columns=_ITEM_ANALYSIS_COLUMNS
+    )
+    trace_df = pd.DataFrame(
+        _submission_trace_rows(db, ecoe_event_id), columns=_TRACE_COLUMNS
+    )
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="consolidado")
-        station_df.to_excel(writer, index=False, sheet_name="resultados_por_estacion")
+        meta_df.to_excel(writer, index=False, sheet_name="metadatos")
+        consolidated_df.to_excel(writer, index=False, sheet_name="consolidado")
+        station_df.to_excel(writer, index=False, sheet_name="por_estacion")
+        item_df.to_excel(writer, index=False, sheet_name="item_analysis")
         trace_df.to_excel(writer, index=False, sheet_name="trazabilidad_envios")
     return buffer.getvalue()
 

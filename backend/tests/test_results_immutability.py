@@ -219,7 +219,9 @@ def test_export_excel_uses_snapshot_after_close(auth_client):
 
     export = auth_client.get(f"/api/results/{event_id}/export/excel")
     assert export.status_code == 200
-    df = pd.read_excel(BytesIO(export.content))
+    # OPT-19: el Excel es multi-hoja (`metadatos` es la primera); el consolidado
+    # vive en la hoja `consolidado`.
+    df = pd.read_excel(BytesIO(export.content), sheet_name="consolidado")
     exported = df[df["student_id"] == student_id]["total_score"].iloc[0]
 
     with TestingSessionLocal() as db:

@@ -447,7 +447,7 @@ def consolidate_results(ecoe_event_id: int, db: Session = Depends(get_db), user=
 @router.get("/results/{ecoe_event_id}/export/excel")
 def export_excel(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
-    content = export_results_excel(db, ecoe_event_id, persist=False)
+    content = export_results_excel(db, ecoe_event_id)
     return FastAPIResponse(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
