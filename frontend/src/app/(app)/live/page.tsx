@@ -63,6 +63,7 @@ export default function LivePage() {
 
   const [controlMessage, setControlMessage] = useState<string | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showStartConfirm, setShowStartConfirm] = useState(false);
   const [showExpireConfirm, setShowExpireConfirm] = useState(false);
   const [projectorMode, setProjectorMode] = useState(false);
 
@@ -232,6 +233,22 @@ export default function LivePage() {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
+  // OPT-9 / H-vivo-8: "Iniciar" resetea el reloj a tiempo completo para todos
+  // los paneles. Si la rotación ya está en curso (o pausada / en transición, o
+  // más allá de la estación 1) un click accidental es destructivo → pedir
+  // confirmación como en "Reiniciar". El primer arranque no tiene fricción.
+  const timerAlreadyRunning =
+    ["running", "paused", "transition"].includes(timerState.status) ||
+    timerState.current_station_index > 1;
+
+  const handleStartClick = () => {
+    if (timerAlreadyRunning) {
+      setShowStartConfirm(true);
+    } else {
+      sendAction("start");
+    }
+  };
+
   const activeIncidents = incidents.filter((i) => !i.resolved);
   const resolvedIncidents = incidents.filter((i) => i.resolved);
 
@@ -324,7 +341,11 @@ export default function LivePage() {
                   key={action}
                   className={action === "start" ? "btn-primary" : "btn-secondary"}
                   onClick={() =>
-                    action === "reset" ? setShowResetConfirm(true) : sendAction(action)
+                    action === "reset"
+                      ? setShowResetConfirm(true)
+                      : action === "start"
+                        ? handleStartClick()
+                        : sendAction(action)
                   }
                 >
                   {action === "start" ? "Iniciar" :
@@ -375,6 +396,18 @@ export default function LivePage() {
             sendAction("reset");
           }}
           onCancel={() => setShowResetConfirm(false)}
+        />
+        <ConfirmDialog
+          open={showStartConfirm}
+          title="Reiniciar el cronómetro con Iniciar"
+          message="El cronómetro ya está en marcha. Iniciar lo vuelve a poner en el tiempo completo de la estación actual para todos los paneles conectados. Si querés reanudar tras una pausa, usá Reanudar. ¿Continuar?"
+          confirmLabel="Iniciar de nuevo"
+          severity="danger"
+          onConfirm={() => {
+            setShowStartConfirm(false);
+            sendAction("start");
+          }}
+          onCancel={() => setShowStartConfirm(false)}
         />
         <ConfirmDialog
           open={showExpireConfirm}

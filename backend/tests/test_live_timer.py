@@ -116,3 +116,41 @@ class TestLiveTimer:
 
         # Leave the session in a clean state for other tests.
         auth_client.post("/api/live/control", json={"ecoe_event_id": 1, "action": "reset"})
+
+
+class TestLiveTimerHardening:
+    """OPT-9 / H-vivo-8: /live/control must fail cleanly on a bad event and
+    must not let next_transition run the circuit past its last station."""
+
+    def test_control_on_missing_event_returns_404(self, auth_client):
+        response = auth_client.post("/api/live/control", json={
+            "ecoe_event_id": 999999,
+            "action": "start",
+        })
+        assert response.status_code == 404, response.text
+
+    def test_next_transition_stops_at_last_station(self, auth_client):
+        stations = auth_client.get("/api/stations/1").json()
+        slots = len({s["station_number"] for s in stations})
+        assert slots >= 2
+
+        auth_client.post("/api/live/control", json={"ecoe_event_id": 1, "action": "reset"})
+        try:
+            # reset leaves the index at 1; slots-1 transitions move it to the
+            # last slot, and the next one must be rejected.
+            for _ in range(slots - 1):
+                ok = auth_client.post("/api/live/control", json={
+                    "ecoe_event_id": 1,
+                    "action": "next_transition",
+                })
+                assert ok.status_code == 200, ok.text
+            assert auth_client.get("/api/live/1").json()["current_station_index"] == slots
+
+            blocked = auth_client.post("/api/live/control", json={
+                "ecoe_event_id": 1,
+                "action": "next_transition",
+            })
+            assert blocked.status_code == 409, blocked.text
+            assert auth_client.get("/api/live/1").json()["current_station_index"] == slots
+        finally:
+            auth_client.post("/api/live/control", json={"ecoe_event_id": 1, "action": "reset"})

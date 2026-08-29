@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response as FastAPIResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -183,6 +183,11 @@ def control_timer(
     if payload.action not in TIMER_ACTIONS:
         raise HTTPException(status_code=400, detail="Acción no soportada")
     ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
+    if ecoe_event is None:
+        # Defensive: ensure_event_access already 404s on a missing event, but a
+        # bare db.get here would otherwise reach ecoe_event.station_time_minutes
+        # and raise 500 (H-vivo-8 a).
+        raise HTTPException(status_code=404, detail="ECOE no encontrado")
     session = db.scalar(
         select(LiveSession).where(LiveSession.ecoe_event_id == payload.ecoe_event_id).limit(1)
     )
@@ -214,6 +219,22 @@ def control_timer(
         session.remaining_seconds = session.station_time_seconds
         session.phase_started_at = None
     elif payload.action == "next_transition":
+        # H-vivo-8 (c): cap the rotation index at the number of station slots
+        # (distinct station_number) so a stray click can't run the circuit past
+        # its last station and desync every panel.
+        station_slots = db.scalar(
+            select(func.count(func.distinct(Station.station_number))).where(
+                Station.ecoe_event_id == payload.ecoe_event_id
+            )
+        ) or 0
+        if station_slots and session.current_station_index >= station_slots:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"El circuito tiene {station_slots} estaciones; "
+                    "el cronómetro ya está en la última."
+                ),
+            )
         session.status = "transition"
         session.remaining_seconds = session.transition_time_seconds
         session.current_station_index += 1
