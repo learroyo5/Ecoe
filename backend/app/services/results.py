@@ -65,6 +65,9 @@ def compute_results(db: Session, ecoe_event_id: int) -> list[dict]:
             .where(
                 EvaluatorRecord.ecoe_event_id == ecoe_event_id,
                 EvaluatorRecord.mode == SessionMode.ejecucion.value,
+                # OPT-20 F3 (D3): a half-filled autosaved draft never enters
+                # the consolidated score; it is promoted on final submit.
+                EvaluatorRecord.is_draft.is_(False),
             )
             .group_by(EvaluatorRecord.student_id)
         ).all()
@@ -208,13 +211,18 @@ def build_traceability_report(
     # registros de pilotaje no cuentan para completitud, faltantes ni el
     # consolidado (mismo criterio que `compute_results`). Un estudiante que
     # solo pilotó y faltó a la ejecución debe verse como "sin actividad".
-    evaluator_records = db.scalars(
+    all_evaluator_rows = db.scalars(
         select(EvaluatorRecord).where(
             EvaluatorRecord.ecoe_event_id == ecoe_event_id,
             EvaluatorRecord.mode == SessionMode.ejecucion.value,
         )
         .order_by(EvaluatorRecord.created_at.desc(), EvaluatorRecord.id.desc())
     ).all()
+    # OPT-20 F3 (D3): only a finalized record counts as a completed evaluation
+    # and shows up in the activity log; a draft is tracked apart as pending
+    # work to be finalized in the contingency window.
+    evaluator_records = [row for row in all_evaluator_rows if not row.is_draft]
+    evaluator_drafts = [row for row in all_evaluator_rows if row.is_draft]
     student_responses = db.scalars(
         select(StudentResponse).where(
             StudentResponse.ecoe_event_id == ecoe_event_id,
@@ -290,6 +298,7 @@ def build_traceability_report(
         expected_student_submissions_total += required_student_form_station_count
         student_checkins = [item for item in checkins if item.student_id == student.id]
         student_evaluations = [item for item in evaluator_records if item.student_id == student.id]
+        student_evaluator_drafts = [item for item in evaluator_drafts if item.student_id == student.id]
         student_form_responses = [item for item in student_responses if item.student_id == student.id]
         latest_checkin = student_checkins[0].confirmed_at if student_checkins else None
         latest_evaluation = student_evaluations[0].created_at if student_evaluations else None
@@ -309,12 +318,19 @@ def build_traceability_report(
             and item.max_score is not None
             and item.score_obtained is None
         )
-        if not student_checkins and not student_evaluations and not student_form_responses:
+        pending_evaluator_drafts = len(student_evaluator_drafts)
+        if (
+            not student_checkins
+            and not student_evaluations
+            and not student_form_responses
+            and not student_evaluator_drafts
+        ):
             completion_status = "sin actividad"
         elif (
             has_expected_evaluations
             and has_expected_student_responses
             and pending_deferred_gradings == 0
+            and pending_evaluator_drafts == 0
         ):
             completion_status = "completo"
         else:
@@ -331,6 +347,7 @@ def build_traceability_report(
             "missing_evaluations": max(0, required_evaluator_station_count - len(student_evaluations)),
             "missing_student_submissions": max(0, required_student_form_station_count - len(student_form_responses)),
             "pending_deferred_gradings": pending_deferred_gradings,
+            "pending_evaluator_drafts": pending_evaluator_drafts,
             "completion_status": completion_status,
             "last_checkin_at": latest_checkin.isoformat() if latest_checkin else None,
             "last_evaluation_at": latest_evaluation.isoformat() if latest_evaluation else None,
@@ -345,6 +362,7 @@ def build_traceability_report(
     for station in stations:
         station_checkins = [item for item in checkins if item.station_id == station.id]
         station_evaluations = [item for item in evaluator_records if item.station_id == station.id]
+        station_evaluator_drafts = [item for item in evaluator_drafts if item.station_id == station.id]
         station_form_responses = [item for item in student_responses if item.station_id == station.id]
         latest_station_activity = max(
             [item for item in [
@@ -370,6 +388,7 @@ def build_traceability_report(
             "assigned_evaluator": station_primary_evaluator.get(station.id, "Sin asignar"),
             "checkins_count": len(station_checkins),
             "evaluations_count": len(station_evaluations),
+            "pending_evaluator_drafts": len(station_evaluator_drafts),
             "student_submissions_count": len(station_form_responses),
             "last_activity_at": latest_station_activity.isoformat() if latest_station_activity else None,
         })
@@ -404,6 +423,22 @@ def build_traceability_report(
             "detail": f"{student.ecoe_number} - {student.name} {student.last_name} evaluado en estación {station.station_number}: {station.name}.",
             "actor": record.evaluator_name, "mode": record.mode,
         })
+    for draft in evaluator_drafts:
+        student = students_by_id.get(draft.student_id)
+        station = stations_by_id.get(draft.station_id)
+        if not student or not station:
+            continue
+        activity_log.append({
+            "timestamp": draft.updated_at.isoformat() if draft.updated_at else draft.created_at.isoformat(),
+            "type": "evaluacion_borrador",
+            "label": "Evaluación en borrador (sin finalizar)",
+            "detail": (
+                f"{student.ecoe_number} - {student.name} {student.last_name}: registro del evaluador "
+                f"en estación {station.station_number}: {station.name} quedó como borrador; "
+                "debe finalizarse por contingencia."
+            ),
+            "actor": draft.evaluator_name, "mode": draft.mode,
+        })
     for response in student_responses:
         student = students_by_id.get(response.student_id)
         station = stations_by_id.get(response.station_id)
@@ -425,6 +460,7 @@ def build_traceability_report(
             "expected_student_submissions": expected_student_submissions_total,
             "confirmed_checkins": len(checkins),
             "evaluator_submissions": len(evaluator_records),
+            "pending_evaluator_drafts": len(evaluator_drafts),
             "student_submissions": len(student_responses),
             "pilot_runs": len(pilot_runs),
         },

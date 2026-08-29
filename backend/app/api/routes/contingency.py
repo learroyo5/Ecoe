@@ -80,7 +80,7 @@ def submit_evaluator_record_by_contingency(
             EvaluatorRecord.mode == session_mode,
         )
     )
-    if existing_record:
+    if existing_record is not None and not existing_record.is_draft:
         raise HTTPException(
             status_code=400,
             detail="Ya existe una evaluación registrada para este estudiante en esta estación",
@@ -96,24 +96,46 @@ def submit_evaluator_record_by_contingency(
             status_code=400,
             detail=f"El puntaje obtenido debe estar entre 0 y {authoritative_max}",
         )
-    record = EvaluatorRecord(
-        **payload.model_dump(exclude={"checkin_id", "max_score", "mode", "by_contingency"}),
-        max_score=authoritative_max,
-        mode=session_mode,
-        by_contingency=True,
-    )
+    if existing_record is not None:
+        # OPT-20 F3 (D3): a half-filled draft left by the buzzer is finalized
+        # here — coordination sets the authoritative score, the row becomes a
+        # definitive by_contingency record and the action is audited.
+        record = existing_record
+        record.evaluator_name = payload.evaluator_name
+        record.score_obtained = payload.score_obtained
+        record.max_score = authoritative_max
+        record.observation = payload.observation
+        record.answers = payload.answers
+        record.is_draft = False
+        record.by_contingency = True
+        record.submission_kind = "contingency"
+        action = "finalize_evaluation_draft_contingency"
+    else:
+        record = EvaluatorRecord(
+            **payload.model_dump(exclude={"checkin_id", "max_score", "mode", "by_contingency"}),
+            max_score=authoritative_max,
+            mode=session_mode,
+            by_contingency=True,
+        )
+        record.submission_kind = "contingency"
+        action = "submit_evaluation_contingency"
     db.add(record)
     db.flush()
     db.add(AuditLog(
         user_email=user.email,
-        action="submit_evaluation_contingency",
+        action=action,
         target_type="EvaluatorRecord",
         target_id=str(record.id),
         payload=payload.model_dump(),
     ))
     db.commit()
     db.refresh(record)
-    return {"saved": True, "record_id": record.id, "by_contingency": True}
+    return {
+        "saved": True,
+        "record_id": record.id,
+        "by_contingency": True,
+        "finalized_draft": action == "finalize_evaluation_draft_contingency",
+    }
 
 
 @router.post("/contingency/student-response")

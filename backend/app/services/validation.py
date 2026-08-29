@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.entities import (
     AssessmentTool,
     ECOEEvent,
+    EvaluatorRecord,
     LiveSession,
     MediaAsset,
     PilotRun,
@@ -237,6 +238,32 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
         pending_deferred_grading_station_numbers = sorted(
             s.station_number for s in deferred_grading_stations if s.id in pending_station_ids
         )
+    # Registros de evaluador que quedaron como borrador (autoguardado al
+    # vencer la fase, OPT-20 F3 / D3) y aún no se finalizaron: no suman al
+    # consolidado. No bloquea el cierre, pero el modal lo advierte.
+    stations_by_id_for_drafts = {s.id: s for s in stations}
+    pending_evaluator_draft_station_numbers = sorted(
+        {
+            stations_by_id_for_drafts[station_id].station_number
+            for (station_id,) in db.execute(
+                select(EvaluatorRecord.station_id)
+                .where(
+                    EvaluatorRecord.ecoe_event_id == ecoe_event.id,
+                    EvaluatorRecord.mode == SessionMode.ejecucion.value,
+                    EvaluatorRecord.is_draft.is_(True),
+                )
+                .distinct()
+            ).all()
+            if station_id in stations_by_id_for_drafts
+        }
+    )
+    pending_evaluator_draft_count = db.scalar(
+        select(func.count(EvaluatorRecord.id)).where(
+            EvaluatorRecord.ecoe_event_id == ecoe_event.id,
+            EvaluatorRecord.mode == SessionMode.ejecucion.value,
+            EvaluatorRecord.is_draft.is_(True),
+        )
+    ) or 0
     # Evaluadores asignados cuyo correo no tiene cuenta activa: el dia del
     # examen no podran iniciar sesion, pero la asignacion "se ve" completa.
     evaluator_emails = {
@@ -321,6 +348,15 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
                     "Estaciones de corrección diferida con respuestas sin puntuar (no sumarán a Resultados hasta corregirse): "
                     + ", ".join(str(number) for number in pending_deferred_grading_station_numbers)
                 ),
+                None if not pending_evaluator_draft_count else (
+                    f"{pending_evaluator_draft_count} registro(s) de evaluador en borrador sin finalizar "
+                    "(no sumarán a Resultados hasta finalizarse por contingencia)"
+                    + (
+                        ": estación(es) "
+                        + ", ".join(str(number) for number in pending_evaluator_draft_station_numbers)
+                        if pending_evaluator_draft_station_numbers else ""
+                    )
+                ),
                 None if not evaluators_without_account else (
                     "Evaluadores asignados sin cuenta de usuario activa (no podrán iniciar sesión): "
                     + ", ".join(evaluators_without_account)
@@ -400,6 +436,8 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
         "deferred_grading_ready": deferred_grading_ready,
         "deferred_grading_station_count": len(deferred_grading_stations),
         "pending_deferred_grading_stations": pending_deferred_grading_station_numbers,
+        "pending_evaluator_draft_count": pending_evaluator_draft_count,
+        "pending_evaluator_draft_stations": pending_evaluator_draft_station_numbers,
         "metadata_ready": metadata_ready,
         "timer_ready": timer_ready,
     }
