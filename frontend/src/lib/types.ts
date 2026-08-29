@@ -353,6 +353,14 @@ export type GradingListResult = {
   pending_by_station: PendingByStation;
 };
 
+export type GradingZeroBlankResult = {
+  /** Cuántas respuestas automáticas en blanco quedaron puntuadas 0. */
+  zeroed: number;
+  response_ids: number[];
+  /** Pendientes que quedan en el scope del actor tras el bulk. */
+  pending_remaining: number;
+};
+
 export type GradeResponseResult = {
   graded: boolean;
   response_id: number;
