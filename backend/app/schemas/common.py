@@ -218,6 +218,22 @@ class StationTemplateCreate(BaseModel):
 
 class StationTemplateRead(StationTemplateCreate, ORMBase):
     id: int
+    created_by: str | None = None
+    origin_event_id: int | None = None
+    archived: bool = False
+    # Referencias (estaciones + banco de estaciones); la UI decide con esto si
+    # ofrece purgar.
+    reference_count: int = 0
+
+
+class StationTemplatePatch(BaseModel):
+    """PATCH parcial de una plantilla (OPT-7b). Todos los campos opcionales;
+    UPDATE libre (sin gate de estado)."""
+
+    name: str | None = None
+    category: str | None = None
+    description: str | None = None
+    default_configuration: dict[str, Any] | None = None
 
 
 class SimulatedPatientCreate(BaseModel):
@@ -231,6 +247,21 @@ class SimulatedPatientCreate(BaseModel):
 
 class SimulatedPatientRead(SimulatedPatientCreate, ORMBase):
     id: int
+    created_by: str | None = None
+    origin_event_id: int | None = None
+    archived: bool = False
+    reference_count: int = 0
+
+
+class SimulatedPatientPatch(BaseModel):
+    """PATCH parcial de una ficha de paciente simulado (OPT-7b)."""
+
+    character_name: str | None = None
+    summary_profile: str | None = None
+    base_story: str | None = None
+    key_answers: str | None = None
+    emotional_tone: str | None = None
+    special_instructions: str | None = None
 
 
 class StationCreate(BaseModel):

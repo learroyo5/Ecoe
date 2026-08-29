@@ -288,6 +288,8 @@ def duplicate_ecoe(
     clona el banco de instrumentos, decisión OPT-7). El tool conserva su
     ``origin_event_id`` original, así que la regla de propiedad para
     editar/archivar la pauta sigue apuntando al ECOE que la creó, no a la copia.
+    Lo mismo aplica a ``template_id`` y ``simulated_patient_id`` (OPT-7b): se
+    comparten sin clonar y conservan su ``origin_event_id``.
     """
     ensure_event_access(db, user, ecoe_event_id, RoleCode.admin_ecoe.value)
     ecoe_event = db.get(ECOEEvent, ecoe_event_id)
