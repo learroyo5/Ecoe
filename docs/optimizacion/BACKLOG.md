@@ -7,6 +7,9 @@ El `optimizador` agrega y triage. El **usuario** cambia a `aprobado` / `descarta
 Triage: 2026-08-28, sobre las 4 tandas de hallazgos (`auditor-admin-ecoe`, `auditor-roles-usuario`,
 `auditor-operacion-vivo`, `auditor-correccion-resultados`). 27 hallazgos → 19 items.
 Ampliación 2026-08-28: mini-auditoría de tiempo (`auditor-operacion-vivo__OPT-20`) → OPT-20, que absorbe OPT-6.
+Ampliación 2026-08-29: `main` @ `b297df5` tiene Grupo A + OPT-20 F1–F4 + OPT-7/OPT-15 + Fase 2 (OPT-16..19)
+mergeados (en-verificación). Planes de follow-up redactados: **OPT-7b, OPT-7c, OPT-15b, OPT-11b** → `en-plan`;
+**OPT-17b** → `diferido` (contradice el estándar compensatorio; nota abajo).
 Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL (>2 sem).
 
 ## Grupo A — Estabilización (fixes acotados, candidatos a hacer ya)
@@ -22,6 +25,7 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 | OPT-9 | Endurecer `/live/control` | H-vivo-8 | baja | 500 con id inválido; "Iniciar" reinicia reloj sin confirmar | S | en-verificación | — (quick win, sin plan formal) |
 | OPT-10 | Empty-state para cuenta sin eventos accesibles | H-roles-usuario-4 | baja | caso borde: error técnico en vez de estado vacío | XS · solo frontend | en-verificación | — (quick win, sin plan formal) |
 | OPT-11 | Limpieza de campos decorativos y código muerto | H-admin-ecoe-5, H-admin-ecoe-6 | baja | expectativas falsas + mantenibilidad | S | en-verificación | — (quick win, sin plan formal) |
+| OPT-11b | Quitar (o derivar) `total_stations`/`total_students` del backend | H-admin-ecoe-5 (residuo de OPT-11) | baja | la pantalla de detalle sigue mostrando "Total de estaciones: 8" junto a 6 reales | S · opción (b) sin migración / opción (a) con `drop_column` ×2 | en-plan | `PLANES/OPT-11b__quitar-campos-decorativos.md` |
 | OPT-12 | Consistencia de forma de API (`ecoe_event_id` en body) | H-admin-ecoe-7 | baja | solo consistencia; frontend ya lo maneja | S · toca contrato de 3 endpoints | descartado | — |
 | OPT-13 | Correcciones a la matriz de permisos (documentación) | H-roles-usuario-2 | baja | doc induce a error | XS · solo `.md` | en-verificación | — (aplicado en `P0_MATRIZ_PERMISOS.md`) |
 | OPT-14 | Backplane para `LiveTimerManager` multi-worker | H-vivo-7 | baja (latente) | n/a hoy (1 worker); riesgo pre-escalado | L | diferido | — |
@@ -32,9 +36,10 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 |----|--------|-------------------|-----------|---------|--------------|--------|------|
 | OPT-6 | Visibilidad de pausa del cronómetro en evaluador y kiosko | H-vivo-3 | media | carga operativa: 1 contingencia por estudiante del circuito por cada pausa | M–L · decisión de enfoque | **absorbido por OPT-20** (su entregable = F1, en-verificación) | `PLANES/OPT-20__cronometro-sincronico.md` (F1) |
 | OPT-7 | CRUD de instrumentos (`AssessmentTool`) | H-admin-ecoe-4 | media | banco institucional se llena de pautas muertas; no se corrige una pauta con error | M · migración (columnas + `ondelete`) · impacto cross-event | **en-verificación** (backend + migración + CRUD real en `/instruments` + script de purga; modo "editar pauta" del Constructor pendiente) | `PLANES/OPT-7__crud-instrumentos.md` |
-| OPT-7b | CRUD de plantillas (`StationTemplate`) y pacientes simulados (`SimulatedPatient`) | H-admin-ecoe-4 §6 | baja | mismo patrón solo-creación; sin riesgo de trazabilidad ni huérfanas de alto volumen | S · UPDATE libre + soft-delete trivial | triado | — |
+| OPT-7b | CRUD de plantillas (`StationTemplate`) y pacientes simulados (`SimulatedPatient`) | H-admin-ecoe-4 §6 | baja | mismo patrón solo-creación; sin riesgo de trazabilidad ni huérfanas de alto volumen | S · migración (columnas ×2 + `ondelete` ×4) · UPDATE libre + soft-delete | en-plan | `PLANES/OPT-7b__crud-plantillas-pacientes.md` |
+| OPT-7c | Modo "editar esta pauta" en el Constructor de estaciones | OPT-7 §Decisión 5 (pendiente) | baja–media | el Constructor sigue creando una pauta nueva al "corregir" → huérfanas | M · solo frontend · sin migración | en-plan | `PLANES/OPT-7c__editar-pauta-constructor.md` |
 | OPT-15 | Cola del corrector (núcleo: pauta de referencia, autoavance, progreso, empty-states) | H-corr-5, H-corr-6 | media | corrección diferida a escala; gap vs. diseño FASE1 §Decisión 4 | M · sin migración · sin endpoints nuevos | **en-verificación** (backend + frontend + tests; suite SQLite y Postgres verde) | `PLANES/OPT-15__cola-corrector.md` |
-| OPT-15b | Corrector: bulk "puntuar 0 los blancos" + "Reasignar" in-place para correctores | H-corr-5 §C, auditoría OPT-15 §4/§6 | baja | residuo de fricción; hoy delete+recreate para cambiar estaciones de un corrector | S · sin migración (`api.updateStaff` ya lo soporta) | diferido | — |
+| OPT-15b | Corrector: bulk "puntuar 0 los blancos" + "Reasignar" in-place para correctores | H-corr-5 §C, auditoría OPT-15 §4/§6 | baja | residuo de fricción; hoy delete+recreate para cambiar estaciones de un corrector | S–M · sin migración (`api.updateStaff` ya lo soporta; bulk = endpoint nuevo) | en-plan | `PLANES/OPT-15b__correccion-bulk-y-reasignacion.md` |
 | OPT-20 | Cronómetro sincrónico único + autoguardado/autoenvío (absorbe OPT-6) | mini-auditoría OPT-20 (H-opt20-1..6, D1–D8) + H-vivo-3 | media (capacidad + carga operativa) | día del examen: el buzzer no garantiza captura; cada pausa dispara reingresos por contingencia; el registro del evaluador a medio llenar se pierde | XL · 4 fases (M + L + M–L + M) · 2 migraciones (F2/F3; F4 sin migración) — gate humano · cambia comportamiento observable (D2) | **en-verificación** (F1–F4 completas —backend + frontend—; solo falta el e2e con Docker, pendiente global sobre el stack de ramas) | `PLANES/OPT-20__cronometro-sincronico.md` |
 
 ## Grupo C — Capacidad de análisis de datos (Fase 2 — features grandes, requieren dimensionamiento y definición metodológica del usuario)
@@ -43,6 +48,7 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 |----|--------|-------------------|-----------|---------|--------------|--------|------|
 | OPT-16 | Resultado por estación (poblar `StationResult`) + desglose `by_station` | H-dato-1 | alta (capacidad) | ancla del análisis final; hoy imposible ver desempeño por estación | M · sin migración (tabla ya existe) | **en-verificación** (`opt/OPT-16-station-results`) | `PLANES/OPT-16__resultado-por-estacion.md` |
 | OPT-17 | Normalización por estación (promedio de %-de-logro) | H-dato-3 | alta (capacidad) | una estación de `max_score` alto domina la nota agregada | S/M · sin migración (bajó de L: decisiones metodológicas tomadas) | **en-verificación** (`opt/OPT-17-normalizacion`) | `PLANES/OPT-17__normalizacion-por-estacion.md` |
+| OPT-17b | Umbral de aprobación por estación (componente conjuntivo) | OPT-17 §"Umbral por estación" (evaluado y descartado) | media (capacidad) | permitiría un estándar híbrido; **contradice** el compensatorio puro elegido por el usuario | M · migración (`min_pass_percent` en `stations`) · cambia `compute_results` | diferido | — (recomendación en la nota de triage) |
 | OPT-18 | Analítica psicométrica (ejecución + pilotaje, item analysis por criterio) | H-dato-2 | alta (capacidad) | `pilotaje_validado` es un click sin respaldo cuantitativo | L–XL · sin migración · 3 sub-fases | **en-verificación** (`opt/OPT-18-psicometria`) — F1+F2+F3 | `PLANES/OPT-18__psicometria.md` |
 | OPT-19 | Export Excel enriquecido (multi-hoja) + limpieza `persist` muerto | H-dato-4 | media (capacidad) | análisis externo imposible; arg muerto viola "GET sin mutación" | M · sin migración (etiqueta ya hecha en `e642abd`) | **en-verificación** (`opt/OPT-19-export`) — 5 hojas + `persist` eliminado | `PLANES/OPT-19__export-enriquecido.md` |
 
@@ -297,11 +303,29 @@ frontend). Plan redactado: `PLANES/OPT-20__cronometro-sincronico.md`.
 
 ### OPT-7b · CRUD de plantillas y pacientes simulados
 Follow-up de OPT-7. `StationTemplate` y `SimulatedPatient` comparten el patrón solo-creación
-(`stations.py:54-73,110-129`) pero, según el hallazgo §6: `default_configuration` sólo se lee al aplicar la
+(`stations.py:76-95,293-312`) pero, según el hallazgo §6: `default_configuration` sólo se lee al aplicar la
 plantilla en el Constructor (no en runtime) y `SimulatedPatient` no interviene en el cálculo de notas → editar
-cualquiera es de bajo riesgo, sin el problema de `answers` keyed por `item.id`. CRUD casi trivial: UPDATE libre
-+ soft-delete (`archived`). Se hace después de OPT-7 reusando su infraestructura (`origin_event_id`/`created_by`
-/`archived`, comando de purga). **Estado**: triado — pendiente de que el usuario lo priorice.
+cualquiera es de bajo riesgo, sin el problema de `answers` keyed por `item.id`. CRUD: **UPDATE libre +
+soft-delete** (`archived`), **sin** el gate `EDIT_BLOCKING_STATUSES` de OPT-7 (verificado: el contenido no
+llega a runtime). Reusa la infraestructura de OPT-7 (regla de propiedad `ensure_tool_manage_permission`,
+comando de purga). **Migración sí**: 3 columnas (`created_by`/`origin_event_id`/`archived`) ×2 tablas +
+`ondelete="SET NULL"` en las 4 FK (`stations`/`station_bank` × `template_id`/`simulated_patient_id`,
+anónimas en el baseline). **Estado**: `en-plan` — `PLANES/OPT-7b__crud-plantillas-pacientes.md`.
+Decisión abierta para el usuario: ¿gate de editabilidad (no recomendado) y OK de schema para la migración?
+
+### OPT-7c · Modo "editar esta pauta" en el Constructor
+El implementador de OPT-7 lo dejó pendiente marcándolo invasivo
+(`PLANES/OPT-7__crud-instrumentos.md:307-310`). **Solo frontend**: el wizard
+(`stations/builder/{page,shared,instrument-step}.tsx`) tiene `AssessmentMode = "existing" | "create"`,
+`saveInstrumentDraft` **siempre** hace `api.createInstrument` (POST, `page.tsx:369-388`), y `applyStationLikeData`
+(`page.tsx:495-568`) **no carga los ítems del tool** al abrir una estación que ya referencia uno
+(`:550 setInstrumentDraft(defaultInstrumentDraft)`). Backend ya listo: `GET /api/instruments/{id}` (con `items` +
+`id` + `reference_count`) y `PATCH /api/instruments/{id}` (in-place por `AssessmentItem.id`, 409 si el ECOE pasó a
+`en_pilotaje`+) existen desde OPT-7; `api.instrument`/`api.updateInstrument` en `lib/api.ts:302-307`. Plan: (a)
+cargar los ítems al abrir; (b) tercer modo `"edit"` (offer optimista — 409 al guardar → fallback "crear copia";
+mejora backend `editable: bool` en el GET anotada como opcional); (c) `saveInstrumentDraft` bifurca PATCH/POST; (d)
+copy del 409. **Sin migración.** **Estado**: `en-plan` — `PLANES/OPT-7c__editar-pauta-constructor.md`.
+Esfuerzo M (toca la máquina de estados del wizard).
 
 ### OPT-8 · `/kiosk/submit` debe exigir el check-in confirmado vigente
 **Confirmado** (`app/api/routes/kiosk.py::kiosk_submit` — `db.get(StationCheckIn, payload.checkin_id)` valida
@@ -363,6 +387,23 @@ de 9 estados sin guardas, nunca se pasa `true`; `frontend/src/lib/api.ts:163` �
   reales de filas. **Pendiente / fuera de este lote**: quitar `total_stations`/`total_students` del schema/DB
   del backend — se consumen en create/update/duplicate/detalle/`types.ts` y requeriría migración; el endpoint
   `POST /staff` se mantiene (lo usan varios tests + el import masivo).
+
+### OPT-11b · Quitar (o derivar) `total_stations` / `total_students` decorativos
+Residuo de OPT-11. **Confirmado**: `compute_ecoe_validation` (`services/validation.py:54`) cuenta filas reales
+(`db.scalar(select(func.count(Station.id)))`) y **nunca** lee `ecoe_event.total_stations` (grep en `backend/app/`:
+los únicos usos son el schema `ECOEEventBase` (`schemas/common.py:51,54`), la columna (`entities.py:116,119`),
+`duplicate_ecoe` (`ecoe.py:306,309`) y el seed). El form ya los relabeló "estimadas" (OPT-11), pero
+`ecoe/[id]/page.tsx:207,210` **sigue** mostrando `<DetailItem label="Total de estaciones">` sin ese matiz → la
+falsa-expectativa de H-admin-ecoe-5 persiste en la pantalla de detalle. Plan con dos opciones:
+**(a) quitar** — migración `drop_column` ×2 + limpiar schema/modelo/frontend + churn de ~22 tests que pasan
+`total_stations=` al constructor ORM o al body del POST;
+**(b) derivar** (recomendada) — sacar los 2 campos de `ECOEEventBase` (Create/Update dejan de aceptarlos; Pydantic
+ignora las claves extra → clientes viejos no rompen), exponerlos en `ECOEEventRead` calculados por un helper
+`_with_counts(db, event)` en los 6 handlers (lista con `GROUP BY`, no N+1), columnas del modelo intactas → sin
+migración, sin churn de los ~15 tests de constructor (sólo ~7 asserts de respuesta de `POST /ecoe`).
+**Recomendación: (b)** — elimina la falsa-expectativa igual, sin migración, con el mínimo churn. (a) queda como
+limpieza de schema opcional posterior. Decisión abierta: `total_students` ¿sólo `is_active`? (recomendado sí).
+**Estado**: `en-plan` — `PLANES/OPT-11b__quitar-campos-decorativos.md`.
 
 ### OPT-12 · Consistencia de forma de API (`ecoe_event_id` en body)
 **Confirmado** (`app/api/routes/stations.py:60-64,84-90,116-121` — `ecoe_event_id` como query param en el POST,
@@ -427,13 +468,16 @@ ve lista vacía indistinguible de "todo corregido" (H-corr-6).
   stack de ramas; merge/deploy.
 
 ### OPT-15b · Corrector — bulk-0 y reasignación in-place
-Follow-up de OPT-15, fuera del núcleo. (1) Bulk "puntuar 0 las respuestas en blanco de esta estación",
-apoyado en `submission_kind == "auto"` + `grading[k].answered == false` (ambos ya disponibles tras OPT-20 F4);
-cierra el residuo de fricción de F4 (hoy los autoenvíos en blanco se resuelven uno a uno). (2) Extender la
-columna "Reasignar" de `frontend/src/app/(app)/evaluators/page.tsx:537-604` a `role_code === "corrector"`
-con multi-select ligado a `api.updateStaff` — hoy corta con "No aplica" para todo `!== "evaluador"` y cambiar
-las estaciones de un corrector exige borrarlo y recrearlo. PATCH ya lo soporta; sólo falta la UI.
-**Estado**: diferido — se retoma tras el núcleo de OPT-15 si el volumen operativo lo justifica.
+Follow-up de OPT-15, fuera del núcleo. (1) Bulk "puntuar 0 las respuestas en blanco de esta estación":
+**endpoint nuevo** `POST /api/grading/{event}/stations/{station_id}/zero-blank`, selección estricta
+(`submission_kind == "auto"` + **todas** las claves manuales pendientes con `grading[k].answered == false`),
+reusa `apply_manual_scores` con `{k: 0}`, `AuditLog` por respuesta, mismo gate que `grade_response`
+(scope del corrector + 409 si `cerrado`/`archivado`; nota: `grade_response` **no** llama `ensure_submission_stage`
+hoy — el plan replica ese invariante). (2) Extender las columnas "Estación principal" y "Reasignar" de
+`frontend/src/app/(app)/evaluators/page.tsx:526-604` a `role_code === "corrector"` con `<select multiple>` ligado
+a `api.updateStaff` — hoy cortan con "No aplica" para todo `!== "evaluador"` (`:531,:546-548`); PATCH ya lo soporta
+(`update_staff` → `_resolve_staff_station_ids`, `single=False` para corrector). **Sin migración.**
+**Estado**: `en-plan` — `PLANES/OPT-15b__correccion-bulk-y-reasignacion.md`. Las dos partes son independientes.
 
 ### OPT-16 a OPT-19 · Capacidad de análisis de datos — **Fase 2**
 **Confirmados** todos (ver `PLANES/FASE2_ANALISIS_DATOS__scoping.md` para el detalle de evidencia por item).
@@ -513,6 +557,28 @@ estación + agregado media/DE/n), congelado desde snapshot cuando el evento est�
 tabla nueva en `/results`. Sin endpoint/permiso/máquina de estados nuevos. La nota por estación es
 **informativa** (alimentar un estándar por estación = OPT-17). 4 decisiones menores para el usuario en el
 plan (todas no bloqueantes de la implementación).
+
+### OPT-17b · Umbral de aprobación por estación — **DIFERIDO (recomendado)**
+El implementador de OPT-17 evaluó "umbral por estación" y lo **descartó** para OPT-17
+(`PLANES/OPT-17__normalizacion-por-estacion.md:252-257`): *"no es trivial, contradice el compensatorio"*.
+El usuario eligió (2026-08-29) un estándar **puramente compensatorio**: un único umbral global
+(`passing_reference_percent`) sobre el promedio de %-de-logro por estación; `compute_equivalent_grade` sin
+tocar. Un **umbral por estación introduce un componente conjuntivo** — un modelo distinto del que se aprobó.
+
+**Qué implicaría** (si el usuario lo pidiera):
+- **Migración**: columna `min_pass_percent` (nullable, `Float`) en `stations` + UI en el Constructor de
+  estaciones — gate humano.
+- **Cálculo**: `compute_results` pasa a devolver `passed_stations` / `failed_stations` por estudiante
+  (una estación "reprueba" si `percent_score < station.min_pass_percent`).
+- **Decisión de producto no trivial**: ¿un fallo por estación **reprueba** al estudiante (conjuntivo duro),
+  o sólo **advierte** en el acta (compensatorio + señal)? ¿cuántas estaciones se pueden fallar? ¿cómo
+  interactúa con la nota 1.0–7.0 — se fuerza a < nota de aprobación, o se anota aparte?
+- Toca `results.py`, `results/page.tsx`, el export (OPT-19), y probablemente el acta/PDF.
+
+**Recomendación: dejarlo `diferido`** hasta que el usuario pida explícitamente un estándar
+híbrido/conjuntivo. No vale la pena redactar el plan ahora — el estándar vigente es compensatorio por
+decisión consciente. Si el usuario lo pide, es su propio ciclo auditor→plan (define primero el modelo de
+estándar, luego se dimensiona). No es un bug ni un residuo: es una feature de otro modelo psicométrico.
 
 ---
 
