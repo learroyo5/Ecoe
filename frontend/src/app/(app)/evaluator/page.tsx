@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
 import { clockOffsetMs, parseServerUtc } from "@/lib/time";
+import { useLiveTimer } from "@/lib/ws";
 import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 import { ConfirmDialog, TIMER_TONE_CLASSES, timerTone } from "@/components/confirm-dialog";
@@ -92,6 +93,14 @@ export default function EvaluatorPage() {
     | undefined;
   const assessmentItems = useMemo(() => assessmentTool?.items ?? [], [assessmentTool]);
   const submitted = Boolean(activeCheckin?.evaluator_submission_exists);
+
+  // ── Reloj central (OPT-20 F1) ──────────────────────────────────────
+  // El evaluador escucha el cronómetro: en pausa se muestra un banner y se
+  // deshabilita "Guardar evaluación" (el registro sigue editable).
+  const { snapshot: liveSnapshot } = useLiveTimer(eventId, { enabled: authenticated });
+  const liveStatus =
+    liveSnapshot?.status ?? (context?.live_status as string | null | undefined) ?? null;
+  const livePaused = liveStatus === "paused";
   const evaluatorInstruction = String(
     activeCheckin?.evaluator_instruction ?? assignedStation?.evaluator_instruction ?? "",
   ).trim();
@@ -171,6 +180,11 @@ export default function EvaluatorPage() {
 
   const submitEvaluation = async () => {
     if (!activeCheckin) return;
+    if (livePaused) {
+      setShowSubmitConfirm(false);
+      setMessage("El cronómetro central está en pausa: la evaluación se enviará al reanudar.");
+      return;
+    }
     setMessage(null);
     setSubmittingEvaluation(true);
     try {
@@ -260,6 +274,16 @@ export default function EvaluatorPage() {
                 : "Incluye el tiempo de transición: puedes terminar de registrar mientras el estudiante cambia de estación."}
             </p>
           </div>
+
+          {livePaused ? (
+            <div
+              role="alert"
+              className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900"
+            >
+              ⏸ Pausa en curso — el cronómetro central está detenido. Tu registro
+              sigue editable, pero no puede enviarse hasta que se reanude.
+            </div>
+          ) : null}
 
           {assignedStation ? (
             <form
@@ -515,15 +539,17 @@ export default function EvaluatorPage() {
               </label>
               <button
                 className="btn-primary w-full text-base"
-                disabled={submitted || submittingEvaluation || timeExpired}
+                disabled={submitted || submittingEvaluation || timeExpired || livePaused}
               >
                 {submitted
                   ? "Evaluación ya enviada"
                   : timeExpired
                     ? "Tiempo agotado"
-                    : submittingEvaluation
-                      ? "Guardando evaluación..."
-                      : "Guardar evaluación"}
+                    : livePaused
+                      ? "Pausa en curso"
+                      : submittingEvaluation
+                        ? "Guardando evaluación..."
+                        : "Guardar evaluación"}
               </button>
               {submitted ? (
                 <p className="text-sm text-amber-700">

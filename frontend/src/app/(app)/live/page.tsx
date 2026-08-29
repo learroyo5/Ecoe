@@ -1,17 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
-import { resolveLiveWsUrl } from "@/lib/ws";
+import { useLiveTimer } from "@/lib/ws";
 import { SectionCard } from "@/components/section-card";
 import { StatusNotice } from "@/components/forms";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { Incident } from "@/lib/types";
-
-const WS_RETRY_MS = 5000;
 
 type TimerState = {
   status: string;
@@ -48,7 +46,6 @@ function ProjectorEscape({ onExit }: { onExit: () => void }) {
 
 export default function LivePage() {
   const { authenticated, eventId } = useECOE();
-  const wsRef = useRef<WebSocket | null>(null);
   const [timerState, setTimerState] = useState<TimerState>({
     status: "sin_sesion",
     remaining_seconds: 0,
@@ -58,7 +55,6 @@ export default function LivePage() {
   });
 
   const [controlMessage, setControlMessage] = useState<string | null>(null);
-  const [wsConnected, setWsConnected] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [projectorMode, setProjectorMode] = useState(false);
 
@@ -122,91 +118,56 @@ export default function LivePage() {
     return () => clearInterval(intervalId);
   }, [timerState, receivedAt]);
 
-  // WebSocket en tiempo real con reconexión automática: si la conexión cae,
-  // el indicador lo muestra y se reintenta cada pocos segundos en vez de
-  // dejar el panel congelado en silencio.
-  useEffect(() => {
-    let disposed = false;
-    let retryTimer: number | null = null;
+  // WebSocket en tiempo real con reconexión automática (hook compartido
+  // useLiveTimer): el timer_update alimenta timerState y receivedAt, los
+  // frames de incidencias van por onMessage, y al (re)conectar se resincroniza
+  // el estado vía REST por si cambió mientras estuvimos desconectados.
+  const handleLiveMessage = useCallback((data: Record<string, unknown>) => {
+    if (data.type === "incident_created") {
+      const incident = data.incident as Incident;
+      setIncidents((prev) => [
+        { ...incident, ecoe_event_id: Number(data.ecoe_event_id) } as Incident,
+        ...prev,
+      ]);
+    } else if (data.type === "incident_resolved") {
+      setIncidents((prev) =>
+        prev.map((inc) =>
+          inc.id === data.incident_id ? { ...inc, resolved: Boolean(data.resolved) } : inc,
+        ),
+      );
+    }
+  }, []);
 
-    const connect = () => {
-      if (disposed) return;
-      const wsUrl = resolveLiveWsUrl(eventId);
-      let ws: WebSocket | null = null;
-      try {
-        ws = new WebSocket(wsUrl);
-        wsRef.current = ws;
-      } catch {
-        setWsConnected(false);
-        retryTimer = window.setTimeout(connect, WS_RETRY_MS);
-        return;
-      }
-
-      ws.onopen = () => {
-        setWsConnected(true);
-        // Resincroniza el estado al reconectar: pudo cambiar mientras
-        // estuvimos desconectados.
-        api.live(eventId).then((data) => {
-          setTimerState((prev) => ({
-            ...prev,
-            status: String(data.status ?? prev.status),
-            remaining_seconds: Number(data.remaining_seconds ?? prev.remaining_seconds),
-            current_station_index: Number(data.current_station_index ?? prev.current_station_index),
-            station_time_seconds: Number(data.station_time_seconds ?? prev.station_time_seconds),
-            transition_time_seconds: Number(data.transition_time_seconds ?? prev.transition_time_seconds),
-          }));
-          setReceivedAt(Date.now());
-        }).catch(() => { /* el WS seguirá empujando updates */ });
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === "timer_update") {
-            setTimerState({
-              status: data.status,
-              remaining_seconds: data.remaining_seconds,
-              current_station_index: data.current_station_index,
-              station_time_seconds: data.station_time_seconds,
-              transition_time_seconds: data.transition_time_seconds,
-            });
-            setReceivedAt(Date.now());
-          } else if (data.type === "incident_created") {
-            setIncidents((prev) => [
-              { ...data.incident, ecoe_event_id: data.ecoe_event_id } as Incident,
-              ...prev,
-            ]);
-          } else if (data.type === "incident_resolved") {
-            setIncidents((prev) =>
-              prev.map((inc) =>
-                inc.id === data.incident_id ? { ...inc, resolved: data.resolved } : inc,
-              ),
-            );
-          }
-        } catch {
-          // Ignore malformed messages
-        }
-      };
-
-      ws.onclose = () => {
-        setWsConnected(false);
-        if (!disposed) {
-          retryTimer = window.setTimeout(connect, WS_RETRY_MS);
-        }
-      };
-      ws.onerror = () => {
-        try { ws?.close(); } catch { /* onclose reintenta */ }
-      };
-    };
-
-    connect();
-
-    return () => {
-      disposed = true;
-      if (retryTimer) window.clearTimeout(retryTimer);
-      try { wsRef.current?.close(); } catch { /* ignore */ }
-    };
+  const resyncFromRest = useCallback(() => {
+    api.live(eventId).then((data) => {
+      setTimerState((prev) => ({
+        ...prev,
+        status: String(data.status ?? prev.status),
+        remaining_seconds: Number(data.remaining_seconds ?? prev.remaining_seconds),
+        current_station_index: Number(data.current_station_index ?? prev.current_station_index),
+        station_time_seconds: Number(data.station_time_seconds ?? prev.station_time_seconds),
+        transition_time_seconds: Number(data.transition_time_seconds ?? prev.transition_time_seconds),
+      }));
+      setReceivedAt(Date.now());
+    }).catch(() => { /* el WS seguirá empujando updates */ });
   }, [eventId]);
+
+  const { snapshot: liveSnapshot, connected: wsConnected } = useLiveTimer(eventId, {
+    onMessage: handleLiveMessage,
+    onReconnect: resyncFromRest,
+  });
+
+  useEffect(() => {
+    if (!liveSnapshot) return;
+    setTimerState({
+      status: liveSnapshot.status,
+      remaining_seconds: liveSnapshot.remainingSeconds,
+      current_station_index: liveSnapshot.currentStationIndex,
+      station_time_seconds: liveSnapshot.stationTimeSeconds,
+      transition_time_seconds: liveSnapshot.transitionTimeSeconds,
+    });
+    setReceivedAt(liveSnapshot.receivedAt);
+  }, [liveSnapshot]);
 
   const sendAction = useCallback(async (action: string) => {
     setControlMessage(null);

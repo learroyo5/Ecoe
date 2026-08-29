@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
 import { clockOffsetMs, parseServerUtc } from "@/lib/time";
+import { useLiveTimer } from "@/lib/ws";
 import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 import { ConfirmDialog, TIMER_TONE_CLASSES, timerTone } from "@/components/confirm-dialog";
@@ -56,6 +57,16 @@ export default function StudentPage() {
   const submissionDeadline = String(context?.submission_deadline ?? "");
   const draftStorageKey = context ? `student-station-draft-${String(context.checkin_id)}` : "";
   const submitted = Boolean(context?.student_response_exists);
+
+  // ── Reloj central (OPT-20 F1) ──────────────────────────────────────
+  const { snapshot: liveSnapshot, connected: wsConnected } = useLiveTimer(eventId, {
+    enabled: authenticated,
+  });
+  const liveStatus =
+    liveSnapshot?.status ?? (context?.live_status as string | null | undefined) ?? null;
+  const livePaused =
+    liveStatus === "paused" || (!wsConnected && Boolean(context?.paused));
+  const autoSubmitAllowed = liveStatus == null || liveStatus === "running";
   const questions = useMemo(() => {
     const rawQuestions = (
       context?.student_form_definition as { questions?: StudentFormQuestion[] } | undefined
@@ -130,7 +141,7 @@ export default function StudentPage() {
   }, [answers, draftStorageKey, submitted]);
 
   useEffect(() => {
-    if (!context || !confirmedAt || !timerDurationSeconds) {
+    if (!context || !confirmedAt || !timerDurationSeconds || livePaused) {
       return;
     }
 
@@ -138,7 +149,7 @@ export default function StudentPage() {
       setNowMs(Date.now());
     }, 1000);
     return () => window.clearInterval(intervalId);
-  }, [context, confirmedAt, timerDurationSeconds]);
+  }, [context, confirmedAt, timerDurationSeconds, livePaused]);
 
   const remainingSeconds = useMemo(() => {
     if (!context) {
@@ -209,6 +220,10 @@ export default function StudentPage() {
     if (!context || submitted || autoSubmitting || remainingSeconds !== 0 || autoSubmitAttemptedRef.current) {
       return;
     }
+    // OPT-20 F1: en pausa (o con el reloj central detenido) no autoenviamos.
+    if (!autoSubmitAllowed) {
+      return;
+    }
     autoSubmitAttemptedRef.current = true;
     const timeoutId = window.setTimeout(() => {
       setAutoSubmitting(true);
@@ -220,7 +235,7 @@ export default function StudentPage() {
         .finally(() => setAutoSubmitting(false));
     }, 0);
     return () => window.clearTimeout(timeoutId);
-  }, [autoSubmitting, context, remainingSeconds, submitResponse, submitted]);
+  }, [autoSubmitAllowed, autoSubmitting, context, remainingSeconds, submitResponse, submitted]);
 
   const updateAnswer = (questionIndex: number, value: string | string[]) => {
     setAnswers((current) => ({
@@ -298,6 +313,23 @@ export default function StudentPage() {
       title="Interfaz del estudiante"
       subtitle="Primero verifica tu número ECOE y tu nombre; solo después de la confirmación del evaluador se habilita el envío."
     >
+      {livePaused ? (
+        <div
+          role="alert"
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/95 px-6 text-center text-white"
+        >
+          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-white/60">
+            Pausa
+          </p>
+          <p className="mt-6 text-3xl font-bold md:text-4xl">
+            PAUSA — el cronómetro está detenido
+          </p>
+          <p className="mt-4 max-w-xl text-lg text-white/70">
+            Espera a que coordinación reanude el examen. Tu respuesta a medio
+            escribir se conserva.
+          </p>
+        </div>
+      ) : null}
       {expandedImage ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 p-4"
