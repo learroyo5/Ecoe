@@ -255,7 +255,7 @@ Frontend: `frontend/src/app/(app)/results/__tests__/page.test.tsx` — la tarjet
 ## Estado de aprobación
 
 - Propuesto por: optimizador — 2026-08-29
-- Aprobado por usuario: ⬜ pendiente
+- Aprobado por usuario: ✅ 2026-08-29 — plan aprobado, decisiones de implementación = las recomendadas (DE muestral, agregado sobre percent_score, hoja Excel incluida, nota por estación informativa).
 - Decisiones que el usuario debe revisar antes de implementar:
   1. **DE**: muestral (n−1, `None` si n<2) — recomendado — vs. poblacional.
   2. **Base del agregado**: `percent_score` (recomendado, estaciones con distinto

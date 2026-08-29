@@ -307,8 +307,9 @@ renderizan con métricas presentes y **degradan** (sin romper) con
   pilotaje; en `pilotaje_validado` advierte y no bloquea; endpoints + pantallas
   nuevas; módulo de cálculo nuevo; sin migración obligatoria; dividido en
   sub-fases).
-- **Plan técnico, umbrales por defecto y decisiones de implementación: ⬜
-  pendiente de revisión del usuario.**
+- **Plan técnico, umbrales por defecto y decisiones de implementación: ✅
+  2026-08-29 — aprobado; decisiones de implementación = las recomendadas
+  (incluida la tabla de umbrales por defecto propuesta).**
 - Decisiones de implementación abiertas:
   1. **Umbrales por defecto**: confirmar la tabla propuesta (α<0.6,
      discriminación<0.2, dificultad fuera de [0.2, 0.9], punto-biserial<0.2).

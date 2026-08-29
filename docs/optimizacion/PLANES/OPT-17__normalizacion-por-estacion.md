@@ -275,7 +275,7 @@ nuevo se renderiza; si se agrega la columna "Estaciones", aparece.
   compensatorio; estaciones con peso igual = promedio de %-por-estación; nota
   1.0–7.0 sin cambio de método; sin peso/umbral por estación; sin migración;
   eventos cerrados conservan snapshot viejo).
-- **Plan técnico y decisiones de implementación: ⬜ pendiente de revisión del
+- **Plan técnico y decisiones de implementación: ✅ 2026-08-29 — aprobado; decisiones de implementación = las recomendadas.**
   usuario.**
 - Decisiones de implementación abiertas:
   1. ¿`total_score` / `max_score` se mantienen como suma cruda (recomendado, no

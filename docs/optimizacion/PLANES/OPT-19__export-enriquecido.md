@@ -195,7 +195,7 @@ nuevas (test trivial, sólo si se quiere fijar el copy).
   multi-hoja: consolidado + por_estacion + item_analysis + trazabilidad_envios +
   metadatos; identidad/timestamps/mode/submission_kind/by_contingency por
   registro; limpiar el `persist` muerto; sin migración; implementar último).
-- **Plan técnico y decisiones de implementación: ⬜ pendiente de revisión del
+- **Plan técnico y decisiones de implementación: ✅ 2026-08-29 — aprobado; decisiones de implementación = las recomendadas.**
   usuario.**
 - Decisiones de implementación abiertas:
   1. ¿Hoja `trazabilidad_pilotaje` aparte para `mode='pilotaje'` (recomendado)?
