@@ -343,7 +343,7 @@ export default function EvaluatorPage() {
 
           {assignedStation ? (
             <form
-              className="space-y-4"
+              className="flex flex-col gap-4"
               onSubmit={async (event) => {
                 event.preventDefault();
                 setMessage(null);
@@ -403,7 +403,7 @@ export default function EvaluatorPage() {
                 }
               }}
             >
-              <label className="space-y-2">
+              <label className="flex flex-col gap-2">
                 <span className="text-sm font-semibold text-slate-700">
                   Número ECOE del estudiante
                 </span>
