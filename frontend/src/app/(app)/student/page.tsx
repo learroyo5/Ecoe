@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { api } from "@/lib/api";
+import { api, isAlreadySubmittedError } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
 import { clockOffsetMs, parseServerUtc } from "@/lib/time";
 import { useLiveTimer } from "@/lib/ws";
@@ -27,6 +27,11 @@ type ResolvedMediaAsset = MediaAsset & {
   objectUrl: string;
 };
 
+// OPT-20 F2: autoguardado server-side del borrador — debounce por cambio +
+// latido periódico, además del respaldo en localStorage.
+const DRAFT_DEBOUNCE_MS = 800;
+const DRAFT_HEARTBEAT_MS = 10000;
+
 export default function StudentPage() {
   const { authenticated, eventId } = useECOE();
   const [ecoeNumber, setEcoeNumber] = useState("");
@@ -42,6 +47,8 @@ export default function StudentPage() {
   const [resolvedMediaAssets, setResolvedMediaAssets] = useState<ResolvedMediaAsset[]>([]);
   const [expandedImage, setExpandedImage] = useState<ResolvedMediaAsset | null>(null);
   const autoSubmitAttemptedRef = useRef(false);
+  const answersRef = useRef(answers);
+  answersRef.current = answers;
 
   const confirmedAt = String(context?.confirmed_at ?? "");
   const serverNow = String(context?.server_now ?? "");
@@ -140,6 +147,37 @@ export default function StudentPage() {
     }
   }, [answers, draftStorageKey, submitted]);
 
+  // ── Borrador server-side (OPT-20 F2) ────────────────────────────────
+  // Mejor esfuerzo: le da al barrido server-side algo que finalizar aunque
+  // el navegador se congele. El localStorage de arriba sigue siendo el
+  // respaldo local.
+  const pushDraft = useCallback(() => {
+    if (!context) return;
+    api
+      .studentDraft({
+        ecoe_event_id: eventId,
+        station_id: Number(context.station_id),
+        student_id: Number(context.student_id),
+        checkin_id: Number(context.checkin_id),
+        answers: answersRef.current,
+      })
+      .catch(() => {
+        /* el localStorage cubre el respaldo local */
+      });
+  }, [context, eventId]);
+
+  useEffect(() => {
+    if (!context || submitted) return;
+    const timeoutId = window.setTimeout(pushDraft, DRAFT_DEBOUNCE_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [answers, context, submitted, pushDraft]);
+
+  useEffect(() => {
+    if (!context || submitted) return;
+    const intervalId = window.setInterval(pushDraft, DRAFT_HEARTBEAT_MS);
+    return () => window.clearInterval(intervalId);
+  }, [context, submitted, pushDraft]);
+
   useEffect(() => {
     if (!context || !confirmedAt || !timerDurationSeconds || livePaused) {
       return;
@@ -155,6 +193,16 @@ export default function StudentPage() {
     if (!context) {
       return null;
     }
+    // OPT-20 F2: con WebSocket activo y una fase de estación corriendo, el
+    // `phaseEndsAt` del frame WS manda; el `submission_deadline` del REST es
+    // sólo el arranque/fallback.
+    if (
+      wsConnected &&
+      liveSnapshot?.status === "running" &&
+      liveSnapshot.phaseEndsAt != null
+    ) {
+      return Math.max(0, Math.floor((liveSnapshot.phaseEndsAt - nowMs) / 1000));
+    }
     if (submissionDeadline) {
       return Math.max(
         0,
@@ -169,7 +217,16 @@ export default function StudentPage() {
       Math.floor((nowMs + serverClockOffsetMs - parseServerUtc(confirmedAt)) / 1000),
     );
     return Math.max(timerDurationSeconds - elapsedSeconds, 0);
-  }, [confirmedAt, context, nowMs, serverClockOffsetMs, submissionDeadline, timerDurationSeconds]);
+  }, [
+    confirmedAt,
+    context,
+    liveSnapshot,
+    nowMs,
+    serverClockOffsetMs,
+    submissionDeadline,
+    timerDurationSeconds,
+    wsConnected,
+  ]);
 
   const timerLabel = useMemo(() => {
     if (remainingSeconds === null) {
@@ -196,16 +253,31 @@ export default function StudentPage() {
       return;
     }
     const currentDraftStorageKey = draftStorageKey;
-    await api.submitStudent(
-      {
-        checkin_id: Number(context.checkin_id),
-        ecoe_event_id: eventId,
-        station_id: Number(context.station_id),
-        student_id: Number(context.student_id),
-        answers,
-        locked: true,
-      },
-    );
+    try {
+      await api.submitStudent(
+        {
+          checkin_id: Number(context.checkin_id),
+          ecoe_event_id: eventId,
+          station_id: Number(context.station_id),
+          student_id: Number(context.student_id),
+          answers,
+          locked: true,
+        },
+      );
+    } catch (error) {
+      // OPT-20 F2: el barrido server-side ganó la carrera — la respuesta ya
+      // quedó registrada. Para el estudiante es un éxito: cerramos igual.
+      if (isAlreadySubmittedError(error)) {
+        if (currentDraftStorageKey && typeof window !== "undefined") {
+          window.localStorage.removeItem(currentDraftStorageKey);
+        }
+        resetToIdentification(
+          "La respuesta de esta estación ya había sido enviada y quedó registrada.",
+        );
+        return;
+      }
+      throw error;
+    }
     if (currentDraftStorageKey && typeof window !== "undefined") {
       window.localStorage.removeItem(currentDraftStorageKey);
     }

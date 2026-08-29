@@ -11,13 +11,18 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { api } from "@/lib/api";
+import { api, isAlreadySubmittedError } from "@/lib/api";
 import { clockOffsetMs, parseServerUtc } from "@/lib/time";
 import { useLiveTimer } from "@/lib/ws";
 import { ConfirmDialog, TIMER_TONE_CLASSES, timerTone } from "@/components/confirm-dialog";
 
 const TOKEN_STORAGE_KEY = "ecoe-kiosk-token";
 const POLL_INTERVAL_MS = 3000;
+// OPT-20 F2: autoguardado server-side del borrador — debounce por cambio de
+// respuesta + un latido periódico para que el barrido siempre tenga algo que
+// finalizar aunque la tablet se congele.
+const DRAFT_DEBOUNCE_MS = 800;
+const DRAFT_HEARTBEAT_MS = 10000;
 
 type KioskQuestion = {
   label: string;
@@ -45,7 +50,8 @@ type KioskActive = {
   media_assets: KioskMediaAsset[];
   station_time_minutes: number;
   confirmed_at: string;
-  submission_deadline: string;
+  // OPT-20 F2: `null` mientras el reloj central está en pausa.
+  submission_deadline: string | null;
   student_response_exists: boolean;
 };
 
@@ -135,6 +141,21 @@ export default function KioskPage() {
     [token],
   );
 
+  // OPT-20 F2: cuando el barrido server-side ganó la carrera, el envío del
+  // cliente falla con "ya fue enviada". Es un éxito: confirmamos contra el
+  // servidor y mostramos la pantalla de respuesta enviada.
+  const reloadContext = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = (await api.kioskContext(token)) as unknown as KioskContext;
+      if (data.active?.student_response_exists) {
+        setSubmitted(true);
+      }
+    } catch {
+      /* el polling de 3 s corregirá el estado */
+    }
+  }, [token]);
+
   // ── Polling del contexto de la estación ─────────────────────────────
   useEffect(() => {
     if (!token) return;
@@ -202,6 +223,36 @@ export default function KioskPage() {
     }
   }, [answers, draftKey, submitted]);
 
+  // ── Borrador server-side (OPT-20 F2) ────────────────────────────────
+  // Debounce por cada cambio de respuesta: le da al barrido server-side algo
+  // que finalizar aunque la tablet se congele después. El localStorage de
+  // arriba sigue siendo el respaldo local.
+  useEffect(() => {
+    if (!token || !current || submitted) return;
+    const checkinId = current.checkin_id;
+    const timeoutId = window.setTimeout(() => {
+      api
+        .kioskDraft(token, { checkin_id: checkinId, answers: answersRef.current })
+        .catch(() => {
+          /* mejor esfuerzo: el localStorage cubre el respaldo local */
+        });
+    }, DRAFT_DEBOUNCE_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [answers, current, submitted, token]);
+
+  // Latido periódico: reenvía el borrador cada ~10 s mientras la estación
+  // esté ocupada, incluso sin cambios recientes.
+  useEffect(() => {
+    if (!token || !current || submitted) return;
+    const checkinId = current.checkin_id;
+    const intervalId = window.setInterval(() => {
+      api
+        .kioskDraft(token, { checkin_id: checkinId, answers: answersRef.current })
+        .catch(() => {});
+    }, DRAFT_HEARTBEAT_MS);
+    return () => window.clearInterval(intervalId);
+  }, [current, submitted, token]);
+
   // ── Cronómetro (deadline autoritativo del servidor) ─────────────────
   // Se detiene al enviar: una vez respondido no hay nada más que contar, y
   // dejar el reloj corriendo confundía (parecía que seguía activo cuando el
@@ -214,13 +265,21 @@ export default function KioskPage() {
 
   const remainingSeconds = useMemo(() => {
     if (!current) return null;
+    // OPT-20 F2: con WebSocket activo y una fase de estación corriendo, el
+    // `phaseEndsAt` del frame WS es la fuente de verdad; el `submission_deadline`
+    // del REST es sólo el arranque/fallback (y en transición/pausa el REST ya
+    // refleja la ventana cerrada, así que no lo pisamos con el reloj de la fase
+    // siguiente).
+    if (wsConnected && liveSnapshot?.status === "running" && liveSnapshot.phaseEndsAt != null) {
+      return Math.max(0, Math.floor((liveSnapshot.phaseEndsAt - nowMs) / 1000));
+    }
+    const deadline = current.submission_deadline;
+    if (!deadline) return null;
     return Math.max(
       0,
-      Math.floor(
-        (parseServerUtc(current.submission_deadline) - (nowMs + serverOffsetMs)) / 1000,
-      ),
+      Math.floor((parseServerUtc(deadline) - (nowMs + serverOffsetMs)) / 1000),
     );
-  }, [current, nowMs, serverOffsetMs]);
+  }, [current, liveSnapshot, nowMs, serverOffsetMs, wsConnected]);
 
   const timerLabel = useMemo(() => {
     if (remainingSeconds === null) return "--:--";
@@ -244,10 +303,16 @@ export default function KioskPage() {
         setMessage("Se acabó el tiempo: tu respuesta fue enviada automáticamente.");
       })
       .catch((error) => {
+        if (isAlreadySubmittedError(error)) {
+          setSubmitted(true);
+          setMessage("Tu respuesta ya había sido registrada por el servidor.");
+          void reloadContext();
+          return;
+        }
         setMessage(error instanceof Error ? error.message : "No se pudo enviar automáticamente.");
       })
       .finally(() => setSubmitting(false));
-  }, [autoSubmitAllowed, current, submitAnswers, submitted, timeExpired]);
+  }, [autoSubmitAllowed, current, reloadContext, submitAnswers, submitted, timeExpired]);
 
   // ── Multimedia ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -620,7 +685,13 @@ export default function KioskPage() {
             setMessage("Respuesta enviada correctamente. Puedes avanzar a tu siguiente estación.");
           } catch (error) {
             setShowSubmitConfirm(false);
-            setMessage(error instanceof Error ? error.message : "No se pudo enviar.");
+            if (isAlreadySubmittedError(error)) {
+              setSubmitted(true);
+              setMessage("Tu respuesta ya había sido registrada por el servidor.");
+              void reloadContext();
+            } else {
+              setMessage(error instanceof Error ? error.message : "No se pudo enviar.");
+            }
           } finally {
             setSubmitting(false);
           }
