@@ -35,9 +35,9 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 | ID | Título | Origen (hallazgo) | Severidad | Impacto | Factibilidad | Estado | Plan |
 |----|--------|-------------------|-----------|---------|--------------|--------|------|
 | OPT-6 | Visibilidad de pausa del cronómetro en evaluador y kiosko | H-vivo-3 | media | carga operativa: 1 contingencia por estudiante del circuito por cada pausa | M–L · decisión de enfoque | **absorbido por OPT-20** (su entregable = F1, en-verificación) | `PLANES/OPT-20__cronometro-sincronico.md` (F1) |
-| OPT-7 | CRUD de instrumentos (`AssessmentTool`) | H-admin-ecoe-4 | media | banco institucional se llena de pautas muertas; no se corrige una pauta con error | M · migración (columnas + `ondelete`) · impacto cross-event | **en-verificación** (backend + migración + CRUD real en `/instruments` + script de purga; modo "editar pauta" del Constructor pendiente) | `PLANES/OPT-7__crud-instrumentos.md` |
+| OPT-7 | CRUD de instrumentos (`AssessmentTool`) | H-admin-ecoe-4 | media | banco institucional se llena de pautas muertas; no se corrige una pauta con error | M · migración (columnas + `ondelete`) · impacto cross-event | **en-verificación** (backend + migración + CRUD real en `/instruments` + script de purga + modo "editar pauta" del Constructor vía OPT-7c → 100% completo) | `PLANES/OPT-7__crud-instrumentos.md` |
 | OPT-7b | CRUD de plantillas (`StationTemplate`) y pacientes simulados (`SimulatedPatient`) | H-admin-ecoe-4 §6 | baja | mismo patrón solo-creación; sin riesgo de trazabilidad ni huérfanas de alto volumen | S · migración (columnas ×2 + `ondelete` ×4) · UPDATE libre + soft-delete | en-plan | `PLANES/OPT-7b__crud-plantillas-pacientes.md` |
-| OPT-7c | Modo "editar esta pauta" en el Constructor de estaciones | OPT-7 §Decisión 5 (pendiente) | baja–media | el Constructor sigue creando una pauta nueva al "corregir" → huérfanas | M · solo frontend · sin migración | en-plan | `PLANES/OPT-7c__editar-pauta-constructor.md` |
+| OPT-7c | Modo "editar esta pauta" en el Constructor de estaciones | OPT-7 §Decisión 5 (pendiente) | baja–media | el Constructor sigue creando una pauta nueva al "corregir" → huérfanas | M · solo frontend · sin migración | **en-verificación** (tercer modo `"edit"` con PATCH in-place + carga de ítems al abrir + fallback 409 "guardar como copia"; con esto OPT-7 queda 100%) | `PLANES/OPT-7c__editar-pauta-constructor.md` |
 | OPT-15 | Cola del corrector (núcleo: pauta de referencia, autoavance, progreso, empty-states) | H-corr-5, H-corr-6 | media | corrección diferida a escala; gap vs. diseño FASE1 §Decisión 4 | M · sin migración · sin endpoints nuevos | **en-verificación** (backend + frontend + tests; suite SQLite y Postgres verde) | `PLANES/OPT-15__cola-corrector.md` |
 | OPT-15b | Corrector: bulk "puntuar 0 los blancos" + "Reasignar" in-place para correctores | H-corr-5 §C, auditoría OPT-15 §4/§6 | baja | residuo de fricción; hoy delete+recreate para cambiar estaciones de un corrector | S–M · sin migración (`api.updateStaff` ya lo soporta; bulk = endpoint nuevo) | en-plan | `PLANES/OPT-15b__correccion-bulk-y-reasignacion.md` |
 | OPT-20 | Cronómetro sincrónico único + autoguardado/autoenvío (absorbe OPT-6) | mini-auditoría OPT-20 (H-opt20-1..6, D1–D8) + H-vivo-3 | media (capacidad + carga operativa) | día del examen: el buzzer no garantiza captura; cada pausa dispara reingresos por contingencia; el registro del evaluador a medio llenar se pierde | XL · 4 fases (M + L + M–L + M) · 2 migraciones (F2/F3; F4 sin migración) — gate humano · cambia comportamiento observable (D2) | **en-verificación** (F1–F4 completas —backend + frontend—; solo falta el e2e con Docker, pendiente global sobre el stack de ramas) | `PLANES/OPT-20__cronometro-sincronico.md` |
@@ -324,8 +324,14 @@ El implementador de OPT-7 lo dejó pendiente marcándolo invasivo
 `en_pilotaje`+) existen desde OPT-7; `api.instrument`/`api.updateInstrument` en `lib/api.ts:302-307`. Plan: (a)
 cargar los ítems al abrir; (b) tercer modo `"edit"` (offer optimista — 409 al guardar → fallback "crear copia";
 mejora backend `editable: bool` en el GET anotada como opcional); (c) `saveInstrumentDraft` bifurca PATCH/POST; (d)
-copy del 409. **Sin migración.** **Estado**: `en-plan` — `PLANES/OPT-7c__editar-pauta-constructor.md`.
-Esfuerzo M (toca la máquina de estados del wizard).
+copy del 409. **Sin migración.** **Estado**: `en-verificación` (rama `opt/OPT-7c-editar-pauta`) —
+implementado: `AssessmentMode` gana `"edit"`, `page.tsx` carga el tool vía `api.instrument` en un
+`useEffect` sobre `selectedAssessmentToolId` (no bloquea `applyStationLikeData`, que sigue síncrono y
+entra en `"existing"`), `saveInstrumentDraft(mode)` bifurca PATCH/POST, el `patch` de ítems preserva
+`id` para los existentes y lo omite para los nuevos, y el 409 enciende un fallback "Guardar como copia
+nueva" (POST). `api.ts` adjunta `error.status` para detectar el 409 sin parsear el mensaje. Tests:
+`stations/builder/__tests__/instrument-edit.test.tsx` (5 casos). — `PLANES/OPT-7c__editar-pauta-constructor.md`.
+Esfuerzo M (toca la máquina de estados del wizard). **Con OPT-7c, OPT-7 queda 100% completo.**
 
 ### OPT-8 · `/kiosk/submit` debe exigir el check-in confirmado vigente
 **Confirmado** (`app/api/routes/kiosk.py::kiosk_submit` — `db.get(StationCheckIn, payload.checkin_id)` valida
