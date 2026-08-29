@@ -40,8 +40,8 @@ Fecha: 2026-06-29
 | Staff | Si | Si | Si parcial | No | No | No |
 | Buscar cuenta por correo exacto | Si | No | No | No | No | No |
 | Invitar/asignar miembro al ECOE | Si | No | No | No | No | No |
-| Estaciones | Si | Si | No | No | Lectura asignada via evaluador | No |
-| Instrumentos/plantillas/pacientes | Si | Si | Lectura | No | Lectura | Lectura necesaria |
+| Estaciones | Si | Si | No | No | Via `/evaluator/context` [^ctx] | No |
+| Instrumentos/plantillas/pacientes | Si | Si | Lectura | No | Via `/evaluator/context` [^ctx] | Via `/student/access` [^ctx] |
 | Pilotaje | Si | Si | Crear/ver | No | No | No |
 | Live HTTP control | Si | No | Si | Si | No | No |
 | Live WebSocket | Si | No | Si | Si | No | No |
@@ -57,6 +57,8 @@ Fecha: 2026-06-29
 El `admin_global` hereda las capacidades de `admin_ecoe` sobre todos los eventos. Ademas, es el unico que puede listar/crear/modificar cuentas globales y conceder o revocar administradores por ECOE.
 
 La columna `corrector` (omitida de la tabla por brevedad) solo tiene `Si` en "Listar/ver ECOE asignado" y en "Correccion diferida (`/grading`)", y ahi acotado a las estaciones de su `StaffAssignment`. Todo lo demas es `No`. Ver `docs/architecture/EVALUACION_DIFERIDA_FASE1.md`.
+
+[^ctx]: `evaluador` y `estudiante` **no** tienen lectura directa de los bancos de estaciones, instrumentos, plantillas ni pacientes simulados: esos GET (`CONTENT_MANAGER_ROLES` en `app/api/routes/stations.py`) responden `403` para ellos. El contenido que necesitan para operar (guion de la estacion, formulario del estudiante, pauta del evaluador, multimedia de su audiencia) llega ya filtrado por `/api/evaluator/context/{ecoe_event_id}` y `/api/student/access`, resuelto a partir del check-in confirmado y de la asignacion de estacion, no de un permiso de lectura sobre el banco.
 
 ## Incorporacion de miembros por ECOE
 
