@@ -3,7 +3,7 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -14,6 +14,7 @@ from app.models.entities import (
     LiveSession,
     StaffAssignment,
     Station,
+    Student,
     User,
 )
 from app.models.enums import ECOEStatus, RoleCode, StationStatus
@@ -38,6 +39,60 @@ from app.services.authorization import (
 router = APIRouter()
 
 
+def _station_count(db: Session, ecoe_event_id: int) -> int:
+    return db.scalar(
+        select(func.count(Station.id)).where(Station.ecoe_event_id == ecoe_event_id)
+    ) or 0
+
+
+def _active_student_count(db: Session, ecoe_event_id: int) -> int:
+    return db.scalar(
+        select(func.count(Student.id)).where(
+            Student.ecoe_event_id == ecoe_event_id,
+            Student.is_active.is_(True),
+        )
+    ) or 0
+
+
+def _with_counts(db: Session, event: ECOEEvent) -> ECOEEvent:
+    """Deriva ``total_stations`` / ``total_students`` de las filas reales (OPT-11b).
+
+    Se asignan en memoria sobre el objeto ORM justo antes de serializar; no se
+    hace ``commit``, así las columnas legadas de ``ecoe_events`` no cambian.
+    """
+    event.total_stations = _station_count(db, event.id)
+    event.total_students = _active_student_count(db, event.id)
+    return event
+
+
+def _with_counts_bulk(db: Session, events: list[ECOEEvent]) -> list[ECOEEvent]:
+    """Versión sin N+1 de ``_with_counts``: dos agregadas con ``GROUP BY``."""
+    if not events:
+        return events
+    ids = [e.id for e in events]
+    station_counts = dict(
+        db.execute(
+            select(Station.ecoe_event_id, func.count(Station.id))
+            .where(Station.ecoe_event_id.in_(ids))
+            .group_by(Station.ecoe_event_id)
+        ).all()
+    )
+    student_counts = dict(
+        db.execute(
+            select(Student.ecoe_event_id, func.count(Student.id))
+            .where(
+                Student.ecoe_event_id.in_(ids),
+                Student.is_active.is_(True),
+            )
+            .group_by(Student.ecoe_event_id)
+        ).all()
+    )
+    for event in events:
+        event.total_stations = station_counts.get(event.id, 0)
+        event.total_students = student_counts.get(event.id, 0)
+    return events
+
+
 @router.get("/dashboard/{ecoe_event_id}", response_model=DashboardSummary)
 def dashboard(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
@@ -47,7 +102,7 @@ def dashboard(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(ge
 
 @router.get("/ecoe", response_model=list[ECOEEventRead])
 def list_ecoe(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    return list_accessible_ecoe_events(db, user)
+    return _with_counts_bulk(db, list_accessible_ecoe_events(db, user))
 
 
 @router.get("/ecoe/{ecoe_event_id}", response_model=ECOEEventRead)
@@ -63,7 +118,7 @@ def get_ecoe(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get
         RoleCode.estudiante.value,
     )
     ecoe_event = db.get(ECOEEvent, ecoe_event_id)
-    return ecoe_event
+    return _with_counts(db, ecoe_event)
 
 
 @router.get("/ecoe/{ecoe_event_id}/roles/me")
@@ -97,7 +152,7 @@ def create_ecoe(
     )
     db.commit()
     db.refresh(ecoe_event)
-    return ecoe_event
+    return _with_counts(db, ecoe_event)
 
 
 @router.get("/ecoe/{ecoe_event_id}/admins")
@@ -235,7 +290,7 @@ def update_ecoe(
         )
     db.commit()
     db.refresh(updated_event)
-    return updated_event
+    return _with_counts(db, updated_event)
 
 
 @router.patch("/ecoe/{ecoe_event_id}/timing", response_model=ECOEEventRead)
@@ -272,7 +327,7 @@ def update_ecoe_timing(
             db.add(live_session)
     db.commit()
     db.refresh(ecoe_event)
-    return ecoe_event
+    return _with_counts(db, ecoe_event)
 
 
 @router.post("/ecoe/{ecoe_event_id}/duplicate", response_model=ECOEEventRead)
@@ -303,10 +358,8 @@ def duplicate_ecoe(
         responsible_teacher=ecoe_event.responsible_teacher,
         contact_email=ecoe_event.contact_email,
         circuit_mode=ecoe_event.circuit_mode,
-        total_stations=ecoe_event.total_stations,
         station_time_minutes=ecoe_event.station_time_minutes,
         transition_time_minutes=ecoe_event.transition_time_minutes,
-        total_students=0,
         total_groups=ecoe_event.total_groups,
         passing_reference_percent=ecoe_event.passing_reference_percent,
         status=ECOEStatus.borrador.value,
@@ -394,4 +447,4 @@ def duplicate_ecoe(
     ))
     db.commit()
     db.refresh(clone)
-    return clone
+    return _with_counts(db, clone)
