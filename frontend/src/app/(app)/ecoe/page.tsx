@@ -11,7 +11,7 @@ import { useApi } from "@/hooks/use-api";
 import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 import { ECOEFormFields, buildECOEPayload, toEditableValues, validateECOEPayload, StatusTransitionBar } from "@/components/ecoe-form";
-import type { ECOEEvent } from "@/lib/types";
+import type { ECOEEvent, PsychometricsResponse } from "@/lib/types";
 
 const DEFAULT_CREATE_VALUES: Record<string, string> = {
   name: "", date: "", course_name: "", school_name: "",
@@ -41,6 +41,20 @@ export default function ECOEPage() {
   )
     ? ((validation as { pending_deferred_grading_stations: number[] }).pending_deferred_grading_stations)
     : [];
+  // OPT-18 F3: el modal «Validar pilotaje» hace su propio fetch a la analítica
+  // psicométrica del pilotaje y muestra las métricas fuera de umbral como
+  // advertencias no bloqueantes. Solo se pide cuando tiene sentido (en pilotaje).
+  const inPilotage = String(ecoeEvent?.status ?? "") === "en_pilotaje";
+  const { data: pilotPsychometrics } = useApi<PsychometricsResponse | null>(
+    () =>
+      inPilotage
+        ? api.psychometrics(eventId, "pilotaje")
+        : Promise.resolve(null),
+    [eventId, authenticated, inPilotage],
+  );
+  const pilotValidationWarnings = (pilotPsychometrics?.warnings ?? [])
+    .filter((warning) => warning.severity === "warning")
+    .map((warning) => warning.message);
   const [formValues, setFormValues] = useState<Record<string, string> | null>(null);
   const [createValues, setCreateValues] = useState<Record<string, string>>({ ...DEFAULT_CREATE_VALUES });
   const [message, setMessage] = useState<string | null>(null);
@@ -158,6 +172,7 @@ export default function ECOEPage() {
               disabled={saving || transitioning}
               loading={transitioning}
               pendingDeferredGradingStations={pendingDeferredGradingStations}
+              pilotValidationWarnings={pilotValidationWarnings}
             />
             <div className="flex flex-wrap gap-3">
               <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Guardando..." : "Guardar ECOE"}</button>

@@ -41,10 +41,15 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 
 | ID | Título | Origen (hallazgo) | Severidad | Impacto | Factibilidad | Estado | Plan |
 |----|--------|-------------------|-----------|---------|--------------|--------|------|
-| OPT-16 | Resultado por estación (poblar `StationResult`) + desglose `by_station` | H-dato-1 | alta (capacidad) | ancla del análisis final; hoy imposible ver desempeño por estación | M · sin migración (tabla ya existe) | triado | `PLANES/FASE2_ANALISIS_DATOS__scoping.md` |
-| OPT-17 | Ponderación y estándar por estación | H-dato-3 | alta (capacidad) | una estación de `max_score` alto domina la nota; no hay estándar conjuntivo | L · migración + decisión de producto | triado | `PLANES/FASE2_ANALISIS_DATOS__scoping.md` |
-| OPT-18 | Analítica psicométrica (ejecución + pilotaje) | H-dato-2 | alta (capacidad) | `pilotaje_validado` es un click sin respaldo cuantitativo | L–XL | triado | `PLANES/FASE2_ANALISIS_DATOS__scoping.md` |
-| OPT-19 | Export enriquecido + renombrar "Export PDF" de Resultados | H-dato-4 | media (capacidad) | análisis externo imposible; etiqueta engañosa en `/results` | S (etiqueta) / M–L (export) | triado | `PLANES/FASE2_ANALISIS_DATOS__scoping.md` |
+| OPT-16 | Resultado por estación (poblar `StationResult`) + desglose `by_station` | H-dato-1 | alta (capacidad) | ancla del análisis final; hoy imposible ver desempeño por estación | M · sin migración (tabla ya existe) | **en-verificación** (`opt/OPT-16-station-results`) | `PLANES/OPT-16__resultado-por-estacion.md` |
+| OPT-17 | Normalización por estación (promedio de %-de-logro) | H-dato-3 | alta (capacidad) | una estación de `max_score` alto domina la nota agregada | S/M · sin migración (bajó de L: decisiones metodológicas tomadas) | **en-verificación** (`opt/OPT-17-normalizacion`) | `PLANES/OPT-17__normalizacion-por-estacion.md` |
+| OPT-18 | Analítica psicométrica (ejecución + pilotaje, item analysis por criterio) | H-dato-2 | alta (capacidad) | `pilotaje_validado` es un click sin respaldo cuantitativo | L–XL · sin migración · 3 sub-fases | **en-verificación** (`opt/OPT-18-psicometria`) — F1+F2+F3 | `PLANES/OPT-18__psicometria.md` |
+| OPT-19 | Export Excel enriquecido (multi-hoja) + limpieza `persist` muerto | H-dato-4 | media (capacidad) | análisis externo imposible; arg muerto viola "GET sin mutación" | M · sin migración (etiqueta ya hecha en `e642abd`) | **en-verificación** (`opt/OPT-19-export`) — 5 hojas + `persist` eliminado | `PLANES/OPT-19__export-enriquecido.md` |
+
+> **Fase 2 (OPT-16 a OPT-19) completa en `en-verificación`.** Ramas encadenadas
+> `opt/OPT-16-station-results` → `opt/OPT-17-normalizacion` → `opt/OPT-18-psicometria`
+> → `opt/OPT-19-export`. Falta el e2e sobre el stack de ramas (pendiente global,
+> restricción de sandbox de red) y el merge.
 
 ---
 
@@ -445,6 +450,69 @@ las estaciones de un corrector exige borrarlo y recrearlo. PATCH ya lo soporta; 
   lote de estabilización (OPT-1..5, OPT-8). El **único sub-fix barato que se puede adelantar**: renombrar el
   botón "Exportar PDF" de `/results` (hoy descarga el respaldo de contingencia, no resultados) — parte de
   OPT-19, ~XS.
+
+**Actualización 2026-08-29 · OPT-17 / OPT-18 / OPT-19 → `aprobado`.** El usuario tomó las decisiones
+metodológicas (registradas en cada plan) y los tres planes están redactados:
+
+- **OPT-17** (`PLANES/OPT-17__normalizacion-por-estacion.md`) — **bajó de L a S/M**. Estándar
+  compensatorio sin cambios de modelo; todas las estaciones pesan igual → la nota agregada pasa a ser
+  el **promedio de los %-de-logro por estación** (cada estación normalizada a su propio máximo) en vez
+  de `sum(obtenido)/sum(máx)`. `compute_equivalent_grade` no se toca. **Sin migración** (cálculo
+  derivado). Sin peso configurable, sin standard-setting, sin umbral por estación (evaluado y
+  descartado: no es trivial, contradice el estándar compensatorio → posible OPT-17b). Cambia el número
+  consolidado sólo para eventos con estaciones de distinto máximo y sólo hacia adelante: los eventos
+  `cerrado`/`archivado` conservan su snapshot `ECOEResult` (patrón OPT-1). Depende de OPT-16
+  (`compute_station_results`). `compute_equivalent_grade` y sus 6 tests quedan intactos; el invariante
+  de suma de OPT-16 se reescribe (sumas crudas siguen cuadrando, el `percentage` ya no es una suma).
+- **OPT-18** (`PLANES/OPT-18__psicometria.md`) — **sigue L–XL**, dividido en F1 (métricas por
+  estación + α de Cronbach + discriminación estación-total + endpoint + pantallas), F2 (item analysis
+  por criterio de pauta: dificultad + punto-biserial, sobre `EvaluatorRecord.answers["item_scores"]` y
+  `StudentResponse.grading`), F3 (advertencias no bloqueantes en `pilotaje_validado`, sin tocar el
+  grafo de estados). Corre sobre `mode ∈ {ejecucion, pilotaje}`. **Sin migración** (todo derivado; sin
+  cacheo; umbrales por defecto en constantes). `scipy` no está disponible → correlaciones a mano /
+  `numpy`. Endpoint nuevo `GET /api/analytics/{id}/psychometrics` con `ensure_event_access(*ADMIN_EVENT_ROLE_CODES)`.
+- **OPT-19** (`PLANES/OPT-19__export-enriquecido.md`) — **M**. Excel multi-hoja: `metadatos` +
+  `consolidado` + `por_estacion` (OPT-16) + `item_analysis` (OPT-18) + `trazabilidad_envios` ampliada
+  (identidad evaluador/corrector, timestamps, `mode`, `submission_kind`, `by_contingency`). Quita el
+  parámetro `persist` muerto de `export_results_excel` (su rama viva es una escritura desde un GET). La
+  etiqueta "Exportar PDF" ya se corrigió en `e642abd`. Sin migración. Depende de OPT-16 + OPT-18 →
+  implementar último.
+
+**Orden de implementación confirmado**: OPT-16 → OPT-17 → OPT-18 → OPT-19. OPT-18 puede ramificar desde
+post-OPT-16 y correr en paralelo a la ventana de revisión de OPT-17 (ambos tocan `results.py` y
+`results/page.tsx`, conflicto pequeño y mecánico; rebasar OPT-18 sobre OPT-17 antes de merge). OPT-19
+estrictamente al final.
+
+**Actualización 2026-08-29 · OPT-18 → `en-verificación`** (rama `opt/OPT-18-psicometria`, desde
+`opt/OPT-17-normalizacion`). F1: `services/psychometrics.py` (por estación: n, media/DE, histograma de
+nota 1–7; inter-estación: α de Cronbach listwise + discriminación estación-total corregida; item
+analysis por criterio de pauta: dificultad + punto-biserial ítem-resto; casos degenerados → `None`).
+`GET /api/analytics/{id}/psychometrics?mode=ejecucion|pilotaje` (router nuevo `routes/analytics.py`,
+auth = `/results`). F2: `components/psychometrics-section.tsx` en `/results` y `/pilotage`. F3: el modal
+«Validar pilotaje» fetchea la analítica de pilotaje y muestra advertencias no bloqueantes;
+`AuditLog(validate_pilot)` en `update_ecoe_status`. Sin migración; `numpy>=1.26` explícito en
+`requirements.txt`. `ALLOWED_STATUS_TRANSITIONS` y `compute_ecoe_validation` sin tocar. Backend 347
+passed (SQLite + Postgres), frontend 61 passed / lint / build. Falta: validación cruzada en R/planilla
+y `run_e2e.sh` (sandbox sin red).
+
+**Actualización 2026-08-29 · OPT-17 → `en-verificación`** (rama `opt/OPT-17-normalizacion`, desde
+`opt/OPT-16-station-results`). `compute_results` reescrito sobre `compute_station_results`: `percentage`
+= promedio de los `percent_score` por estación (estaciones con `max > 0`); `total_score`/`max_score`
+siguen crudos; campo nuevo `stations_counted` (sólo en vivo, no en el snapshot). `compute_equivalent_grade`
+sin tocar. Sin migración (head sigue `n4o5p6q7r8s9`). 11 tests nuevos (`test_normalizacion_opt17.py`) +
+invariante de OPT-16 reescrito. Backend 323 passed (SQLite + Postgres), frontend 59 passed / lint / build.
+Falta: revisión manual sobre evento demo heterogéneo y `run_e2e.sh --grep results` (sandbox sin red).
+
+**Actualización 2026-08-29 · OPT-16 → `en-plan`.** Mini-auditoría de fundamento
+(`hallazgos/auditor-correccion-resultados__OPT-16__2026-08-29.md`) + plan redactado
+(`PLANES/OPT-16__resultado-por-estacion.md`). Confirmado: `station_results` existe en el baseline
+(`c7d8e9f00123_baseline_schema.py:409-425`) con la `UniqueConstraint` — **sin migración**. Alcance mecánico:
+`persist_results` puebla `StationResult` (mismos filtros que `compute_results`: `mode=ejecucion`,
+`is_draft=False`, `score_obtained IS NOT NULL`); `GET /results` expone `by_station` (nota por estudiante/
+estación + agregado media/DE/n), congelado desde snapshot cuando el evento está cerrado (patrón OPT-1);
+tabla nueva en `/results`. Sin endpoint/permiso/máquina de estados nuevos. La nota por estación es
+**informativa** (alimentar un estándar por estación = OPT-17). 4 decisiones menores para el usuario en el
+plan (todas no bloqueantes de la implementación).
 
 ---
 

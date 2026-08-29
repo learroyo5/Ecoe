@@ -11,6 +11,7 @@ import type {
   MediaAsset,
   Paginated,
   PilotRun,
+  PsychometricsResponse,
   ResultsResponse,
   SimulatedPatient,
   StaffAssignment,
@@ -339,6 +340,10 @@ export const api = {
 
   // Results
   results: (eventId: number) => request<ResultsResponse>(`/results/${eventId}`),
+
+  // Analítica psicométrica (OPT-18)
+  psychometrics: (eventId: number, mode: "ejecucion" | "pilotaje" = "ejecucion") =>
+    request<PsychometricsResponse>(`/analytics/${eventId}/psychometrics?mode=${mode}`),
 
   // Incidents
   incidents: (eventId: number, page: number = 1, pageSize: number = 50) =>

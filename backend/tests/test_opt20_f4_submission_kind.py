@@ -432,6 +432,6 @@ def test_export_excel_includes_submission_kind_column():
     row = trace.iloc[0]
     assert row["origen"] == "Automático"
     assert row["en_blanco"] == "Sí"
-    # La hoja consolidado sigue siendo la primera y no cambió de forma.
-    consolidado = pd.read_excel(BytesIO(content))
+    # OPT-19: el Excel pasó a multi-hoja; el consolidado no cambió de forma.
+    consolidado = pd.read_excel(BytesIO(content), sheet_name="consolidado")
     assert "total_score" in consolidado.columns

@@ -309,9 +309,12 @@ interface StatusTransitionBarProps {
   loading?: boolean;
   /** Números de estación con corrección diferida sin puntuar: se advierte al cerrar. */
   pendingDeferredGradingStations?: number[];
+  /** OPT-18 F3: advertencias psicométricas del pilotaje (α baja, estaciones que
+   *  no discriminan, criterios fuera de rango). No bloquean «Validar pilotaje». */
+  pilotValidationWarnings?: string[];
 }
 
-export function StatusTransitionBar({ currentStatus, onTransition, disabled = false, loading = false, pendingDeferredGradingStations = [] }: StatusTransitionBarProps) {
+export function StatusTransitionBar({ currentStatus, onTransition, disabled = false, loading = false, pendingDeferredGradingStations = [], pilotValidationWarnings = [] }: StatusTransitionBarProps) {
   const [confirming, setConfirming] = useState<TransitionAction | null>(null);
 
   const transitions = STATUS_TRANSITIONS[currentStatus] ?? [];
@@ -371,6 +374,22 @@ export function StatusTransitionBar({ currentStatus, onTransition, disabled = fa
                 {pendingDeferredGradingStations.join(", ")}. Esas respuestas no sumarán a Resultados si
                 cierras ahora.
               </p>
+            ) : null}
+            {confirming.target === "pilotaje_validado" && pilotValidationWarnings.length > 0 ? (
+              <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <p className="font-semibold">
+                  Psicometría del pilotaje ({pilotValidationWarnings.length} advertencia
+                  {pilotValidationWarnings.length === 1 ? "" : "s"}):
+                </p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                  {pilotValidationWarnings.map((warning, index) => (
+                    <li key={index}>{warning}</li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-xs">
+                  Son señales de calidad, no bloqueos: podés validar igual.
+                </p>
+              </div>
             ) : null}
             <div className="mt-6 flex gap-3 justify-end">
               <button className="btn-secondary" onClick={() => setConfirming(null)}>Cancelar</button>

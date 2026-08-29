@@ -17,6 +17,7 @@ from app.models.entities import (
     LiveSession,
     MediaAsset,
     Station,
+    Student,
 )
 from app.models.enums import RoleCode
 from app.schemas.common import (
@@ -31,11 +32,13 @@ from app.services.dependencies import authenticate_session_token, get_current_us
 from app.services.kiosk import authenticate_kiosk_token
 from app.services.ecoe import (
     build_dashboard,
+    build_station_score_block,
     build_traceability_report,
     export_contingency_pdf,
     export_results_excel,
     persist_results,
     read_results,
+    read_station_results,
 )
 from app.services.authorization import ADMIN_EVENT_ROLE_CODES, ensure_event_access
 from app.services.media import (
@@ -396,6 +399,26 @@ def validation(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(g
 
 # ── Results & Exports ──────────────────────────────────────────────────
 
+def _by_station_block(db: Session, ecoe_event_id: int) -> dict:
+    """OPT-16: bloque `by_station` (agregado + nota larga por estudiante).
+
+    Sigue el patrón `frozen` de OPT-1 vía `read_station_results`: snapshot con el
+    evento cerrado, recálculo en vivo antes. Sin `response_model` → aditivo.
+    """
+    station_rows, _ = read_station_results(db, ecoe_event_id)
+    stations = db.scalars(
+        select(Station).where(Station.ecoe_event_id == ecoe_event_id)
+        .order_by(Station.station_number.asc(), Station.id.asc())
+    ).all()
+    students = {
+        s.id: s
+        for s in db.scalars(
+            select(Student).where(Student.ecoe_event_id == ecoe_event_id)
+        ).all()
+    }
+    return build_station_score_block(station_rows, list(stations), students)
+
+
 @router.get("/results/{ecoe_event_id}")
 def get_results(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
@@ -404,6 +427,7 @@ def get_results(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(
         "results": results,
         "frozen": frozen,
         "consolidated_at": consolidated_at.isoformat() if consolidated_at else None,
+        "by_station": _by_station_block(db, ecoe_event_id),
         **build_traceability_report(db, ecoe_event_id, consolidated_results=results),
     }
 
@@ -415,6 +439,7 @@ def consolidate_results(ecoe_event_id: int, db: Session = Depends(get_db), user=
     return {
         "consolidated": True,
         "results": results,
+        "by_station": _by_station_block(db, ecoe_event_id),
         **build_traceability_report(db, ecoe_event_id, consolidated_results=results),
     }
 
@@ -422,7 +447,7 @@ def consolidate_results(ecoe_event_id: int, db: Session = Depends(get_db), user=
 @router.get("/results/{ecoe_event_id}/export/excel")
 def export_excel(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
-    content = export_results_excel(db, ecoe_event_id, persist=False)
+    content = export_results_excel(db, ecoe_event_id)
     return FastAPIResponse(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

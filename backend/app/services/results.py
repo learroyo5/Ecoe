@@ -1,5 +1,7 @@
 """Results computation, persistence, traceability, and export services."""
 
+import statistics
+from collections import defaultdict
 from io import BytesIO
 from pathlib import Path
 
@@ -22,6 +24,7 @@ from app.models.entities import (
     StaffAssignment,
     Station,
     StationCheckIn,
+    StationResult,
     Student,
     StudentResponse,
 )
@@ -48,66 +51,240 @@ def compute_equivalent_grade(percentage: float, passing_reference_percent: float
 
 
 def compute_results(db: Session, ecoe_event_id: int) -> list[dict]:
+    """Nota agregada por estudiante.
+
+    OPT-17 — normalización por estación: `percentage` es el **promedio de los
+    porcentajes de logro por estación** del estudiante (cada estación
+    normalizada a su propio máximo → todas pesan igual), no la razón de sumas
+    crudas `sum(obtenido)/sum(máx)*100` de antes. El estándar sigue siendo
+    **compensatorio**: un solo umbral global (`passing_reference_percent`) sobre
+    ese promedio, sin lógica conjuntiva ni umbral por estación.
+
+    `total_score` / `max_score` se mantienen como **suma cruda** de los
+    registros del estudiante (informativos; el analista externo los espera). A
+    partir de OPT-17, para eventos con estaciones de máximo heterogéneo,
+    `percentage` deja de ser `total_score / max_score * 100`.
+
+    Se reescribe sobre `compute_station_results` (OPT-16), que aplica
+    exactamente los mismos filtros que antes usaba `compute_results`
+    (`mode == ejecucion`, `EvaluatorRecord.is_draft == False`,
+    `StudentResponse.score_obtained IS NOT NULL`). OPT-17 no introduce filtros
+    nuevos; sólo cambia cómo se combinan las filas.
+    """
     ecoe_event = db.get(ECOEEvent, ecoe_event_id)
     passing_reference_percent = ecoe_event.passing_reference_percent if ecoe_event else 60.0
     students = db.scalars(
         select(Student).where(Student.ecoe_event_id == ecoe_event_id, Student.is_active.is_(True))
     ).all()
-    # Single aggregated query instead of one query per student.
-    totals_by_student: dict[int, tuple[float, float]] = {
-        row[0]: (row[1] or 0, row[2] or 0)
-        for row in db.execute(
-            select(
-                EvaluatorRecord.student_id,
-                func.sum(EvaluatorRecord.score_obtained),
-                func.sum(EvaluatorRecord.max_score),
-            )
-            .where(
-                EvaluatorRecord.ecoe_event_id == ecoe_event_id,
-                EvaluatorRecord.mode == SessionMode.ejecucion.value,
-                # OPT-20 F3 (D3): a half-filled autosaved draft never enters
-                # the consolidated score; it is promoted on final submit.
-                EvaluatorRecord.is_draft.is_(False),
-            )
-            .group_by(EvaluatorRecord.student_id)
-        ).all()
-    }
-    # Formularios de estudiante con puntaje definitivo (autocorregidos o ya
-    # corregidos manualmente); los pendientes de correccion no entran aun.
-    form_totals_by_student: dict[int, tuple[float, float]] = {
-        row[0]: (row[1] or 0, row[2] or 0)
-        for row in db.execute(
-            select(
-                StudentResponse.student_id,
-                func.sum(StudentResponse.score_obtained),
-                func.sum(StudentResponse.max_score),
-            )
-            .where(
-                StudentResponse.ecoe_event_id == ecoe_event_id,
-                StudentResponse.mode == SessionMode.ejecucion.value,
-                StudentResponse.score_obtained.is_not(None),
-            )
-            .group_by(StudentResponse.student_id)
-        ).all()
-    }
+    station_rows_by_student: dict[int, list[dict]] = defaultdict(list)
+    for row in compute_station_results(db, ecoe_event_id):
+        station_rows_by_student[row["student_id"]].append(row)
     results = []
     for student in students:
-        eval_score, eval_max = totals_by_student.get(student.id, (0, 0))
-        form_score, form_max = form_totals_by_student.get(student.id, (0, 0))
-        total_score = eval_score + form_score
-        max_score = eval_max + form_max
-        percentage = (total_score / max_score * 100) if max_score else 0
+        rows = station_rows_by_student.get(student.id, [])
+        # Sólo las estaciones con máximo > 0 pueden aportar un % de logro; una
+        # fila con `max == 0` entra igual a las sumas crudas pero no a la media.
+        scored = [row for row in rows if row["max_score"] and row["max_score"] > 0]
+        raw_obtained = sum(row["obtained_score"] for row in rows)
+        raw_max = sum(row["max_score"] for row in rows)
+        if scored:
+            percentage = sum(row["percent_score"] for row in scored) / len(scored)
+        else:
+            # Estudiante sin ninguna estación puntuable (ausente / sin
+            # actividad): 0 %, nota mínima — igual que antes de OPT-17.
+            percentage = 0.0
         grade = compute_equivalent_grade(percentage, passing_reference_percent)
         results.append({
             "student_id": student.id,
             "student_name": f"{student.name} {student.last_name}",
             "ecoe_number": student.ecoe_number,
-            "total_score": round(total_score, 2),
-            "max_score": round(max_score, 2),
+            "total_score": round(raw_obtained, 2),
+            "max_score": round(raw_max, 2),
             "percentage": round(percentage, 2),
             "equivalent_grade": round(grade, 2),
+            # OPT-17: nº de estaciones con actividad puntuable que entraron al
+            # promedio (el divisor de `percentage`). Campo del dict, no de BD.
+            "stations_counted": len(scored),
         })
     return results
+
+
+def compute_station_results(
+    db: Session,
+    ecoe_event_id: int,
+    *,
+    mode: str = SessionMode.ejecucion.value,
+) -> list[dict]:
+    """Nota cruda por (estudiante, estación) — desglose de `compute_results`.
+
+    Reusa **exactamente los mismos filtros** que `compute_results`, cambiando el
+    `GROUP BY student_id` por `GROUP BY student_id, station_id`:
+
+    - `EvaluatorRecord`: `mode == mode`, `is_draft == False`.
+    - `StudentResponse`: `mode == mode`, `score_obtained IS NOT NULL`
+      (los pendientes de corrección diferida no entran hasta que se corrigen).
+
+    Solo emite una fila por par (estudiante, estación) con **al menos una
+    contribución** — nunca 0/0 para cada estudiante × cada estación.
+
+    `mode` es aditivo: el default `"ejecucion"` preserva el comportamiento de
+    OPT-16. OPT-18 lo llamará con `mode="pilotaje"`; su salida **no** se
+    persiste en `station_results` (la constraint única no tiene columna `mode`).
+
+    Función de módulo reutilizable: OPT-17 la usará para reescribir
+    `compute_results`.
+    """
+    combined: dict[tuple[int, int], list[float]] = {}
+    for source, extra_filters in (
+        (
+            (
+                EvaluatorRecord.student_id,
+                EvaluatorRecord.station_id,
+                func.sum(EvaluatorRecord.score_obtained),
+                func.sum(EvaluatorRecord.max_score),
+                EvaluatorRecord.ecoe_event_id == ecoe_event_id,
+                EvaluatorRecord.mode == mode,
+            ),
+            (EvaluatorRecord.is_draft.is_(False),),
+        ),
+        (
+            (
+                StudentResponse.student_id,
+                StudentResponse.station_id,
+                func.sum(StudentResponse.score_obtained),
+                func.sum(StudentResponse.max_score),
+                StudentResponse.ecoe_event_id == ecoe_event_id,
+                StudentResponse.mode == mode,
+            ),
+            (StudentResponse.score_obtained.is_not(None),),
+        ),
+    ):
+        student_col, station_col, sum_obtained, sum_max, event_pred, mode_pred = source
+        rows = db.execute(
+            select(student_col, station_col, sum_obtained, sum_max)
+            .where(event_pred, mode_pred, *extra_filters)
+            .group_by(student_col, station_col)
+        ).all()
+        for student_id, station_id, obtained, max_score in rows:
+            acc = combined.setdefault((int(student_id), int(station_id)), [0.0, 0.0])
+            acc[0] += obtained or 0
+            acc[1] += max_score or 0
+
+    results: list[dict] = []
+    for (student_id, station_id), (obtained, max_score) in combined.items():
+        percent = (obtained / max_score * 100) if max_score else 0.0
+        results.append({
+            "student_id": student_id,
+            "station_id": station_id,
+            "obtained_score": round(obtained, 2),
+            "max_score": round(max_score, 2),
+            "percent_score": round(percent, 2),
+        })
+    results.sort(key=lambda item: (item["student_id"], item["station_id"]))
+    return results
+
+
+def read_station_results(
+    db: Session, ecoe_event_id: int
+) -> tuple[list[dict], bool]:
+    """Vista de nota por estación para lectura (`/results`, export).
+
+    Análoga a `read_results`: si el evento está `cerrado`/`archivado` **y** hay
+    filas `StationResult`, sirve el snapshot congelado (`frozen=True`). En
+    cualquier otro estado —o si el cierre no dejó filas (cierre previo a
+    OPT-16)— recalcula en vivo con `compute_station_results` y `frozen=False`.
+    """
+    ecoe_event = db.get(ECOEEvent, ecoe_event_id)
+    if ecoe_event is not None and str(ecoe_event.status) in FROZEN_RESULT_STATUSES:
+        snapshots = db.scalars(
+            select(StationResult)
+            .where(StationResult.ecoe_event_id == ecoe_event_id)
+            .order_by(StationResult.student_id.asc(), StationResult.station_id.asc())
+        ).all()
+        if snapshots:
+            return [
+                {
+                    "student_id": snap.student_id,
+                    "station_id": snap.station_id,
+                    "obtained_score": round(snap.obtained_score, 2),
+                    "max_score": round(snap.max_score, 2),
+                    "percent_score": round(snap.percent_score, 2),
+                }
+                for snap in snapshots
+            ], True
+    return compute_station_results(db, ecoe_event_id), False
+
+
+def build_station_score_block(
+    station_rows: list[dict],
+    stations: list[Station],
+    students: dict[int, Student],
+) -> dict:
+    """Bloque `by_station` del payload de `/results` — puro Python, sin BD.
+
+    Toma la nota cruda por (estudiante, estación) (`compute_station_results` o el
+    snapshot) + los `Station` del evento + el mapa de estudiantes y arma:
+
+    - `stations`: agregado por estación. `n` estudiantes con nota, media/DE del
+      puntaje crudo (`mean_score`/`sd_score`), media del máximo (`mean_max`) y
+      media/DE/min/max del porcentaje (`*_percent`). La DE es **muestral**
+      (`statistics.stdev`, n−1); `None` cuando `n < 2`. Estaciones sin ninguna
+      nota → fila con `n=0` y agregados `None`.
+    - `students`: formato largo, una fila por (estudiante, estación) con nota.
+
+    Como el agregado se deriva del conjunto servido (snapshot o vivo), hereda la
+    inmutabilidad de OPT-1 sin necesidad de almacenarse.
+    """
+    stations_by_id = {station.id: station for station in stations}
+    rows_by_station: dict[int, list[dict]] = {}
+    for row in station_rows:
+        rows_by_station.setdefault(row["station_id"], []).append(row)
+
+    stations_block: list[dict] = []
+    for station in stations:
+        rows = rows_by_station.get(station.id, [])
+        n = len(rows)
+        obtained = [row["obtained_score"] for row in rows]
+        maxes = [row["max_score"] for row in rows]
+        percents = [row["percent_score"] for row in rows]
+        stations_block.append({
+            "station_id": station.id,
+            "station_number": station.station_number,
+            "station_name": station.name,
+            "circuit_name": station.circuit_name,
+            "n": n,
+            "mean_score": round(statistics.fmean(obtained), 2) if n else None,
+            "sd_score": round(statistics.stdev(obtained), 2) if n >= 2 else None,
+            "mean_max": round(statistics.fmean(maxes), 2) if n else None,
+            "mean_percent": round(statistics.fmean(percents), 2) if n else None,
+            "sd_percent": round(statistics.stdev(percents), 2) if n >= 2 else None,
+            "min_percent": round(min(percents), 2) if n else None,
+            "max_percent": round(max(percents), 2) if n else None,
+        })
+    stations_block.sort(key=lambda item: (item["station_number"], item["station_id"]))
+
+    students_block: list[dict] = []
+    for row in station_rows:
+        student = students.get(row["student_id"])
+        station = stations_by_id.get(row["station_id"])
+        students_block.append({
+            "student_id": row["student_id"],
+            "ecoe_number": student.ecoe_number if student else None,
+            "student_name": f"{student.name} {student.last_name}" if student else "",
+            "station_id": row["station_id"],
+            "station_number": station.station_number if station else None,
+            "station_name": station.name if station else "",
+            "obtained_score": row["obtained_score"],
+            "max_score": row["max_score"],
+            "percent_score": row["percent_score"],
+        })
+    students_block.sort(
+        key=lambda item: (
+            item["ecoe_number"] or "",
+            item["station_number"] or 0,
+        )
+    )
+    return {"stations": stations_block, "students": students_block}
 
 
 def read_results(
@@ -120,6 +297,11 @@ def read_results(
     `frozen=True` y la fecha de consolidación (`ECOEResult.updated_at`). En
     cualquier otro estado —o si el cierre no dejó snapshot— recalcula en vivo con
     `compute_results` y `frozen=False`.
+
+    OPT-17: el snapshot `ECOEResult` no persiste `stations_counted` (no hay
+    columna; sin migración), así que las filas congeladas no llevan esa clave —
+    sólo el recálculo en vivo. Un evento `cerrado`/`archivado` **sin** snapshot
+    cae al recálculo en vivo y por lo tanto ya sirve la fórmula nueva de OPT-17.
     """
     ecoe_event = db.get(ECOEEvent, ecoe_event_id)
     if ecoe_event is not None and str(ecoe_event.status) in FROZEN_RESULT_STATUSES:
@@ -174,6 +356,23 @@ def persist_results(
             max_score=item["max_score"],
             percentage=item["percentage"],
             equivalent_grade=item["equivalent_grade"],
+        ))
+    # OPT-16: congelar la nota por estación igual que `ECOEResult`
+    # (delete-then-insert idempotente; respeta
+    # `UniqueConstraint(ecoe_event_id, station_id, student_id)`). El
+    # `AuditLog(action="consolidate_results")` de OPT-1 ya cubre la
+    # consolidación completa; no se agrega otro registro.
+    db.query(StationResult).filter(
+        StationResult.ecoe_event_id == ecoe_event_id
+    ).delete()
+    for item in compute_station_results(db, ecoe_event_id):
+        db.add(StationResult(
+            ecoe_event_id=ecoe_event_id,
+            student_id=item["student_id"],
+            station_id=item["station_id"],
+            obtained_score=item["obtained_score"],
+            max_score=item["max_score"],
+            percent_score=item["percent_score"],
         ))
     if actor_email:
         db.add(AuditLog(
@@ -515,13 +714,77 @@ _SUBMISSION_KIND_LABELS = {
 }
 
 
-def _submission_trace_rows(db: Session, ecoe_event_id: int) -> list[dict]:
-    """Un indicador por respuesta de la ejecución real (OPT-20 F4, D4).
+_TRACE_COLUMNS = [
+    "n_ecoe",
+    "estudiante",
+    "estacion_numero",
+    "estacion",
+    "circuito",
+    "tipo_registro",
+    "mode",
+    "submission_kind",
+    "origen",
+    "borrador",
+    "en_blanco",
+    "by_contingency",
+    "score_obtained",
+    "max_score",
+    "porcentaje",
+    "evaluador",
+    "corrector",
+    "enviado_at",
+    "corregido_at",
+    "actualizado_at",
+]
 
-    Marca origen (`manual`/`auto`/`contingencia`) y si la respuesta llegó en
-    blanco. Es metadato de trazabilidad, no de nota: se calcula en vivo aun
-    con el consolidado congelado. El rediseño completo del export es OPT-19;
-    aquí solo se agrega este indicador mínimo en una hoja aparte.
+_ITEM_ANALYSIS_COLUMNS = [
+    "estacion_numero",
+    "estacion",
+    "criterio",
+    "n",
+    "dificultad",
+    "punto_biserial",
+    "maximo",
+    "fuera_de_umbral",
+]
+
+_STATION_SCORE_COLUMNS = [
+    "n_ecoe",
+    "estudiante",
+    "estacion_numero",
+    "estacion",
+    "puntaje",
+    "maximo",
+    "porcentaje",
+]
+
+
+def _pct(obtained: float | None, maximo: float | None) -> float | None:
+    try:
+        if obtained is not None and maximo:
+            return round(obtained / maximo * 100, 2)
+    except (TypeError, ZeroDivisionError):
+        return None
+    return None
+
+
+def _iso(value) -> str | None:
+    return value.isoformat() if value else None
+
+
+def _submission_trace_rows(db: Session, ecoe_event_id: int) -> list[dict]:
+    """Trazabilidad por registro de la ejecución real (OPT-19; amplía OPT-20 F4).
+
+    Una fila por cada `StudentResponse` (`tipo_registro = "formulario"`) y cada
+    `EvaluatorRecord` (`tipo_registro = "evaluador"`) de `mode == ejecucion`. Los
+    borradores del evaluador (`is_draft = True`) entran con `borrador = "Sí"` —
+    el analista necesita ver qué quedó sin finalizar. Cada fila lleva la
+    identidad del evaluador (`evaluator_name`) o del corrector
+    (`graded_by_email`; `"auto"` para autocorrección), los timestamps, el `mode`,
+    el `submission_kind` y `by_contingency`.
+
+    Es metadato de trazabilidad, no de nota: se calcula siempre en vivo, aun con
+    el consolidado congelado.
     """
     students = {
         s.id: s
@@ -531,6 +794,8 @@ def _submission_trace_rows(db: Session, ecoe_event_id: int) -> list[dict]:
         s.id: s
         for s in db.scalars(select(Station).where(Station.ecoe_event_id == ecoe_event_id)).all()
     }
+    rows: list[dict] = []
+
     responses = db.scalars(
         select(StudentResponse)
         .where(
@@ -539,36 +804,214 @@ def _submission_trace_rows(db: Session, ecoe_event_id: int) -> list[dict]:
         )
         .order_by(StudentResponse.station_id.asc(), StudentResponse.id.asc())
     ).all()
-    rows: list[dict] = []
     for response in responses:
         student = students.get(response.student_id)
         station = stations.get(response.station_id)
         kind = response.submission_kind or "manual"
         answered = bool(response.answers)
         rows.append({
-            "ecoe_number": student.ecoe_number if student else None,
-            "student_name": f"{student.name} {student.last_name}" if student else "",
-            "station_number": station.station_number if station else None,
-            "station_name": station.name if station else "",
+            "n_ecoe": student.ecoe_number if student else None,
+            "estudiante": f"{student.name} {student.last_name}" if student else "",
+            "estacion_numero": station.station_number if station else None,
+            "estacion": station.name if station else "",
+            "circuito": station.circuit_name if station else "",
+            "tipo_registro": "formulario",
+            "mode": str(response.mode),
+            "submission_kind": kind,
             "origen": _SUBMISSION_KIND_LABELS.get(kind, kind),
+            "borrador": "No",
             "en_blanco": "Sí" if (kind == "auto" and not answered) else "No",
+            "by_contingency": bool(response.by_contingency),
             "score_obtained": response.score_obtained,
             "max_score": response.max_score,
-            "by_contingency": response.by_contingency,
+            "porcentaje": _pct(response.score_obtained, response.max_score),
+            "evaluador": None,
+            "corrector": response.graded_by_email,
+            "enviado_at": _iso(response.submitted_at),
+            "corregido_at": _iso(response.graded_at),
+            "actualizado_at": _iso(response.updated_at),
+        })
+
+    records = db.scalars(
+        select(EvaluatorRecord)
+        .where(
+            EvaluatorRecord.ecoe_event_id == ecoe_event_id,
+            EvaluatorRecord.mode == SessionMode.ejecucion.value,
+        )
+        .order_by(EvaluatorRecord.station_id.asc(), EvaluatorRecord.id.asc())
+    ).all()
+    for record in records:
+        student = students.get(record.student_id)
+        station = stations.get(record.station_id)
+        kind = record.submission_kind or "manual"
+        rows.append({
+            "n_ecoe": student.ecoe_number if student else None,
+            "estudiante": f"{student.name} {student.last_name}" if student else "",
+            "estacion_numero": station.station_number if station else None,
+            "estacion": station.name if station else "",
+            "circuito": station.circuit_name if station else "",
+            "tipo_registro": "evaluador",
+            "mode": str(record.mode),
+            "submission_kind": kind,
+            "origen": _SUBMISSION_KIND_LABELS.get(kind, kind),
+            "borrador": "Sí" if record.is_draft else "No",
+            "en_blanco": "No",
+            "by_contingency": bool(record.by_contingency),
+            "score_obtained": record.score_obtained,
+            "max_score": record.max_score,
+            "porcentaje": _pct(record.score_obtained, record.max_score),
+            "evaluador": record.evaluator_name,
+            "corrector": None,
+            "enviado_at": _iso(record.created_at),
+            "corregido_at": None,
+            "actualizado_at": _iso(record.updated_at),
         })
     return rows
 
 
-def export_results_excel(db: Session, ecoe_event_id: int, *, persist: bool = False) -> bytes:
-    if persist:
-        data = persist_results(db, ecoe_event_id)
-    else:
-        data, _, _ = read_results(db, ecoe_event_id)
-    df = pd.DataFrame(data)
-    trace_df = pd.DataFrame(_submission_trace_rows(db, ecoe_event_id))
+def _metadata_rows(db: Session, ecoe_event_id: int) -> list[dict]:
+    """Hoja `metadatos` (OPT-19): clave–valor con el encabezado del acta.
+
+    Solo campos que existen en `ECOEEvent` más los agregados de `read_results`
+    (`frozen`, `consolidated_at`) y los conteos de estudiantes activos y
+    estaciones. No se inventan campos.
+    """
+    event = db.get(ECOEEvent, ecoe_event_id)
+    _, frozen, consolidated_at = read_results(db, ecoe_event_id)
+    active_students = db.scalar(
+        select(func.count(Student.id)).where(
+            Student.ecoe_event_id == ecoe_event_id, Student.is_active.is_(True)
+        )
+    ) or 0
+    station_count = db.scalar(
+        select(func.count(Station.id)).where(Station.ecoe_event_id == ecoe_event_id)
+    ) or 0
+    pairs: list[tuple[str, object]] = []
+    if event is not None:
+        pairs.extend([
+            ("Nombre del ECOE", event.name),
+            ("Curso", event.course_name),
+            ("Escuela / institución", event.school_name),
+            ("Docente responsable", event.responsible_teacher),
+            ("Correo de contacto", event.contact_email),
+            ("Fecha", _iso(event.date)),
+            ("Estado", str(event.status)),
+            ("Modo de circuito", event.circuit_mode),
+            ("Minutos por estación", event.station_time_minutes),
+            ("Minutos de transición", event.transition_time_minutes),
+            (
+                "Porcentaje de referencia de aprobación (nota 4,0)",
+                event.passing_reference_percent,
+            ),
+        ])
+    pairs.extend([
+        ("Estudiantes activos", int(active_students)),
+        ("Estaciones", int(station_count)),
+        ("Resultados congelados (snapshot del acta)", "Sí" if frozen else "No"),
+        ("Consolidado el", _iso(consolidated_at)),
+    ])
+    return [{"campo": key, "valor": value} for key, value in pairs]
+
+
+def _item_analysis_rows(db: Session, ecoe_event_id: int) -> list[dict]:
+    """Hoja `item_analysis` (OPT-19): una fila por criterio de pauta, `mode=ejecucion`.
+
+    Reusa `build_psychometrics_block` de OPT-18 (best-effort: solo estaciones con
+    pauta estructurada o formulario puntuable). Se calcula siempre en vivo — el
+    item analysis es un derivado, no parte del acta congelada. La columna
+    `fuera_de_umbral` marca los criterios con advertencia de dificultad o
+    punto-biserial según `PSYCHO_THRESHOLDS`.
+    """
+    from app.services.psychometrics import build_psychometrics_block
+
+    block = build_psychometrics_block(db, ecoe_event_id, SessionMode.ejecucion.value)
+    flagged = {
+        (warning.get("station_id"), warning.get("criterion_key"))
+        for warning in block.get("warnings", [])
+        if warning.get("criterion_key") is not None
+    }
+    rows: list[dict] = []
+    for item in block.get("item_analysis", []):
+        key = (item.get("station_id"), item.get("criterion_key"))
+        rows.append({
+            "estacion_numero": item.get("station_number"),
+            "estacion": item.get("station_name"),
+            "criterio": item.get("criterion_label"),
+            "n": item.get("n"),
+            "dificultad": item.get("difficulty"),
+            "punto_biserial": item.get("point_biserial"),
+            "maximo": item.get("max"),
+            "fuera_de_umbral": "Sí" if key in flagged else "No",
+        })
+    return rows
+
+
+def _station_score_rows(db: Session, ecoe_event_id: int) -> list[dict]:
+    """Hoja `por_estacion` (OPT-16 → renombrada en OPT-19), formato largo.
+
+    Una fila por (estudiante, estación) con puntaje obtenido, máximo y %.
+    Sigue el mismo patrón `frozen` que el consolidado: sirve el snapshot
+    `StationResult` con el evento cerrado, recalcula en vivo si no.
+    """
+    station_rows, _ = read_station_results(db, ecoe_event_id)
+    students = {
+        s.id: s
+        for s in db.scalars(
+            select(Student).where(Student.ecoe_event_id == ecoe_event_id)
+        ).all()
+    }
+    stations = db.scalars(
+        select(Station).where(Station.ecoe_event_id == ecoe_event_id)
+        .order_by(Station.station_number.asc(), Station.id.asc())
+    ).all()
+    block = build_station_score_block(station_rows, list(stations), students)
+    return [
+        {
+            "n_ecoe": row["ecoe_number"],
+            "estudiante": row["student_name"],
+            "estacion_numero": row["station_number"],
+            "estacion": row["station_name"],
+            "puntaje": row["obtained_score"],
+            "maximo": row["max_score"],
+            "porcentaje": row["percent_score"],
+        }
+        for row in block["students"]
+    ]
+
+
+def export_results_excel(db: Session, ecoe_event_id: int) -> bytes:
+    """Export multi-hoja de Resultados (OPT-19). Es un GET: **nunca escribe**.
+
+    Hojas, en este orden: ``metadatos`` · ``consolidado`` · ``por_estacion`` ·
+    ``item_analysis`` · ``trazabilidad_envios``.
+
+    - ``consolidado`` y ``por_estacion`` respetan el snapshot congelado del acta
+      (``read_results`` / ``read_station_results``): con el evento
+      ``cerrado``/``archivado`` salen del snapshot, antes se recalculan en vivo.
+    - ``item_analysis`` y ``trazabilidad_envios`` son **derivados** (no forman
+      parte del acta) y se calculan siempre en vivo.
+
+    El parámetro ``persist`` de versiones anteriores se eliminó: un endpoint GET
+    no puede consolidar (AGENTS.md — "Resultados sin mutación en endpoints GET").
+    """
+    consolidated, _, _ = read_results(db, ecoe_event_id)
+    meta_df = pd.DataFrame(_metadata_rows(db, ecoe_event_id), columns=["campo", "valor"])
+    consolidated_df = pd.DataFrame(consolidated)
+    station_df = pd.DataFrame(
+        _station_score_rows(db, ecoe_event_id), columns=_STATION_SCORE_COLUMNS
+    )
+    item_df = pd.DataFrame(
+        _item_analysis_rows(db, ecoe_event_id), columns=_ITEM_ANALYSIS_COLUMNS
+    )
+    trace_df = pd.DataFrame(
+        _submission_trace_rows(db, ecoe_event_id), columns=_TRACE_COLUMNS
+    )
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="consolidado")
+        meta_df.to_excel(writer, index=False, sheet_name="metadatos")
+        consolidated_df.to_excel(writer, index=False, sheet_name="consolidado")
+        station_df.to_excel(writer, index=False, sheet_name="por_estacion")
+        item_df.to_excel(writer, index=False, sheet_name="item_analysis")
         trace_df.to_excel(writer, index=False, sheet_name="trazabilidad_envios")
     return buffer.getvalue()
 

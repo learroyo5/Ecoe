@@ -17,6 +17,9 @@ pwdlib[argon2]==0.3.0
 # migration (core/security.py). Remove once no legacy hashes remain.
 passlib==1.7.4
 python-multipart==0.0.20
+# Disponible transitivamente vía pandas, pero OPT-18 (services/psychometrics.py)
+# lo usa directo para Pearson y varianzas — scipy NO está disponible.
+numpy>=1.26
 pandas==2.3.2
 openpyxl==3.1.5
 reportlab==4.4.3

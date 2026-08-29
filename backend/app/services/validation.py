@@ -537,6 +537,44 @@ def update_ecoe_status(
                 db.add(station)
 
     if (
+        target_status == ECOEStatus.pilotaje_validado.value
+        and current_status != ECOEStatus.pilotaje_validado.value
+        and actor_email
+    ):
+        # OPT-18 F3: la validación de pilotaje NO se bloquea, pero se deja
+        # trazabilidad cuantitativa de con qué métricas se validó (α, N de
+        # advertencias abiertas). El cálculo corre solo aquí, no en
+        # `compute_ecoe_validation` (ruta caliente de dashboard/validación).
+        from app.models.entities import AuditLog
+        from app.services.psychometrics import build_psychometrics_block
+
+        try:
+            psycho = build_psychometrics_block(
+                db, ecoe_event.id, SessionMode.pilotaje.value
+            )
+        except Exception:  # pragma: no cover - la analítica nunca debe frenar la transición
+            psycho = None
+        if psycho is not None:
+            reliability_block = psycho.get("reliability") or {}
+            db.add(AuditLog(
+                user_email=actor_email,
+                action="validate_pilot",
+                target_type="ECOEEvent",
+                target_id=str(ecoe_event.id),
+                payload={
+                    "ecoe_event_id": ecoe_event.id,
+                    "cronbach_alpha": reliability_block.get("cronbach_alpha"),
+                    "n_complete": reliability_block.get("n_complete"),
+                    "n_total": reliability_block.get("n_total"),
+                    "k_stations": reliability_block.get("k_stations"),
+                    "warning_count": len(psycho.get("warnings") or []),
+                    "warning_codes": sorted(
+                        {w.get("code") for w in psycho.get("warnings") or []}
+                    ),
+                },
+            ))
+
+    if (
         target_status == ECOEStatus.en_ejecucion.value
         and current_status != ECOEStatus.en_ejecucion.value
     ):

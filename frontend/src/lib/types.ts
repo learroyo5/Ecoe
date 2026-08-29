@@ -462,10 +462,49 @@ export type ECOEResult = {
   student_id: number;
   student_name: string;
   ecoe_number: string;
+  /** Suma cruda del puntaje obtenido (informativa). Desde OPT-17, para eventos
+   *  con estaciones de máximo heterogéneo, `percentage` ya NO es
+   *  `total_score / max_score * 100`. */
   total_score: number;
   max_score: number;
+  /** OPT-17: promedio del % de logro de cada estación del estudiante (cada
+   *  estación normalizada a su propio máximo → todas pesan igual). */
   percentage: number;
   equivalent_grade: number;
+  /** OPT-17: nº de estaciones con actividad puntuable que entraron al promedio
+   *  de `percentage`. Ausente en actas congeladas anteriores a OPT-17. */
+  stations_counted?: number;
+};
+
+/** OPT-16: agregado por estación. La DE es muestral (n−1) y llega `null`
+ *  cuando `n < 2`; una estación sin ninguna nota llega con `n = 0` y todos
+ *  los agregados en `null`. */
+export type StationScoreAggregate = {
+  station_id: number;
+  station_number: number;
+  station_name: string;
+  circuit_name: string;
+  n: number;
+  mean_score: number | null;
+  sd_score: number | null;
+  mean_max: number | null;
+  mean_percent: number | null;
+  sd_percent: number | null;
+  min_percent: number | null;
+  max_percent: number | null;
+};
+
+/** OPT-16: nota de un estudiante en una estación (formato largo). */
+export type StudentStationScore = {
+  student_id: number;
+  ecoe_number: string | null;
+  student_name: string;
+  station_id: number;
+  station_number: number | null;
+  station_name: string;
+  obtained_score: number;
+  max_score: number;
+  percent_score: number;
 };
 
 export type ResultsResponse = {
@@ -476,4 +515,96 @@ export type ResultsResponse = {
   /** ISO 8601 de la consolidación (`ECOEResult.updated_at`); null si el
    *  evento aún no está congelado o se cerró antes de poblar el snapshot. */
   consolidated_at: string | null;
+  /** OPT-16: desglose por estación. Sigue el mismo patrón `frozen` que
+   *  `results` (snapshot `StationResult` tras el cierre, recálculo en vivo
+   *  antes). */
+  by_station: {
+    stations: StationScoreAggregate[];
+    students: StudentStationScore[];
+  };
 } & TraceabilityReport;
+
+// ── OPT-18 · Analítica psicométrica ─────────────────────────────────
+
+/** Un tramo del histograma de nota 1.0–7.0 de una estación. */
+export type GradeHistogramBucket = {
+  grade: number;
+  label: string;
+  count: number;
+};
+
+/** Agregado psicométrico por estación. Los valores `null` son casos
+ *  degenerados (n < 2 para la DE, sin datos para media/min/max). */
+export type PsychometricsStationStat = {
+  station_id: number;
+  station_number: number;
+  station_name: string;
+  circuit_name: string;
+  n: number;
+  mean_percent: number | null;
+  sd_percent: number | null;
+  mean_score: number | null;
+  sd_score: number | null;
+  mean_max: number | null;
+  min_percent: number | null;
+  max_percent: number | null;
+  grade_histogram: GradeHistogramBucket[];
+};
+
+export type PsychometricsReliability = {
+  /** α de Cronbach (listwise). `null` con < 2 estaciones, < 2 casos
+   *  completos o varianza total 0. */
+  cronbach_alpha: number | null;
+  n_complete: number;
+  n_total: number;
+  k_stations: number;
+  station_discrimination: Array<{
+    station_id: number;
+    station_number: number;
+    station_name: string;
+    /** Discriminación estación-total corregida. `null` si varianza 0. */
+    r: number | null;
+  }>;
+};
+
+/** Item analysis por criterio de pauta (F2). Best-effort: solo estaciones
+ *  con pauta estructurada o formulario puntuable. */
+export type PsychometricsItemStat = {
+  station_id: number;
+  station_number: number;
+  station_name: string;
+  criterion_key: string;
+  criterion_label: string;
+  max: number;
+  n: number;
+  /** Índice de dificultad `p` = media(earned / max). `null` si `max` = 0. */
+  difficulty: number | null;
+  /** Punto-biserial corregido (ítem vs. resto de la estación). `null` si
+   *  varianza 0. */
+  point_biserial: number | null;
+};
+
+export type PsychometricsWarning = {
+  code: string;
+  severity: "warning" | "caveat";
+  metric: string;
+  value: number;
+  station_id?: number;
+  station_number?: number;
+  criterion_key?: string;
+  message: string;
+};
+
+export type PsychometricsResponse = {
+  mode: "ejecucion" | "pilotaje";
+  /** true cuando `mode=ejecucion` y el evento está cerrado: las métricas se
+   *  derivan del snapshot `StationResult`, no de un recálculo en vivo. */
+  frozen: boolean;
+  passing_reference_percent: number;
+  student_count: number;
+  station_stats: PsychometricsStationStat[];
+  reliability: PsychometricsReliability;
+  item_analysis: PsychometricsItemStat[];
+  warnings: PsychometricsWarning[];
+  thresholds: Record<string, number>;
+};
