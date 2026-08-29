@@ -8,6 +8,7 @@ import { useApi } from "@/hooks/use-api";
 import { DataTable } from "@/components/data-table";
 import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
+import { PsychometricsSection } from "@/components/psychometrics-section";
 
 export default function PilotagePage() {
   const { authenticated, eventId } = useECOE();
@@ -290,6 +291,13 @@ export default function PilotagePage() {
           />
         )}
       </SectionCard>
+      <PsychometricsSection
+        eventId={eventId}
+        mode="pilotaje"
+        authenticated={authenticated}
+        title="Psicometría del pilotaje"
+        subtitle="Respaldo cuantitativo del paso «Validar pilotaje»: consistencia interna, discriminación por estación y criterios de pauta fuera de rango sobre los datos de pilotaje. Las advertencias no bloquean la validación."
+      />
       {editingNotes ? (
         <SectionCard
           title={`Hallazgos del pilotaje: ${editingNotes.name}`}

@@ -8,6 +8,7 @@ import { modeLabel, submissionKindLabel } from "@/lib/labels";
 import { useApi } from "@/hooks/use-api";
 import { DataTable } from "@/components/data-table";
 import { SectionCard } from "@/components/section-card";
+import { PsychometricsSection } from "@/components/psychometrics-section";
 import type { ResultsResponse } from "@/lib/types";
 
 function formatTimestamp(value: unknown) {
@@ -227,6 +228,7 @@ export default function ResultsPage() {
           </div>
         )}
       </SectionCard>
+      <PsychometricsSection eventId={eventId} mode="ejecucion" authenticated={authenticated} />
       <SectionCard
         title="Trazabilidad por estudiante"
         subtitle="Verifica rápidamente quién ya fue confirmado, evaluado y quién ya dejó respuesta dentro del circuito."

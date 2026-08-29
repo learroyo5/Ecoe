@@ -12,8 +12,27 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/api", () => ({
   api: {
     results: vi.fn(),
+    psychometrics: vi.fn(),
   },
 }));
+
+const EMPTY_PSYCHOMETRICS = {
+  mode: "ejecucion",
+  frozen: false,
+  passing_reference_percent: 60,
+  student_count: 0,
+  station_stats: [],
+  reliability: {
+    cronbach_alpha: null,
+    n_complete: 0,
+    n_total: 0,
+    k_stations: 0,
+    station_discrimination: [],
+  },
+  item_analysis: [],
+  warnings: [],
+  thresholds: {},
+};
 
 const mockedApi = vi.mocked(api);
 const mockedUseECOE = vi.mocked(useECOE);
@@ -38,6 +57,7 @@ const baseTraceability = {
 beforeEach(() => {
   vi.clearAllMocks();
   mockedUseECOE.mockReturnValue({ authenticated: true, eventId: 1 } as never);
+  mockedApi.psychometrics.mockResolvedValue(EMPTY_PSYCHOMETRICS as never);
 });
 
 describe("ResultsPage — inmutabilidad OPT-1", () => {
@@ -134,6 +154,87 @@ describe("ResultsPage — resultados por estación OPT-16", () => {
     expect(await screen.findByText("Resultados por estación")).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.queryByText("Calculando resultados por estación...")).not.toBeInTheDocument(),
+    );
+  });
+});
+
+describe("ResultsPage — psicometría OPT-18", () => {
+  const baseResults = {
+    results: [],
+    frozen: false,
+    consolidated_at: null,
+    ...baseTraceability,
+  };
+
+  it("renderiza α de Cronbach y la tabla por estación desde psychometrics", async () => {
+    mockedApi.results.mockResolvedValue(baseResults as never);
+    mockedApi.psychometrics.mockResolvedValue({
+      ...EMPTY_PSYCHOMETRICS,
+      student_count: 3,
+      station_stats: [
+        {
+          station_id: 7,
+          station_number: 1,
+          station_name: "Anamnesis",
+          circuit_name: "Circuito A",
+          n: 3,
+          mean_percent: 80,
+          sd_percent: 10,
+          mean_score: 8,
+          sd_score: 1,
+          mean_max: 10,
+          min_percent: 70,
+          max_percent: 90,
+          grade_histogram: [
+            { grade: 1, label: "1.0–1.9", count: 0 },
+            { grade: 2, label: "2.0–2.9", count: 0 },
+            { grade: 3, label: "3.0–3.9", count: 0 },
+            { grade: 4, label: "4.0–4.9", count: 1 },
+            { grade: 5, label: "5.0–5.9", count: 1 },
+            { grade: 6, label: "6.0–6.9", count: 1 },
+            { grade: 7, label: "7.0", count: 0 },
+          ],
+        },
+      ],
+      reliability: {
+        cronbach_alpha: 0.72,
+        n_complete: 3,
+        n_total: 3,
+        k_stations: 2,
+        station_discrimination: [
+          { station_id: 7, station_number: 1, station_name: "Anamnesis", r: 0.35 },
+        ],
+      },
+      warnings: [
+        {
+          code: "station_discrimination_low",
+          severity: "warning",
+          metric: "station_discrimination",
+          value: 0.1,
+          station_number: 2,
+          message: "La estación 2 discrimina poco (r = 0.10).",
+        },
+      ],
+    } as never);
+
+    render(<ResultsPage />);
+
+    expect(await screen.findByText("Psicometría (ejecución)")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("0.72")).toBeInTheDocument());
+    expect(screen.getByText("La estación 2 discrimina poco (r = 0.10).")).toBeInTheDocument();
+  });
+
+  it("degrada sin romper cuando no hay datos psicométricos", async () => {
+    mockedApi.results.mockResolvedValue(baseResults as never);
+    mockedApi.psychometrics.mockResolvedValue(EMPTY_PSYCHOMETRICS as never);
+
+    render(<ResultsPage />);
+
+    expect(await screen.findByText("Psicometría (ejecución)")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Aún no hay datos de ejecución suficientes/i),
+      ).toBeInTheDocument(),
     );
   });
 });
