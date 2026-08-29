@@ -52,6 +52,29 @@
   - ~~Enlaces de activacion visibles al terminar el import, para repartirlos a mano~~ ✅
   - ~~Selector de estacion principal solo para el rol evaluador (en el resto no tenia efecto)~~ ✅
 
+## Completado 2026-08-29 — pipeline de optimización + Fase 2 de análisis (desplegado)
+
+Ciclo auditoría → triage → implementación sobre el flujo completo. Detalle en `PROJECT_STATUS.md` (sección "Pipeline de optimización + Fase 2") y `docs/optimizacion/BACKLOG.md`. Todo en `main`, desplegado (migración prod `j0e1f2a3b4c5 → o5p6q7r8s9t0`), CI verde, 394 backend + 78 frontend.
+
+- ~~Resultados inmutables tras el cierre + AuditLog de consolidación~~ ✅
+- ~~Aislamiento pilotaje/ejecución completo (`mode` en check-ins, trazabilidad, cola de corrección)~~ ✅
+- ~~Gating de UI por rol de evento, no por rol global~~ ✅
+- ~~OPT-20: cronómetro sincrónico único, deadline desde `LiveSession`, autoenvío server-side, borrador del evaluador, WebSocket para pantallas operativas, `expire_phase`~~ ✅
+- ~~Resultado por estación + nota agregada = promedio de %-por-estación (compensatorio)~~ ✅
+- ~~Psicometría (α Cronbach, discriminación, dificultad, punto-biserial) sobre ejecución y pilotaje + advertencias en `pilotaje_validado`~~ ✅ — **cubre "Exportaciones · estadísticas por estación" de Prioridad actual**
+- ~~Export Excel multi-hoja con item analysis y metadatos~~ ✅
+- ~~CRUD del banco institucional (instrumentos, plantillas, pacientes) + "editar pauta" en el Constructor~~ ✅
+- ~~Cola personal del corrector + pauta de referencia + bulk-0 blancos + reasignar correctores~~ ✅ — **cubre parte de "Evaluación diferida Fase 2 · edición de estaciones del corrector"**
+
+**Diferido (requiere cambio de contexto, no urgente):**
+- OPT-14 — back-plane Redis para `LiveTimerManager` (solo con >1 worker / escalado horizontal).
+- OPT-17b — umbral por estación / estándar conjuntivo (contradice el compensatorio elegido; sería su propio ciclo).
+
+**Pendiente operativo:**
+- Pilotar el cambio de deadline de OPT-20 (check-in tardío = menos tiempo, pausa congela para todos) antes de un examen real.
+- Limpieza de ~24 ramas `opt/*` / `ops/*` locales ya mergeadas.
+- 1 `evaluator_record` con `mode='ejecucion'` en el evento de pilotaje (dato viejo) — decidir si se corrige o se descarta con el resto del pilotaje.
+
 ## Prioridad actual
 
 1. ~~Primera prueba funcional real~~ ✅ (2026-08-18)
