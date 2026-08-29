@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api, isAlreadySubmittedError } from "@/lib/api";
+import { armAudio, chime } from "@/lib/chime";
 import { clockOffsetMs, parseServerUtc } from "@/lib/time";
 import { useLiveTimer } from "@/lib/ws";
 import { ConfirmDialog, TIMER_TONE_CLASSES, timerTone } from "@/components/confirm-dialog";
@@ -289,6 +290,28 @@ export default function KioskPage() {
   }, [remainingSeconds]);
 
   const timeExpired = remainingSeconds !== null && remainingSeconds <= 0;
+
+  // Habilita el audio con el primer toque en la tablet (los navegadores lo
+  // bloquean hasta que hay un gesto del usuario).
+  useEffect(() => {
+    const arm = () => armAudio();
+    window.addEventListener("pointerdown", arm, { once: true });
+    window.addEventListener("keydown", arm, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", arm);
+      window.removeEventListener("keydown", arm);
+    };
+  }, []);
+
+  // Timbre de fin de tiempo (una sola vez por estudiante).
+  const chimedForCheckinRef = useRef<number | null>(null);
+  useEffect(() => {
+    const checkinId = current?.checkin_id ?? null;
+    if (timeExpired && checkinId != null && chimedForCheckinRef.current !== checkinId) {
+      chimedForCheckinRef.current = checkinId;
+      chime("end");
+    }
+  }, [timeExpired, current]);
 
   // ── Autoenvío al expirar ─────────────────────────────────────────────
   useEffect(() => {

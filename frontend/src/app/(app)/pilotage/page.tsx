@@ -295,7 +295,7 @@ export default function PilotagePage() {
         eventId={eventId}
         mode="pilotaje"
         authenticated={authenticated}
-        title="Psicometría del pilotaje"
+        title="Análisis de respuestas del pilotaje"
         subtitle="Respaldo cuantitativo del paso «Validar pilotaje»: consistencia interna, discriminación por estación y criterios de pauta fuera de rango sobre los datos de pilotaje. Las advertencias no bloquean la validación."
       />
       {editingNotes ? (

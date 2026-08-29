@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
+import { armAudio, chime } from "@/lib/chime";
 import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
 import { useLiveTimer } from "@/lib/ws";
@@ -116,11 +117,18 @@ export default function LivePage() {
 
   // Tick del display: proyecta el remaining del servidor con el tiempo local
   // transcurrido desde que lo recibimos.
+  const prevDisplayRef = useRef(0);
   useEffect(() => {
     const compute = () => {
       const running = timerState.status === "running" || timerState.status === "transition";
       const elapsed = running && receivedAt ? (Date.now() - receivedAt) / 1000 : 0;
-      setDisplaySeconds(Math.max(0, Math.round(timerState.remaining_seconds - elapsed)));
+      const next = Math.max(0, Math.round(timerState.remaining_seconds - elapsed));
+      // Timbre de fin: el contador cruza a 0 mientras la fase está en curso.
+      if (running && next === 0 && prevDisplayRef.current > 0) {
+        chime("end");
+      }
+      prevDisplayRef.current = next;
+      setDisplaySeconds(next);
     };
     compute();
     const intervalId = setInterval(compute, 250);
@@ -180,8 +188,11 @@ export default function LivePage() {
 
   const sendAction = useCallback(async (action: string) => {
     setControlMessage(null);
+    armAudio(); // gesto del operador: habilita el audio para los timbres
     try {
       await api.liveControl({ ecoe_event_id: eventId, action });
+      if (action === "start" || action === "next_transition") chime("start");
+      if (action === "expire_phase") chime("end");
     } catch (err) {
       setControlMessage(
         err instanceof Error ? err.message : "No se pudo enviar la acción al cronómetro.",

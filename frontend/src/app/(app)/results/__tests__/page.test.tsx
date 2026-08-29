@@ -158,7 +158,7 @@ describe("ResultsPage — resultados por estación OPT-16", () => {
   });
 });
 
-describe("ResultsPage — psicometría OPT-18", () => {
+describe("ResultsPage — análisis de respuestas OPT-18", () => {
   const baseResults = {
     results: [],
     frozen: false,
@@ -219,7 +219,7 @@ describe("ResultsPage — psicometría OPT-18", () => {
 
     render(<ResultsPage />);
 
-    expect(await screen.findByText("Psicometría (ejecución)")).toBeInTheDocument();
+    expect(await screen.findByText("Análisis de respuestas (ejecución)")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("0.72")).toBeInTheDocument());
     expect(screen.getByText("La estación 2 discrimina poco (r = 0.10).")).toBeInTheDocument();
   });
@@ -230,7 +230,7 @@ describe("ResultsPage — psicometría OPT-18", () => {
 
     render(<ResultsPage />);
 
-    expect(await screen.findByText("Psicometría (ejecución)")).toBeInTheDocument();
+    expect(await screen.findByText("Análisis de respuestas (ejecución)")).toBeInTheDocument();
     await waitFor(() =>
       expect(
         screen.getByText(/Aún no hay datos de ejecución suficientes/i),

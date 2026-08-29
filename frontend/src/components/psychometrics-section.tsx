@@ -64,7 +64,7 @@ export function PsychometricsSection({
 
   return (
     <SectionCard
-      title={title ?? `Psicometría (${MODE_LABEL[mode] ?? mode})`}
+      title={title ?? `Análisis de respuestas (${MODE_LABEL[mode] ?? mode})`}
       subtitle={
         subtitle ??
         "Media y dispersión por estación, consistencia interna (α de Cronbach, listwise), discriminación estación-total corregida y análisis por criterio de pauta. Las advertencias no bloquean: son señales de calidad de la medición."

@@ -364,7 +364,7 @@ export function StatusTransitionBar({ currentStatus, onTransition, disabled = fa
             {confirming.target === "pilotaje_validado" && pilotValidationWarnings.length > 0 ? (
               <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
                 <p className="font-semibold">
-                  Psicometría del pilotaje ({pilotValidationWarnings.length} advertencia
+                  Análisis de respuestas del pilotaje ({pilotValidationWarnings.length} advertencia
                   {pilotValidationWarnings.length === 1 ? "" : "s"}):
                 </p>
                 <ul className="mt-1 list-disc space-y-0.5 pl-5">
