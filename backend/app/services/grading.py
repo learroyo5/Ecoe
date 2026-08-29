@@ -19,6 +19,21 @@ from app.utils.clock import utcnow_naive
 AUTO_GRADED_TYPES = {"single_choice", "multiple_choice"}
 
 
+def is_answered(value) -> bool:
+    """Whether a submitted answer carries actual content (OPT-20 F4, D4).
+
+    ``None``/empty string/empty list/empty dict = not answered. A blank
+    auto-submitted response still scores 0 over the max, but each blank item
+    is flagged so the corrector and the export can tell an omission from a
+    deliberate wrong answer.
+    """
+    if value is None:
+        return False
+    if isinstance(value, (str, list, tuple, set, dict)):
+        return len(value) > 0
+    return True
+
+
 def grade_answers(form_definition: dict | None, answers: dict | None) -> dict:
     """Compute the auto-graded portion and the pending-manual layout."""
     questions = (form_definition or {}).get("questions") or []
@@ -40,23 +55,30 @@ def grade_answers(form_definition: dict | None, answers: dict | None) -> dict:
         key = f"question_{index + 1}"
         question_type = str(question.get("type") or "")
         answer = answers.get(key)
+        answered = is_answered(answer)
 
         if question_type == "single_choice":
             auto_max += points
             correct = question.get("correct_option")
             earned = points if (correct is not None and answer == correct) else 0.0
             auto_score += earned
-            per_question[key] = {"kind": "auto", "earned": earned, "max": points}
+            per_question[key] = {
+                "kind": "auto", "earned": earned, "max": points, "answered": answered,
+            }
         elif question_type == "multiple_choice":
             auto_max += points
             correct = {str(item) for item in (question.get("correct_options") or [])}
             given = {str(item) for item in answer} if isinstance(answer, list) else set()
             earned = points if correct and given == correct else 0.0
             auto_score += earned
-            per_question[key] = {"kind": "auto", "earned": earned, "max": points}
+            per_question[key] = {
+                "kind": "auto", "earned": earned, "max": points, "answered": answered,
+            }
         else:
             manual_max += points
-            per_question[key] = {"kind": "manual", "earned": None, "max": points}
+            per_question[key] = {
+                "kind": "manual", "earned": None, "max": points, "answered": answered,
+            }
 
     return {
         "auto_score": auto_score,
