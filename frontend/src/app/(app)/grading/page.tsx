@@ -40,11 +40,20 @@ type GradableResponse = {
   questions: { label?: string; type?: string }[];
 };
 
+const CLOSED_STATUSES = new Set(["cerrado", "archivado"]);
+
 export default function GradingPage() {
-  const { authenticated, eventId } = useECOE();
+  const { authenticated, eventId, ecoeEvent } = useECOE();
+  const eventClosed = ecoeEvent ? CLOSED_STATUSES.has(ecoeEvent.status) : false;
   const { data, loading, error, setData } = useApi(
-    () => api.gradingList(eventId) as Promise<{ responses: GradableResponse[]; pending_count: number }>,
-    [eventId, authenticated],
+    () =>
+      eventClosed
+        ? Promise.resolve({ responses: [] as GradableResponse[], pending_count: 0 })
+        : (api.gradingList(eventId) as Promise<{
+            responses: GradableResponse[];
+            pending_count: number;
+          }>),
+    [eventId, authenticated, eventClosed],
   );
   const [message, setMessage] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -183,6 +192,29 @@ export default function GradingPage() {
       </div>
     );
   };
+
+  if (eventClosed) {
+    return (
+      <div className="space-y-6">
+        <SectionCard
+          title="Corrección de formularios"
+          subtitle="El ECOE está cerrado; la cola de corrección no está disponible."
+        >
+          <div
+            data-testid="grading-closed-notice"
+            className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900"
+          >
+            <p className="font-semibold">ECOE cerrado — los resultados están consolidados.</p>
+            <p className="mt-1">
+              Para rectificar una nota, reabrí el evento (retroceso de estado) desde la pantalla del
+              ECOE. Mientras el evento siga cerrado o archivado el servidor rechaza cualquier
+              corrección.
+            </p>
+          </div>
+        </SectionCard>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

@@ -359,4 +359,10 @@ export type ECOEResult = {
 
 export type ResultsResponse = {
   results: ECOEResult[];
+  /** true cuando el ECOE está cerrado/archivado y el payload sirve el
+   *  snapshot consolidado (`ECOEResult`) en vez de recalcular en vivo. */
+  frozen: boolean;
+  /** ISO 8601 de la consolidación (`ECOEResult.updated_at`); null si el
+   *  evento aún no está congelado o se cerró antes de poblar el snapshot. */
+  consolidated_at: string | null;
 } & TraceabilityReport;

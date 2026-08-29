@@ -6,6 +6,7 @@ import { modeLabel } from "@/lib/labels";
 import { useApi } from "@/hooks/use-api";
 import { DataTable } from "@/components/data-table";
 import { SectionCard } from "@/components/section-card";
+import type { ResultsResponse } from "@/lib/types";
 
 function formatTimestamp(value: unknown) {
   if (!value || typeof value !== "string") {
@@ -23,21 +24,16 @@ function formatTimestamp(value: unknown) {
 
 export default function ResultsPage() {
   const { authenticated, eventId } = useECOE();
-  const { data, loading, error } = useApi(
-    () =>
-      api.results(eventId) as Promise<{
-        results: Record<string, unknown>[];
-        summary: Record<string, unknown>;
-        student_traceability: Record<string, unknown>[];
-        station_traceability: Record<string, unknown>[];
-        activity_log: Record<string, unknown>[];
-      }>,
+  const { data, loading, error } = useApi<ResultsResponse>(
+    () => api.results(eventId),
     [eventId, authenticated],
   );
-  const summary = (data?.summary as Record<string, unknown> | undefined) ?? {};
-  const studentTraceability = (data?.student_traceability as Record<string, unknown>[] | undefined) ?? [];
-  const stationTraceability = (data?.station_traceability as Record<string, unknown>[] | undefined) ?? [];
-  const activityLog = (data?.activity_log as Record<string, unknown>[] | undefined) ?? [];
+  const summary: Partial<ResultsResponse["summary"]> = data?.summary ?? {};
+  const studentTraceability = data?.student_traceability ?? [];
+  const stationTraceability = data?.station_traceability ?? [];
+  const activityLog = data?.activity_log ?? [];
+  const frozen = data?.frozen === true;
+  const consolidatedLabel = frozen && data?.consolidated_at ? formatTimestamp(data.consolidated_at) : null;
 
   return (
     <div className="space-y-6">
@@ -68,7 +64,25 @@ export default function ResultsPage() {
           </div>
         </div>
       </SectionCard>
-      <SectionCard title="Resultados y exportación" subtitle="Consolidación automática de puntajes, porcentaje y nota equivalente">
+      <SectionCard
+        title="Resultados y exportación"
+        subtitle={
+          frozen
+            ? "Los resultados están consolidados: la app sirve el acta congelada al cierre, no un recálculo en vivo."
+            : "Consolidación automática de puntajes, porcentaje y nota equivalente"
+        }
+      >
+        {frozen ? (
+          <div
+            data-testid="results-frozen-chip"
+            className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-800"
+          >
+            <span aria-hidden>🔒</span>
+            {consolidatedLabel
+              ? `Resultados consolidados el ${consolidatedLabel}`
+              : "Resultados consolidados"}
+          </div>
+        ) : null}
         <div className="flex flex-wrap gap-3">
           <a
             className="btn-primary"
@@ -96,7 +110,7 @@ export default function ResultsPage() {
       </SectionCard>
       <SectionCard title="Consolidado por estudiante" subtitle="Vista tipo ficha de resultados, pensada para una lectura académica clara y una exportación segura.">
         {loading ? (
-          <p>Calculando resultados...</p>
+          <p>{frozen ? "Cargando resultados consolidados..." : "Calculando resultados..."}</p>
         ) : error ? (
           <p>{error}</p>
         ) : (
