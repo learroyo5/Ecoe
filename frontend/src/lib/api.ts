@@ -161,8 +161,6 @@ export const api = {
   // Staff
   staff: (eventId: number, page: number = 1, pageSize: number = 50) =>
     request<Paginated<StaffAssignment>>(`/staff/${eventId}?page=${page}&page_size=${pageSize}`),
-  createStaff: (payload: Record<string, unknown>) =>
-    request<StaffAssignment>("/staff", { method: "POST", body: JSON.stringify(payload) }),
   updateStaff: (staffId: number, payload: { role_code: string; station_ids: number[] }) =>
     request<StaffAssignment>(`/staff/${staffId}`, { method: "PATCH", body: JSON.stringify(payload) }),
   deleteStaff: (staffId: number) =>
