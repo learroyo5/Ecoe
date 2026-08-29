@@ -523,3 +523,88 @@ export type ResultsResponse = {
     students: StudentStationScore[];
   };
 } & TraceabilityReport;
+
+// ── OPT-18 · Analítica psicométrica ─────────────────────────────────
+
+/** Un tramo del histograma de nota 1.0–7.0 de una estación. */
+export type GradeHistogramBucket = {
+  grade: number;
+  label: string;
+  count: number;
+};
+
+/** Agregado psicométrico por estación. Los valores `null` son casos
+ *  degenerados (n < 2 para la DE, sin datos para media/min/max). */
+export type PsychometricsStationStat = {
+  station_id: number;
+  station_number: number;
+  station_name: string;
+  circuit_name: string;
+  n: number;
+  mean_percent: number | null;
+  sd_percent: number | null;
+  mean_score: number | null;
+  sd_score: number | null;
+  mean_max: number | null;
+  min_percent: number | null;
+  max_percent: number | null;
+  grade_histogram: GradeHistogramBucket[];
+};
+
+export type PsychometricsReliability = {
+  /** α de Cronbach (listwise). `null` con < 2 estaciones, < 2 casos
+   *  completos o varianza total 0. */
+  cronbach_alpha: number | null;
+  n_complete: number;
+  n_total: number;
+  k_stations: number;
+  station_discrimination: Array<{
+    station_id: number;
+    station_number: number;
+    station_name: string;
+    /** Discriminación estación-total corregida. `null` si varianza 0. */
+    r: number | null;
+  }>;
+};
+
+/** Item analysis por criterio de pauta (F2). Best-effort: solo estaciones
+ *  con pauta estructurada o formulario puntuable. */
+export type PsychometricsItemStat = {
+  station_id: number;
+  station_number: number;
+  station_name: string;
+  criterion_key: string;
+  criterion_label: string;
+  max: number;
+  n: number;
+  /** Índice de dificultad `p` = media(earned / max). `null` si `max` = 0. */
+  difficulty: number | null;
+  /** Punto-biserial corregido (ítem vs. resto de la estación). `null` si
+   *  varianza 0. */
+  point_biserial: number | null;
+};
+
+export type PsychometricsWarning = {
+  code: string;
+  severity: "warning" | "caveat";
+  metric: string;
+  value: number;
+  station_id?: number;
+  station_number?: number;
+  criterion_key?: string;
+  message: string;
+};
+
+export type PsychometricsResponse = {
+  mode: "ejecucion" | "pilotaje";
+  /** true cuando `mode=ejecucion` y el evento está cerrado: las métricas se
+   *  derivan del snapshot `StationResult`, no de un recálculo en vivo. */
+  frozen: boolean;
+  passing_reference_percent: number;
+  student_count: number;
+  station_stats: PsychometricsStationStat[];
+  reliability: PsychometricsReliability;
+  item_analysis: PsychometricsItemStat[];
+  warnings: PsychometricsWarning[];
+  thresholds: Record<string, number>;
+};

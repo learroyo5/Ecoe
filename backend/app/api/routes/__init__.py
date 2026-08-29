@@ -15,6 +15,7 @@ from app.api.routes.invitations import router as invitations_router
 from app.api.routes.contingency import router as contingency_router
 from app.api.routes.kiosk import router as kiosk_router
 from app.api.routes.grading import router as grading_router
+from app.api.routes.analytics import router as analytics_router
 
 router = APIRouter()
 router.include_router(auth_router)
@@ -30,3 +31,4 @@ router.include_router(invitations_router)
 router.include_router(contingency_router)
 router.include_router(kiosk_router)
 router.include_router(grading_router)
+router.include_router(analytics_router)
