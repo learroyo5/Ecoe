@@ -507,6 +507,17 @@ class EvaluatorRecord(Base, TimestampMixin):
     observation: Mapped[str] = mapped_column(Text, default="")
     answers: Mapped[dict] = mapped_column(JSON, default=dict)
     by_contingency: Mapped[bool] = mapped_column(Boolean, default=False)
+    # OPT-20 F3 (D3): a record persisted while still half-filled when the
+    # evaluator's phase expires. The unique key (event, station, student, mode)
+    # means the draft *is* the row; final submit / contingency promote it to
+    # ``is_draft=False``. A draft never enters ``compute_results`` and does not
+    # count as a completed evaluation in the traceability report.
+    is_draft: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Cómo entró el registro: `manual` (envío del evaluador), `contingency`
+    # (finalizado fuera de ventana por coordinación). El cliente nunca lo elige.
+    submission_kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="manual", default="manual",
+    )
 
 
 class StudentResponse(Base, TimestampMixin):
