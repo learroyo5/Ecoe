@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export function getMessageTone(message: string | null) {
   if (!message) {
@@ -180,6 +180,8 @@ export function FileImport({
   const [message, setMessage] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [lastImportSucceeded, setLastImportSucceeded] = useState(false);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   return (
     <div className="clinical-panel border-dashed">
@@ -202,13 +204,29 @@ export function FileImport({
               : "Esperando archivo"}
         </span>
       </div>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={importing}
+          onClick={() => inputRef.current?.click()}
+        >
+          {importing ? "Importando…" : "Elegir archivo Excel o CSV"}
+        </button>
+        <span className="text-sm text-slate-500">
+          {fileName ?? "Ningún archivo seleccionado"}
+        </span>
+      </div>
       <input
+        ref={inputRef}
         type="file"
-        className="mt-3"
+        accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        className="sr-only"
         disabled={importing}
         onChange={async (event) => {
           const file = event.target.files?.[0];
           if (!file) return;
+          setFileName(file.name);
           setImporting(true);
           setMessage(null);
           try {

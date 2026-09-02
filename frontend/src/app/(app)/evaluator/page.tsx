@@ -104,10 +104,23 @@ export default function EvaluatorPage() {
   // ── Reloj central (OPT-20 F1) ──────────────────────────────────────
   // El evaluador escucha el cronómetro: en pausa se muestra un banner y se
   // deshabilita "Guardar evaluación" (el registro sigue editable).
-  const { snapshot: liveSnapshot } = useLiveTimer(eventId, { enabled: authenticated });
+  const { snapshot: liveSnapshot, connected: wsConnected } = useLiveTimer(eventId, { enabled: authenticated });
   const liveStatus =
     liveSnapshot?.status ?? (context?.live_status as string | null | undefined) ?? null;
   const livePaused = liveStatus === "paused";
+
+  // Deadline autoritativo del evaluador cuando el cronómetro central manda:
+  // en `running` el fin de la fase de estación + la transición; en `transition`
+  // el fin de esa fase. En `paused` / sin WS cae al `evaluator_deadline` del
+  // REST (fallback Reloj B para pilotaje). Epoch ms de reloj local.
+  const liveEvaluatorDeadlineMs = useMemo(() => {
+    if (!wsConnected || !liveSnapshot || liveSnapshot.phaseEndsAt == null) return null;
+    if (liveSnapshot.status === "running") {
+      return liveSnapshot.phaseEndsAt + (liveSnapshot.transitionTimeSeconds || 0) * 1000;
+    }
+    if (liveSnapshot.status === "transition") return liveSnapshot.phaseEndsAt;
+    return null;
+  }, [wsConnected, liveSnapshot]);
   const evaluatorInstruction = String(
     activeCheckin?.evaluator_instruction ?? assignedStation?.evaluator_instruction ?? "",
   ).trim();
@@ -122,19 +135,22 @@ export default function EvaluatorPage() {
     itemScoreState.checkinId === activeCheckinId ? itemScoreState.scores : initialItemScores;
 
   useEffect(() => {
-    if (!activeCheckin || !confirmedAt || !timerDurationSeconds) {
-      return;
-    }
+    // En pausa central el contador se congela: no avanzamos `nowMs`.
+    if (!activeCheckin || livePaused) return;
+    if (!liveEvaluatorDeadlineMs && (!confirmedAt || !timerDurationSeconds)) return;
 
     const intervalId = window.setInterval(() => {
       setNowMs(Date.now());
     }, 1000);
     return () => window.clearInterval(intervalId);
-  }, [activeCheckin, confirmedAt, timerDurationSeconds]);
+  }, [activeCheckin, confirmedAt, timerDurationSeconds, livePaused, liveEvaluatorDeadlineMs]);
 
   const remainingSeconds = useMemo(() => {
     if (!activeCheckin) {
       return null;
+    }
+    if (liveEvaluatorDeadlineMs != null) {
+      return Math.max(0, Math.floor((liveEvaluatorDeadlineMs - nowMs) / 1000));
     }
     if (evaluatorDeadline) {
       return Math.max(
@@ -150,7 +166,7 @@ export default function EvaluatorPage() {
       Math.floor((nowMs + serverClockOffsetMs - parseServerUtc(confirmedAt)) / 1000),
     );
     return Math.max(timerDurationSeconds - elapsedSeconds, 0);
-  }, [activeCheckin, confirmedAt, evaluatorDeadline, nowMs, serverClockOffsetMs, timerDurationSeconds]);
+  }, [activeCheckin, confirmedAt, evaluatorDeadline, liveEvaluatorDeadlineMs, nowMs, serverClockOffsetMs, timerDurationSeconds]);
 
   const timerLabel = useMemo(() => {
     if (remainingSeconds === null) {

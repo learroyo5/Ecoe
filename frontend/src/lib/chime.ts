@@ -7,11 +7,36 @@
  * un handler de click/tap (el operador que inicia el cronómetro, o el primer
  * toque en la tablet). Si el audio no está disponible, todo degrada en silencio
  * y el aviso visual (semáforo) sigue igual.
+ *
+ * El volumen es configurable (suave / medio / alto) y se guarda por navegador;
+ * `alto` es el valor por defecto porque el aviso tiene que llegar a toda la sala.
  */
 
 let ctx: AudioContext | null = null;
 
 type AudioCtor = typeof AudioContext;
+export type ChimeVolume = "suave" | "medio" | "alto";
+
+const VOLUME_KEY = "ecoe-chime-volume";
+const GAIN_BY_VOLUME: Record<ChimeVolume, number> = { suave: 0.16, medio: 0.34, alto: 0.6 };
+
+export function getChimeVolume(): ChimeVolume {
+  try {
+    const v = localStorage.getItem(VOLUME_KEY);
+    if (v === "suave" || v === "medio" || v === "alto") return v;
+  } catch {
+    /* private mode */
+  }
+  return "alto";
+}
+
+export function setChimeVolume(v: ChimeVolume): void {
+  try {
+    localStorage.setItem(VOLUME_KEY, v);
+  } catch {
+    /* private mode */
+  }
+}
 
 export function armAudio(): void {
   try {
@@ -29,33 +54,43 @@ export function armAudio(): void {
   }
 }
 
-function tone(freq: number, startAt: number, duration: number, peak = 0.22): void {
+/** Un golpe de campana: fundamental + un armónico grave, con caída exponencial. */
+function bell(freq: number, startAt: number, duration: number, peak: number): void {
   if (!ctx) return;
   const now = ctx.currentTime;
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.type = "sine";
-  osc.frequency.value = freq;
-  gain.gain.setValueAtTime(0.0001, now + startAt);
-  gain.gain.exponentialRampToValueAtTime(peak, now + startAt + 0.015);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + startAt + duration);
-  osc.connect(gain).connect(ctx.destination);
-  osc.start(now + startAt);
-  osc.stop(now + startAt + duration + 0.05);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, now + startAt);
+  g.gain.exponentialRampToValueAtTime(peak, now + startAt + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + startAt + duration);
+  g.connect(ctx.destination);
+  [
+    { f: freq, type: "triangle" as OscillatorType, mul: 1 },
+    { f: freq * 2.01, type: "sine" as OscillatorType, mul: 0.35 },
+    { f: freq * 0.5, type: "sine" as OscillatorType, mul: 0.25 },
+  ].forEach((p) => {
+    const osc = ctx!.createOscillator();
+    const og = ctx!.createGain();
+    osc.type = p.type;
+    osc.frequency.value = p.f;
+    og.gain.value = p.mul;
+    osc.connect(og).connect(g);
+    osc.start(now + startAt);
+    osc.stop(now + startAt + duration + 0.05);
+  });
 }
 
-/** Reproduce el aviso. `end` = timbre descendente de "se acabó el tiempo";
- *  `start` = doble tono ascendente breve de "comiencen". No-op si el audio
- *  aún no fue habilitado por un gesto del usuario. */
+/** `end` = triple campanada descendente de "se acabó el tiempo"; `start` = doble
+ *  tono ascendente breve de "comiencen". No-op si el audio no fue habilitado. */
 export function chime(kind: "start" | "end"): void {
   armAudio();
   if (!ctx || ctx.state !== "running") return;
+  const peak = GAIN_BY_VOLUME[getChimeVolume()];
   if (kind === "end") {
-    tone(880, 0, 0.4);
-    tone(659, 0.34, 0.4);
-    tone(440, 0.68, 0.7);
+    bell(880, 0, 0.55, peak);
+    bell(659, 0.28, 0.55, peak);
+    bell(440, 0.56, 1.0, peak);
   } else {
-    tone(523, 0, 0.22);
-    tone(784, 0.2, 0.4);
+    bell(523, 0, 0.3, peak * 0.9);
+    bell(784, 0.16, 0.5, peak * 0.9);
   }
 }

@@ -18,6 +18,7 @@ from app.main import app
 from app.models.entities import ECOEEvent, StationKioskSession
 from app.models.enums import ECOEStatus
 from conftest import (
+    COEDITOR,
     ADMIN,
     COORDINATOR,
     EVALUATOR,
@@ -263,3 +264,17 @@ def test_evaluator_and_student_context_expose_live_phase_keys(client):
         assert student_ctx.status_code in (200, 400)
     finally:
         _set_status(1, previous)
+
+
+def test_coeditor_can_read_and_control_live_panel():
+    """1-7: el coeditor docente es parte del equipo a cargo del ECOE y debe
+    ver y operar el panel en vivo (antes: 403)."""
+    c = TestClient(app)
+    login(c, COEDITOR)
+    assert c.get("/api/live/1").status_code == 200
+    assert c.post(
+        "/api/live/control", json={"ecoe_event_id": 1, "action": "start"}
+    ).status_code == 200
+    with c.websocket_connect("/api/ws/live/1") as ws:
+        _admin_client().post("/api/live/control", json={"ecoe_event_id": 1, "action": "start"})
+        assert ws.receive_json()["type"] == "timer_update"

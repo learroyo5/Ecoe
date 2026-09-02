@@ -941,6 +941,14 @@ export default function StationBuilderPage() {
                   {capability.label}
                 </span>
                 <span className="text-xs leading-5 text-slate-500">{capability.requirement}</span>
+                {capability.key === "requiresDeferredGrading" && checked ? (
+                  <span className="mt-1 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs leading-5 text-amber-900">
+                    ⚠ Falta el corrector. Andá a{" "}
+                    <a href="/evaluators" className="font-semibold underline">Evaluadores</a>, agregá una
+                    persona con rol <b>«Corrector (evaluación diferida)»</b> y asignale esta estación.
+                    Validación bloquea la publicación hasta que lo hagas.
+                  </span>
+                ) : null}
               </label>
             );
           })}

@@ -26,7 +26,7 @@ export const NAV_ITEMS: { label: string; href: string; allowedFor: RoleCode[] }[
   { label: "Validación", href: "/validation", allowedFor: ["admin_global", "admin_ecoe", "coeditor_docente", "coordinador_operativo"] },
   { label: "Pilotaje", href: "/pilotage", allowedFor: ["admin_global", "admin_ecoe", "coeditor_docente", "coordinador_operativo"] },
   { label: "Publicación", href: "/publication", allowedFor: ["admin_global", "admin_ecoe", "coeditor_docente"] },
-  { label: "Panel en vivo", href: "/live", allowedFor: ["admin_global", "admin_ecoe", "coordinador_operativo", "cronometrador"] },
+  { label: "Panel en vivo", href: "/live", allowedFor: ["admin_global", "admin_ecoe", "coeditor_docente", "coordinador_operativo", "cronometrador"] },
   { label: "Evaluador", href: "/evaluator", allowedFor: ["evaluador", "admin_ecoe", "coordinador_operativo"] },
   { label: "Estudiante", href: "/student", allowedFor: ["estudiante"] },
   { label: "Corrección", href: "/grading", allowedFor: ["admin_global", "admin_ecoe", "coeditor_docente", "corrector"] },

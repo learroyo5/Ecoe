@@ -140,10 +140,14 @@ a {
   color: inherit;
 }
 
-input,
-select,
-textarea {
-  @apply w-full outline-none transition;
+/* :where() mantiene especificidad 0 para que las utilidades (pl-9, etc.) del
+   componente ganen — sin :where(), `input { padding }` pisaba `.pl-9` y el
+   icono de búsqueda quedaba encima del texto. */
+:where(input, select, textarea) {
+  width: 100%;
+  outline: none;
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: .15s;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: 0.9rem 1rem;

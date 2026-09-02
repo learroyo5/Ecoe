@@ -17,3 +17,6 @@ frontend/playwright-report/
 
 # Claude Code agent worktrees (transient)
 .claude/worktrees/
+
+# SQLite test DB (backend/pytest.ini genera test.db en tests locales)
+backend/test.db

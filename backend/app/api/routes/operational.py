@@ -117,6 +117,7 @@ async def websocket_live_timer(
                     user,
                     ecoe_event_id,
                     RoleCode.admin_ecoe.value,
+                    RoleCode.coeditor_docente.value,
                     RoleCode.coordinador_operativo.value,
                     RoleCode.cronometrador.value,
                     RoleCode.evaluador.value,
@@ -158,6 +159,7 @@ def live_session_state(session: LiveSession) -> dict:
 def get_live_panel(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     ensure_event_access(db, user, ecoe_event_id,
                         RoleCode.admin_ecoe.value,
+                        RoleCode.coeditor_docente.value,
                         RoleCode.coordinador_operativo.value,
                         RoleCode.cronometrador.value)
     session = db.scalar(select(LiveSession).where(LiveSession.ecoe_event_id == ecoe_event_id).limit(1))
@@ -177,10 +179,11 @@ def control_timer(
     payload: TimerAction,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("admin_ecoe", "coordinador_operativo", "cronometrador")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente", "coordinador_operativo", "cronometrador")),
 ):
     ensure_event_access(db, user, payload.ecoe_event_id,
                         RoleCode.admin_ecoe.value,
+                        RoleCode.coeditor_docente.value,
                         RoleCode.coordinador_operativo.value,
                         RoleCode.cronometrador.value)
     if payload.action not in TIMER_ACTIONS:
@@ -482,10 +485,11 @@ def create_incident(
     payload: IncidentCreate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    user=Depends(require_roles("admin_ecoe", "coordinador_operativo", "cronometrador")),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente", "coordinador_operativo", "cronometrador")),
 ):
     ensure_event_access(db, user, payload.ecoe_event_id,
                         RoleCode.admin_ecoe.value,
+                        RoleCode.coeditor_docente.value,
                         RoleCode.coordinador_operativo.value,
                         RoleCode.cronometrador.value)
     if payload.station_id is not None:

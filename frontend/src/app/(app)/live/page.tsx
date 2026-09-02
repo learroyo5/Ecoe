@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
-import { armAudio, chime } from "@/lib/chime";
+import { armAudio, chime, getChimeVolume, setChimeVolume, type ChimeVolume } from "@/lib/chime";
 import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
 import { useLiveTimer } from "@/lib/ws";
@@ -66,6 +66,8 @@ export default function LivePage() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showStartConfirm, setShowStartConfirm] = useState(false);
   const [showExpireConfirm, setShowExpireConfirm] = useState(false);
+  const [chimeVolume, setChimeVolumeState] = useState<ChimeVolume>("alto");
+  useEffect(() => { setChimeVolumeState(getChimeVolume()); }, []);
   const [projectorMode, setProjectorMode] = useState(false);
 
   // Incident form state
@@ -382,6 +384,23 @@ export default function LivePage() {
             >
               ⏹ Finalizar la estación en curso ahora
             </button>
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-white/85">
+              <span className="font-semibold">🔔 Volumen del timbre</span>
+              {(["suave", "medio", "alto"] as const).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => { setChimeVolume(v); setChimeVolumeState(v); armAudio(); chime("start"); }}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold capitalize transition ${
+                    chimeVolume === v
+                      ? "bg-white text-[var(--color-primary)]"
+                      : "border border-white/40 text-white hover:bg-white/10"
+                  }`}
+                >
+                  {v}
+                </button>
+              ))}
+              <span className="text-xs text-white/60">(suena una prueba al elegir)</span>
+            </div>
           </div>
           <div className="clinical-panel">
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--color-primary)]">
