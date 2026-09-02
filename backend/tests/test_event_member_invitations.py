@@ -470,3 +470,44 @@ def test_new_identity_without_name_is_rejected_with_a_readable_message(client):
     assert response.status_code == 400, response.text
     assert isinstance(response.json()["detail"], str)
     assert "nombre y apellidos" in response.json()["detail"]
+
+
+def test_same_person_can_hold_evaluator_and_corrector_roles(client, db_factory):
+    """B5: una persona puede ser evaluador en vivo y corrector de la evaluación
+    diferida después. Solo se rechaza repetir el MISMO rol."""
+    event_id, station_id = create_event_and_station(client, "Multi-rol")
+    admin_credentials = create_delegated_admin(client, event_id, "multirol")
+    member_email = f"multirol-{secrets.token_hex(6)}@example.edu"
+
+    login(client, ADMIN)
+    client.post("/api/users", json={
+        "email": member_email, "password": secrets.token_urlsafe(24),
+        "full_name": "Dora Vega", "role_code": RoleCode.evaluador.value,
+    })
+
+    login(client, admin_credentials)
+    r1 = client.post("/api/event-members/invite",
+                     json=invite_payload(event_id, station_id, member_email, "evaluador"))
+    assert r1.status_code == 200, r1.text
+
+    corrector_payload = invite_payload(event_id, station_id, member_email, "corrector")
+    corrector_payload["station_ids"] = [station_id]
+    r2 = client.post("/api/event-members/invite", json=corrector_payload)
+    assert r2.status_code == 200, r2.text
+
+    # Repetir el mismo rol -> 400 claro.
+    r3 = client.post("/api/event-members/invite",
+                     json=invite_payload(event_id, station_id, member_email, "evaluador"))
+    assert r3.status_code == 400
+    assert "evaluador" in r3.json()["detail"]
+
+    with db_factory() as db:
+        roles = {
+            a.role_code for a in db.scalars(
+                select(StaffAssignment).where(
+                    StaffAssignment.ecoe_event_id == event_id,
+                    StaffAssignment.email == member_email,
+                )
+            )
+        }
+    assert roles == {"evaluador", "corrector"}

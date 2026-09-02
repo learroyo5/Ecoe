@@ -191,7 +191,7 @@ class Student(Base, TimestampMixin):
 class StaffAssignment(Base, TimestampMixin):
     __tablename__ = "staff_assignments"
     __table_args__ = (
-        UniqueConstraint("ecoe_event_id", "email", name="uq_staff_event_email"),
+        UniqueConstraint("ecoe_event_id", "email", "role_code", name="uq_staff_event_email_role"),
         Index("ix_staff_event_role", "ecoe_event_id", "role_code"),
     )
 

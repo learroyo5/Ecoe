@@ -153,14 +153,21 @@ def assign_or_invite_member(
     else:
         member_name, member_last_name = split_full_name(account.full_name)
 
+    # Una persona puede tener varios roles en el mismo evento (p. ej. evaluador
+    # en vivo y corrector después): el candado es (evento, email, rol), no
+    # (evento, email). Solo se rechaza volver a agregar el MISMO rol.
     assignment = db.scalar(
         select(StaffAssignment).where(
             StaffAssignment.ecoe_event_id == payload.ecoe_event_id,
             StaffAssignment.email == email,
+            StaffAssignment.role_code == role_code,
         )
     )
     if assignment and account.account_status == "active":
-        raise HTTPException(status_code=400, detail="La persona ya está asignada a este ECOE")
+        raise HTTPException(
+            status_code=400,
+            detail=f"La persona ya tiene el rol «{role_code}» en este ECOE",
+        )
     if not assignment:
         assignment = StaffAssignment(
             ecoe_event_id=payload.ecoe_event_id,
@@ -174,7 +181,6 @@ def assign_or_invite_member(
     else:
         assignment.name = member_name
         assignment.last_name = member_last_name
-        assignment.role_code = role_code
         assignment.station_ids = station_ids
         db.add(assignment)
 
