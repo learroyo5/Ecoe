@@ -382,6 +382,20 @@ tabla nueva en `/results`. Sin endpoint/permiso/máquina de estados nuevos. La n
 **informativa** (alimentar un estándar por estación = OPT-17). 4 decisiones menores para el usuario en el
 plan (todas no bloqueantes de la implementación).
 
+### M1 · Ciclo automático del circuito (cronómetro auto-cíclico) — **EN PLAN**
+Retro del Simulacro Integral (2026-09-02). Es la "máquina de fases explícita" diferida de OPT-20: hoy el
+avance de estación/ronda es un clic manual del operador (`next_transition`). Plan redactado en
+`PLANES/M1__ciclo-automatico-circuito.md`. Modelo de circuito confirmado por el usuario (2026-09-03):
+tiempo de transición **único del evento** definido al crear y fijo durante la ejecución; **1 vuelta de N
+estaciones** por circuito; **rondas = ⌈estudiantes_activos / N⌉**; **pausa de cambio de estudiantes entre
+rondas** (campo nuevo `inter_round_pause_minutes`). Alcance: función pura `advance_if_expired`
+(determinista, idempotente, fast-forward) + acciones de control `enable_auto`/`disable_auto`/`next_round`
++ barrido perezoso ya existente + ticker best-effort de timbre en `LiveTimerManager` + UI de `/live`.
+**Requiere migración** (`live_sessions.auto_mode/current_round/total_rounds/inter_round_pause_seconds`,
+`ecoe_events.inter_round_pause_minutes`) — aprobación pendiente. Entrega sugerida en 2 fases (F1 avance
+correcto, F2 timbre server-push). No toca `ALLOWED_STATUS_TRANSITIONS`. El mapa de rotación
+(qué estudiante en qué estación) es follow-up aparte, no lo necesita M1.
+
 ### OPT-17b · Umbral de aprobación por estación — **DIFERIDO (recomendado)**
 El implementador de OPT-17 evaluó "umbral por estación" y lo **descartó** para OPT-17
 (`PLANES/OPT-17__normalizacion-por-estacion.md:252-257`): *"no es trivial, contradice el compensatorio"*.
