@@ -159,6 +159,12 @@ def _live_phase_station_deadline(session, *, far_past):
     if status == "transition":
         # The station phase ended when the transition phase started.
         return session.phase_started_at or far_past
+    if status in ("round_pause", "circuit_complete"):
+        # M1: between rounds nobody is checked in (the previous round's
+        # check-ins were finalized on round close, the next round's students
+        # have not entered yet); after the circuit there is nothing left to
+        # submit. Any write attempt in these phases is rejected.
+        return far_past
     # idle / ready / unknown: caller falls back to the per-check-in window.
     return "fallback"
 
@@ -271,7 +277,9 @@ def resolve_station_max_score(db: Session, station: "Station") -> float:
     return float(station.max_score or 0)
 
 
-LIVE_RUNNING_STATUSES = {"running", "transition"}
+# Phases whose countdown ticks against the server clock. ``round_pause`` (M1)
+# counts down the student-changeover window; ``circuit_complete`` does not.
+LIVE_RUNNING_STATUSES = {"running", "transition", "round_pause"}
 
 
 def compute_remaining_seconds(session) -> int:

@@ -170,8 +170,12 @@ export function ECOEFormFields({
         <input type="number" min="0.1" step="0.1" value={values.station_time_minutes ?? ""} onChange={update("station_time_minutes")} />
       </FormField>
 
-      <FormField label="Minutos de transición" description="Tiempo entre estaciones para cambio y lectura de instrucciones.">
+      <FormField label="Minutos de transición" description="Tiempo entre estaciones para cambio y lectura de instrucciones. Único para todo el ciclo.">
         <input type="number" min="0" step="0.1" value={values.transition_time_minutes ?? ""} onChange={update("transition_time_minutes")} />
+      </FormField>
+
+      <FormField label="Pausa entre rondas (minutos)" description="Cambio de estudiantes entre cada vuelta completa del circuito, en el modo automático.">
+        <input type="number" min="0" step="0.5" value={values.inter_round_pause_minutes ?? ""} onChange={update("inter_round_pause_minutes")} />
       </FormField>
 
       <FormField label="Porcentaje de aprobación" description="Nota mínima en porcentaje para considerar aprobado." error={errors.passing_reference_percent}>
@@ -193,6 +197,7 @@ export function buildECOEPayload(values: Record<string, string>) {
     circuit_mode: values.circuit_mode,
     station_time_minutes: Number(values.station_time_minutes),
     transition_time_minutes: Number(values.transition_time_minutes),
+    inter_round_pause_minutes: Number(values.inter_round_pause_minutes || 0),
     total_groups: Number(values.total_groups),
     passing_reference_percent: Number(values.passing_reference_percent),
   };
@@ -211,6 +216,7 @@ export function toEditableValues(ecoeEvent: Record<string, unknown> | null): Rec
     circuit_mode: String(ecoeEvent.circuit_mode ?? ""),
     station_time_minutes: String(ecoeEvent.station_time_minutes ?? 0),
     transition_time_minutes: String(ecoeEvent.transition_time_minutes ?? 0),
+    inter_round_pause_minutes: String(ecoeEvent.inter_round_pause_minutes ?? 5),
     total_groups: String(ecoeEvent.total_groups ?? 1),
     passing_reference_percent: String(ecoeEvent.passing_reference_percent ?? 60),
     status: String(ecoeEvent.status ?? "borrador"),

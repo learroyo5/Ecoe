@@ -50,6 +50,8 @@ class ECOEEventBase(BaseModel):
     circuit_mode: str
     station_time_minutes: float = Field(ge=0.1)
     transition_time_minutes: float = Field(ge=0)
+    # M1: pausa de cambio de estudiantes entre rondas del circuito automático.
+    inter_round_pause_minutes: float = Field(default=5, ge=0)
     total_groups: int = Field(ge=1)
     passing_reference_percent: float = Field(default=60, ge=0, le=100)
 
@@ -77,6 +79,7 @@ class ECOEEventRead(ECOEEventBase, ORMBase):
 class ECOETimingUpdate(BaseModel):
     station_time_minutes: float = Field(ge=0.1)
     transition_time_minutes: float = Field(ge=0)
+    inter_round_pause_minutes: float | None = Field(default=None, ge=0)
     sync_existing_stations: bool = True
 
 

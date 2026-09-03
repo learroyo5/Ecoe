@@ -120,6 +120,11 @@ class ECOEEvent(Base, TimestampMixin):
     total_stations: Mapped[int] = mapped_column(Integer, default=0)
     station_time_minutes: Mapped[float] = mapped_column(Float, default=8)
     transition_time_minutes: Mapped[float] = mapped_column(Float, default=2)
+    # M1: pausa de cambio de estudiantes entre rondas del circuito automático.
+    # Única para todo el ciclo, se fija al crear el ECOE.
+    inter_round_pause_minutes: Mapped[float] = mapped_column(
+        Float, nullable=False, server_default="5", default=5.0
+    )
     total_students: Mapped[int] = mapped_column(Integer, default=0)
     total_groups: Mapped[int] = mapped_column(Integer, default=1)
     passing_reference_percent: Mapped[float] = mapped_column(Float, default=60.0)
@@ -474,6 +479,20 @@ class LiveSession(Base, TimestampMixin):
     # phase_started_at (see live_session_state in operational routes).
     remaining_seconds: Mapped[int] = mapped_column(Integer, default=480)
     phase_started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # M1: ciclo automático del circuito. Cuando auto_mode está activo, el
+    # servidor avanza estación → transición → siguiente estación → pausa entre
+    # rondas → siguiente ronda sin acción del operador (services/live_cycle.py).
+    auto_mode: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=false(), default=False
+    )
+    current_round: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="1", default=1
+    )
+    # Congelado al arrancar el circuito: ⌈estudiantes_activos / nº estaciones⌉.
+    total_rounds: Mapped[int | None] = mapped_column(Integer)
+    inter_round_pause_seconds: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="300", default=300
+    )
 
     ecoe_event: Mapped["ECOEEvent"] = relationship(back_populates="live_sessions")
 

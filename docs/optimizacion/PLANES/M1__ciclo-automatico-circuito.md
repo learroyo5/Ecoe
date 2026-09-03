@@ -221,11 +221,31 @@ No toca `ALLOWED_STATUS_TRANSITIONS`. `circuit_complete` es un estado del
 - [ ] Simulacro manual en el stack e2e: circuito de 2 rondas × 3 estaciones,
       verificar timbres y avance sin tocar `/live`.
 
+## Estado de implementación
+
+- **F1 ✅ (rama `opt/M1-F1-ciclo-automatico`)** — migración `q7r8s9t0u1v2`
+  (`ecoe_events.inter_round_pause_minutes`, `live_sessions.auto_mode` /
+  `current_round` / `total_rounds` / `inter_round_pause_seconds`),
+  `services/live_cycle.py::advance_if_expired` (determinista, idempotente,
+  fast-forward), acciones `enable_auto` / `disable_auto` / `skip_phase` en
+  `/live/control`, avance perezoso en los 3 context endpoints
+  (`/live/{id}`, `/kiosk/context`, `/evaluator/context`), `round_pause` /
+  `circuit_complete` en `resolve_submission_deadline`, toggle + indicador de
+  ronda/estación + botón "Adelantar fase" en `/live`, campo "Pausa entre rondas"
+  en el formulario del ECOE, timbre de inicio por cambio de fase en `/live`.
+  Tests: `backend/tests/test_m1_auto_cycle.py` (18). Suite: 423 SQLite.
+- **F2 ⬜** — ticker de `LiveTimerManager` + evento `phase_bell` + enganche en
+  los 3 paneles (timbre puntual server-push).
+
 ## Estado de aprobación
 
 - Propuesto por: optimizador — 2026-09-03
 - Modelo de circuito confirmado por el usuario: ✅ 2026-09-03 (transición única
   de evento; 1 vuelta de N estaciones; rondas = ⌈estudiantes/N⌉; pausa entre
   rondas)
-- Migración aprobada por usuario: ⬜ pendiente
-- Plan aprobado por usuario: ⬜ pendiente
+- Migración aprobada por usuario: ✅ 2026-09-03
+- Plan aprobado por usuario: ✅ 2026-09-03 — arrancar por F1
+- 1-1 (estaciones solo-kiosco): usuario eligió **A** para el simulacro (coordinación
+  cubre check-ins, sin código), **B** apenas se concrete el simulacro
+  (autoidentificación en kiosco con confirmación de nombre). **C** queda absorbida
+  por el mapa de rotación, follow-up de M1.

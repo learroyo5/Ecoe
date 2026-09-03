@@ -45,6 +45,11 @@ export type LiveTimerSnapshot = {
   phaseEndsAt: number | null;
   /** Epoch ms (local clock) when this snapshot was received. */
   receivedAt: number;
+  /** M1: automatic circuit. */
+  autoMode: boolean;
+  currentRound: number;
+  totalRounds: number | null;
+  interRoundPauseSeconds: number;
 };
 
 type UseLiveTimerOptions = {
@@ -108,7 +113,8 @@ export function useLiveTimer(eventId: number, options: UseLiveTimerOptions = {})
           const now = Date.now();
           const status = String(data.status ?? "");
           const remainingSeconds = Number(data.remaining_seconds ?? 0);
-          const counting = status === "running" || status === "transition";
+          const counting =
+            status === "running" || status === "transition" || status === "round_pause";
           setSnapshot({
             status,
             remainingSeconds,
@@ -117,6 +123,11 @@ export function useLiveTimer(eventId: number, options: UseLiveTimerOptions = {})
             transitionTimeSeconds: Number(data.transition_time_seconds ?? 0),
             phaseEndsAt: counting ? now + remainingSeconds * 1000 : null,
             receivedAt: now,
+            autoMode: Boolean(data.auto_mode),
+            currentRound: Number(data.current_round ?? 1),
+            totalRounds:
+              data.total_rounds == null ? null : Number(data.total_rounds),
+            interRoundPauseSeconds: Number(data.inter_round_pause_seconds ?? 0),
           });
         }
         callbacksRef.current.onMessage?.(data);

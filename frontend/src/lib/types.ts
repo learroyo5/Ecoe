@@ -28,6 +28,7 @@ export type ECOEEvent = {
   total_stations: number;
   station_time_minutes: number;
   transition_time_minutes: number;
+  inter_round_pause_minutes: number;
   total_students: number;
   total_groups: number;
   passing_reference_percent: number;
@@ -187,6 +188,11 @@ export type LiveSession = {
   phase_started_at?: string | null;
   /** Reloj del servidor al momento de la respuesta: usar para offset local. */
   server_now?: string;
+  /** M1: circuito automático. */
+  auto_mode?: boolean;
+  current_round?: number;
+  total_rounds?: number | null;
+  inter_round_pause_seconds?: number;
 };
 
 export type Incident = {
