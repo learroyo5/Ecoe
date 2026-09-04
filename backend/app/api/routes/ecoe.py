@@ -93,6 +93,45 @@ def _with_counts_bulk(db: Session, events: list[ECOEEvent]) -> list[ECOEEvent]:
     return events
 
 
+def _sync_stations_and_live_session_timing(db: Session, ecoe_event: ECOEEvent) -> None:
+    """Mirror the event's station/transition/pausa-entre-rondas timing onto
+    every estación y el ``LiveSession`` (retro simulacro 2026-09-04).
+
+    El Constructor de estaciones no tiene un campo propio de tiempo — cada
+    estación siempre refleja el valor del evento. Sin este resync, editar las
+    características del ECOE deja las estaciones ya creadas y el panel
+    `/live` (si ya existe una sesión) mostrando los minutos viejos: las
+    estaciones porque nadie vuelve a escribir su columna, y `/live` porque
+    ``LiveSession.station_time_seconds``/``transition_time_seconds`` son una
+    plantilla en segundos que sólo se recalcula en puntos concretos (crear la
+    sesión, `enable_auto`, o aquí).
+    """
+    stations = db.scalars(
+        select(Station).where(Station.ecoe_event_id == ecoe_event.id)
+    ).all()
+    for station in stations:
+        station.station_time_minutes = ecoe_event.station_time_minutes
+        station.transition_time_minutes = ecoe_event.transition_time_minutes
+        db.add(station)
+
+    live_session = db.scalar(
+        select(LiveSession).where(LiveSession.ecoe_event_id == ecoe_event.id).limit(1)
+    )
+    if live_session:
+        live_session.station_time_seconds = max(1, round(ecoe_event.station_time_minutes * 60))
+        live_session.transition_time_seconds = max(
+            0, round(ecoe_event.transition_time_minutes * 60)
+        )
+        live_session.inter_round_pause_seconds = max(
+            0, round((ecoe_event.inter_round_pause_minutes or 0) * 60)
+        )
+        # No pisar el tiempo restante de una fase que ya está corriendo —
+        # sólo refrescar lo que se muestra cuando el cronómetro está quieto.
+        if live_session.status not in {"running", "transition", "round_pause"}:
+            live_session.remaining_seconds = live_session.station_time_seconds
+        db.add(live_session)
+
+
 @router.get("/dashboard/{ecoe_event_id}", response_model=DashboardSummary)
 def dashboard(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
@@ -265,6 +304,10 @@ def update_ecoe(
     for field, value in payload.model_dump(exclude={"status"}).items():
         setattr(ecoe_event, field, value)
     db.add(ecoe_event)
+    # El formulario de "características" es el único lugar donde se edita el
+    # timing tras crear el ECOE: sin este resync, las estaciones ya creadas y
+    # el panel /live (si ya hay sesión) se quedan con los minutos viejos.
+    _sync_stations_and_live_session_timing(db, ecoe_event)
     # Validate the status transition BEFORE committing anything: if it is
     # rejected, the field updates above are rolled back with it.
     try:
@@ -309,27 +352,7 @@ def update_ecoe_timing(
         ecoe_event.inter_round_pause_minutes = payload.inter_round_pause_minutes
     db.add(ecoe_event)
     if payload.sync_existing_stations:
-        stations = db.scalars(select(Station).where(Station.ecoe_event_id == ecoe_event_id)).all()
-        for station in stations:
-            station.station_time_minutes = payload.station_time_minutes
-            station.transition_time_minutes = payload.transition_time_minutes
-            db.add(station)
-        # La LiveSession copia estos minutos a segundos solo al crearse (o al
-        # arrancar/reiniciar el cronometro, que reusa su propio valor
-        # guardado): sin este resync queda pegada al timing que tenia el
-        # ECOE cuando se creo, aunque luego se edite en la pestaña ECOE.
-        live_session = db.scalar(
-            select(LiveSession).where(LiveSession.ecoe_event_id == ecoe_event_id).limit(1)
-        )
-        if live_session:
-            live_session.station_time_seconds = max(1, round(payload.station_time_minutes * 60))
-            live_session.transition_time_seconds = max(0, round(payload.transition_time_minutes * 60))
-            live_session.inter_round_pause_seconds = max(
-                0, round((ecoe_event.inter_round_pause_minutes or 0) * 60)
-            )
-            if live_session.status not in {"running", "transition", "round_pause"}:
-                live_session.remaining_seconds = live_session.station_time_seconds
-            db.add(live_session)
+        _sync_stations_and_live_session_timing(db, ecoe_event)
     db.commit()
     db.refresh(ecoe_event)
     return _with_counts(db, ecoe_event)
