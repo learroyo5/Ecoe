@@ -234,8 +234,18 @@ No toca `ALLOWED_STATUS_TRANSITIONS`. `circuit_complete` es un estado del
   ronda/estación + botón "Adelantar fase" en `/live`, campo "Pausa entre rondas"
   en el formulario del ECOE, timbre de inicio por cambio de fase en `/live`.
   Tests: `backend/tests/test_m1_auto_cycle.py` (18). Suite: 423 SQLite.
-- **F2 ⬜** — ticker de `LiveTimerManager` + evento `phase_bell` + enganche en
-  los 3 paneles (timbre puntual server-push).
+- **F2 ✅ (rama `opt/M1-F2-timbre-ticker`)** — `LiveTimerManager` mantiene un
+  task `asyncio` por evento **mientras haya ≥1 cliente WS**: despierta en el
+  deadline de la fase (`live_cycle.pump_auto_cycle`), avanza el circuito y hace
+  broadcast de `timer_update` + un frame `phase_bell` (`kind` `start`/`end`,
+  `station`). Best-effort: si el proceso se reinicia o no hay clientes, el
+  barrido perezoso desde `phase_started_at` mantiene el estado; sólo el timbre
+  se pierde. `advance_if_expired` toma `SELECT … FOR UPDATE` sobre la
+  `LiveSession` para serializar el ticker vs. los pollers. `useLiveTimer` gana
+  `onPhaseBell`; `/live`, `/kiosk` y `/evaluator` lo enganchan a `chime()` y
+  desactivan su timbre local derivado mientras el server-push está activo.
+  `LiveTimerManager.ticker_enabled=False` en tests (no spawnear bajo el
+  TestClient síncrono). Tests: +3 en `test_m1_auto_cycle.py` (`pump_auto_cycle`).
 
 ## Estado de aprobación
 

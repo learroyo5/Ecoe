@@ -56,6 +56,7 @@ from app.services.live_sweep import sweep_expired_phases
 from app.services.live_cycle import (
     advance_if_expired,
     compute_total_rounds,
+    live_session_state,
     station_slot_count,
 )
 from app.services.websocket import live_timer
@@ -150,26 +151,6 @@ async def websocket_live_timer(
 
 
 # ── Live Panel & Timer ─────────────────────────────────────────────────
-
-def live_session_state(session: LiveSession) -> dict:
-    return {
-        "id": session.id,
-        "ecoe_event_id": session.ecoe_event_id,
-        "mode": session.mode,
-        "status": session.status,
-        "station_time_seconds": session.station_time_seconds,
-        "transition_time_seconds": session.transition_time_seconds,
-        "current_station_index": session.current_station_index,
-        "remaining_seconds": compute_remaining_seconds(session),
-        "phase_started_at": session.phase_started_at.isoformat() if session.phase_started_at else None,
-        "server_now": utcnow_naive().isoformat(),
-        # M1: ciclo automático del circuito.
-        "auto_mode": session.auto_mode,
-        "current_round": session.current_round,
-        "total_rounds": session.total_rounds,
-        "inter_round_pause_seconds": session.inter_round_pause_seconds,
-    }
-
 
 @router.get("/live/{ecoe_event_id}")
 def get_live_panel(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):

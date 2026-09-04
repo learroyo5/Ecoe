@@ -26,7 +26,7 @@ from app.models.entities import ECOEEvent, LiveSession, Station, Student
 from app.models.enums import ECOEStatus
 from app.services.live_sweep import sweep_expired_phases
 from app.utils.clock import utcnow_naive
-from app.utils.helpers import SUBMISSION_GRACE_SECONDS
+from app.utils.helpers import SUBMISSION_GRACE_SECONDS, compute_remaining_seconds
 
 # Fases sobre las que el ciclo automático puede avanzar. Fuera de estas
 # (idle/ready/paused/circuit_complete) el operador tiene el control.
@@ -138,7 +138,10 @@ def advance_if_expired(
     result = {"advanced": 0, "bells": [], "status": None}
 
     session = db.scalar(
-        select(LiveSession).where(LiveSession.ecoe_event_id == ecoe_event.id).limit(1)
+        select(LiveSession)
+        .where(LiveSession.ecoe_event_id == ecoe_event.id)
+        .limit(1)
+        .with_for_update()
     )
     if session is None:
         return result
@@ -198,3 +201,72 @@ def advance_and_sweep(db: Session, ecoe_event: ECOEEvent) -> dict:
     """
     advance_if_expired(db, ecoe_event)
     return sweep_expired_phases(db, ecoe_event)
+
+
+def live_session_state(session: LiveSession) -> dict:
+    """Vista pública del reloj para el panel en vivo y el WebSocket."""
+    return {
+        "id": session.id,
+        "ecoe_event_id": session.ecoe_event_id,
+        "mode": session.mode,
+        "status": session.status,
+        "station_time_seconds": session.station_time_seconds,
+        "transition_time_seconds": session.transition_time_seconds,
+        "current_station_index": session.current_station_index,
+        "remaining_seconds": compute_remaining_seconds(session),
+        "phase_started_at": (
+            session.phase_started_at.isoformat() if session.phase_started_at else None
+        ),
+        "server_now": utcnow_naive().isoformat(),
+        "auto_mode": session.auto_mode,
+        "current_round": session.current_round,
+        "total_rounds": session.total_rounds,
+        "inter_round_pause_seconds": session.inter_round_pause_seconds,
+    }
+
+
+# Cada cuánto revisa el ticker cuando NO hay una fase automática corriendo
+# (auto_mode apagado, idle/ready/paused/circuit_complete): sondeo de respaldo
+# por si el operador activa el circuito mientras el ticker duerme.
+_TICKER_IDLE_SECONDS = 12.0
+# Margen tras el deadline nominal antes de que el ticker actúe (deja que el
+# reloj del servidor cruce con seguridad).
+_TICKER_DEADLINE_EPSILON = 0.4
+
+
+def pump_auto_cycle(db: Session, ecoe_event_id: int) -> dict:
+    """Un ciclo del ticker de ``LiveTimerManager`` (F2).
+
+    Avanza el circuito automático si la fase venció y devuelve:
+    ``{"advanced", "bells", "state", "sleep_seconds"}``. ``state`` es ``None``
+    cuando no hay que hacer broadcast (nada cambió / no hay sesión).
+    """
+    out = {"advanced": 0, "bells": [], "state": None, "sleep_seconds": _TICKER_IDLE_SECONDS}
+
+    event = db.get(ECOEEvent, ecoe_event_id)
+    if event is None:
+        return out
+
+    session = db.scalar(
+        select(LiveSession).where(LiveSession.ecoe_event_id == ecoe_event_id).limit(1)
+    )
+    if session is None or not session.auto_mode:
+        return out
+    if str(session.status) not in AUTO_ADVANCE_STATUSES:
+        return out
+
+    result = advance_if_expired(db, event, commit=True)
+    db.refresh(session)
+
+    if result["advanced"]:
+        out["advanced"] = result["advanced"]
+        out["bells"] = result["bells"]
+        out["state"] = live_session_state(session)
+
+    if str(session.status) in AUTO_ADVANCE_STATUSES:
+        out["sleep_seconds"] = max(
+            0.5, compute_remaining_seconds(session) + _TICKER_DEADLINE_EPSILON
+        )
+    else:
+        out["sleep_seconds"] = _TICKER_IDLE_SECONDS
+    return out

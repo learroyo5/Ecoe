@@ -22,6 +22,7 @@ from app.models.enums import ECOEStatus
 from app.services.live_cycle import (
     advance_if_expired,
     compute_total_rounds,
+    pump_auto_cycle,
     station_slot_count,
 )
 from app.utils.helpers import _live_phase_station_deadline
@@ -294,6 +295,40 @@ def test_skip_phase_rolls_to_next_phase(auth_client, restore_event_1):
     data = r.json()
     assert data["status"] == "transition"
     assert data["current_station_index"] == 2
+
+
+# ── F2 · pump_auto_cycle (un ciclo del ticker de LiveTimerManager) ─────
+
+def test_pump_advances_and_returns_state_and_bell(restore_event_1):
+    with TestingSessionLocal() as db:
+        _setup(db, status="running", station_index=1, expired_by=1)
+    with TestingSessionLocal() as db:
+        out = pump_auto_cycle(db, 1)
+    assert out["advanced"] == 1
+    assert out["bells"] == ["end"]
+    assert out["state"] is not None
+    assert out["state"]["status"] == "transition"
+    # próximo despertar ≈ lo que resta de la fase de transición
+    assert 0.5 <= out["sleep_seconds"] <= TRANSITION_S + 1
+
+
+def test_pump_noop_when_phase_not_expired(restore_event_1):
+    with TestingSessionLocal() as db:
+        _setup(db, status="running", station_index=2, expired_by=None)
+    with TestingSessionLocal() as db:
+        out = pump_auto_cycle(db, 1)
+    assert out["advanced"] == 0
+    assert out["state"] is None
+    assert out["sleep_seconds"] > 1  # duerme hasta cerca del deadline
+
+
+def test_pump_idle_when_auto_off(restore_event_1):
+    with TestingSessionLocal() as db:
+        _setup(db, status="running", station_index=1, expired_by=9999, auto=False)
+    with TestingSessionLocal() as db:
+        out = pump_auto_cycle(db, 1)
+    assert out["advanced"] == 0
+    assert out["state"] is None
 
 
 def test_skip_phase_rejected_without_auto(auth_client, restore_event_1):

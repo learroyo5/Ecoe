@@ -104,6 +104,8 @@ export default function KioskPage() {
     {
       kioskToken: token ?? undefined,
       enabled: Boolean(token && station?.ecoe_event_id),
+      // M1 F2: timbre puntual del avance automático (fin e inicio de estación).
+      onPhaseBell: (kind) => chime(kind),
     },
   );
   const liveStatus = liveSnapshot?.status ?? station?.live_status ?? null;
@@ -303,15 +305,22 @@ export default function KioskPage() {
     };
   }, []);
 
-  // Timbre de fin de tiempo (una sola vez por estudiante).
+  // Timbre de fin de tiempo (una sola vez por estudiante). En modo automático
+  // con WS activo lo cubre el phase_bell del servidor (F2) → no duplicar.
   const chimedForCheckinRef = useRef<number | null>(null);
   useEffect(() => {
     const checkinId = current?.checkin_id ?? null;
-    if (timeExpired && checkinId != null && chimedForCheckinRef.current !== checkinId) {
+    const serverBellCovers = Boolean(liveSnapshot?.autoMode) && wsConnected;
+    if (
+      timeExpired &&
+      !serverBellCovers &&
+      checkinId != null &&
+      chimedForCheckinRef.current !== checkinId
+    ) {
       chimedForCheckinRef.current = checkinId;
       chime("end");
     }
-  }, [timeExpired, current]);
+  }, [timeExpired, current, liveSnapshot?.autoMode, wsConnected]);
 
   // ── Autoenvío al expirar ─────────────────────────────────────────────
   useEffect(() => {
