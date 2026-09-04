@@ -62,7 +62,7 @@ test.describe.serial("flujo dorado", () => {
 
     // E003: sin registros previos (el seed demo ya trae una evaluación de
     // E001 en esta estación, y los duplicados por modo se rechazan).
-    await page.getByPlaceholder("Ejemplo: 008").fill("E003");
+    await page.getByPlaceholder("Ejemplo: E007").fill("E003");
     await page.getByRole("button", { name: "Confirmar ingreso del estudiante" }).click();
     await expect(page.getByText("Estudiante confirmado", { exact: true })).toBeVisible();
     await expect(page.getByText("E003 · Estudiante3 Demo").first()).toBeVisible();
@@ -93,7 +93,7 @@ test.describe.serial("flujo dorado", () => {
 
     await login(page, STUDENT);
     await gotoHydrated(page, "/student");
-    await page.getByPlaceholder("Ejemplo: 008").fill("E001");
+    await page.getByPlaceholder("Ejemplo: E007").fill("E001");
     await page.getByRole("button", { name: "Verificar mi ingreso" }).click();
     await expect(page.getByText("Interpretación ECG")).toBeVisible();
 
