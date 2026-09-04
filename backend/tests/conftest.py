@@ -43,6 +43,11 @@ rate_limit.LOGIN_IP_MAX_ATTEMPTS = 9999
 rate_limit.LOGIN_ACCOUNT_MAX_ATTEMPTS = 9999
 rate_limit.LOGIN_GLOBAL_MAX_ATTEMPTS = 9999
 
+# M1 F2: don't spawn the live-timer auto-cycle ticker under the sync TestClient.
+import app.services.websocket as _ws
+_ws.LiveTimerManager.ticker_enabled = False
+_ws.live_timer.ticker_enabled = False
+
 IS_SQLITE = TEST_DATABASE_URL.startswith("sqlite")
 
 if IS_SQLITE:

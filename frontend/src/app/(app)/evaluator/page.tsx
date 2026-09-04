@@ -7,6 +7,7 @@ import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
 import { clockOffsetMs, parseServerUtc } from "@/lib/time";
 import { useLiveTimer } from "@/lib/ws";
+import { armAudio, chime } from "@/lib/chime";
 import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 import { ConfirmDialog, TIMER_TONE_CLASSES, timerTone } from "@/components/confirm-dialog";
@@ -104,7 +105,23 @@ export default function EvaluatorPage() {
   // ── Reloj central (OPT-20 F1) ──────────────────────────────────────
   // El evaluador escucha el cronómetro: en pausa se muestra un banner y se
   // deshabilita "Guardar evaluación" (el registro sigue editable).
-  const { snapshot: liveSnapshot, connected: wsConnected } = useLiveTimer(eventId, { enabled: authenticated });
+  const { snapshot: liveSnapshot, connected: wsConnected } = useLiveTimer(eventId, {
+    enabled: authenticated,
+    // M1 F2: timbre puntual del avance automático del circuito.
+    onPhaseBell: (kind) => chime(kind),
+  });
+
+  // El audio del navegador necesita un gesto previo: lo habilitamos en la
+  // primera interacción del evaluador con la pantalla.
+  useEffect(() => {
+    const arm = () => armAudio();
+    window.addEventListener("pointerdown", arm, { once: true });
+    window.addEventListener("keydown", arm, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", arm);
+      window.removeEventListener("keydown", arm);
+    };
+  }, []);
   const liveStatus =
     liveSnapshot?.status ?? (context?.live_status as string | null | undefined) ?? null;
   const livePaused = liveStatus === "paused";

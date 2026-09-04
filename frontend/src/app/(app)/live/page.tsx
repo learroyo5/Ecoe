@@ -138,13 +138,19 @@ export default function LivePage() {
   // Tick del display: proyecta el remaining del servidor con el tiempo local
   // transcurrido desde que lo recibimos.
   const prevDisplayRef = useRef(0);
+  // Espejo de `wsConnected` para leerlo dentro del tick sin caer en el TDZ
+  // (useLiveTimer se declara más abajo).
+  const wsConnectedRef = useRef(false);
   useEffect(() => {
     const compute = () => {
       const running = timerState.status === "running" || timerState.status === "transition";
       const elapsed = running && receivedAt ? (Date.now() - receivedAt) / 1000 : 0;
       const next = Math.max(0, Math.round(timerState.remaining_seconds - elapsed));
       // Timbre de fin: el contador cruza a 0 mientras la fase está en curso.
-      if (running && next === 0 && prevDisplayRef.current > 0) {
+      // En modo automático con WS activo el servidor ya empuja el phase_bell,
+      // así que no lo dupliques aquí.
+      const serverBellCovers = timerState.auto_mode && wsConnectedRef.current;
+      if (running && next === 0 && prevDisplayRef.current > 0 && !serverBellCovers) {
         chime("end");
       }
       prevDisplayRef.current = next;
@@ -195,6 +201,8 @@ export default function LivePage() {
   const { snapshot: liveSnapshot, connected: wsConnected } = useLiveTimer(eventId, {
     onMessage: handleLiveMessage,
     onReconnect: resyncFromRest,
+    // M1 F2: timbre puntual empujado por el servidor en el avance automático.
+    onPhaseBell: (kind) => chime(kind),
   });
 
   useEffect(() => {
@@ -212,22 +220,27 @@ export default function LivePage() {
     setReceivedAt(liveSnapshot.receivedAt);
   }, [liveSnapshot]);
 
-  // M1 (F1): timbre de inicio cuando el circuito automático entra a una nueva
-  // fase de estación por su cuenta (sin acción del operador). El timbre de fin
-  // ya lo dispara el cruce del contador por 0. El timbre puntual server-push
-  // llega en F2.
+  useEffect(() => {
+    wsConnectedRef.current = wsConnected;
+  }, [wsConnected]);
+
+  // M1: timbre de inicio cuando el circuito automático entra a una nueva fase
+  // de estación por su cuenta. Con WS activo lo cubre el phase_bell del
+  // servidor (F2); este efecto es el respaldo cuando sólo llega el estado por
+  // el sondeo REST (WS caído).
   const prevStatusRef = useRef<string>("");
   useEffect(() => {
     const prev = prevStatusRef.current;
     prevStatusRef.current = timerState.status;
     if (
+      !wsConnected &&
       timerState.auto_mode &&
       timerState.status === "running" &&
       (prev === "transition" || prev === "round_pause")
     ) {
       chime("start");
     }
-  }, [timerState.status, timerState.auto_mode]);
+  }, [timerState.status, timerState.auto_mode, wsConnected]);
 
   const sendAction = useCallback(async (action: string) => {
     setControlMessage(null);

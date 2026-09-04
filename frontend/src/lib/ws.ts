@@ -62,6 +62,8 @@ type UseLiveTimerOptions = {
   onMessage?: (data: Record<string, unknown>) => void;
   /** Called on every (re)connect — the live panel uses it to resync via REST. */
   onReconnect?: () => void;
+  /** M1 F2: server-pushed bell for an automatic phase change. */
+  onPhaseBell?: (kind: "start" | "end", station: number) => void;
 };
 
 /**
@@ -70,14 +72,14 @@ type UseLiveTimerOptions = {
  * `live/page.tsx` so kiosk / evaluador / estudiante can reuse it.
  */
 export function useLiveTimer(eventId: number, options: UseLiveTimerOptions = {}) {
-  const { kioskToken, enabled = true, onMessage, onReconnect } = options;
+  const { kioskToken, enabled = true, onMessage, onReconnect, onPhaseBell } = options;
   const [snapshot, setSnapshot] = useState<LiveTimerSnapshot | null>(null);
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
-  const callbacksRef = useRef({ onMessage, onReconnect });
+  const callbacksRef = useRef({ onMessage, onReconnect, onPhaseBell });
 
   useEffect(() => {
-    callbacksRef.current = { onMessage, onReconnect };
+    callbacksRef.current = { onMessage, onReconnect, onPhaseBell };
   });
 
   useEffect(() => {
@@ -129,6 +131,9 @@ export function useLiveTimer(eventId: number, options: UseLiveTimerOptions = {})
               data.total_rounds == null ? null : Number(data.total_rounds),
             interRoundPauseSeconds: Number(data.inter_round_pause_seconds ?? 0),
           });
+        } else if (data.type === "phase_bell") {
+          const kind = data.kind === "start" ? "start" : "end";
+          callbacksRef.current.onPhaseBell?.(kind, Number(data.station ?? 0));
         }
         callbacksRef.current.onMessage?.(data);
       };
