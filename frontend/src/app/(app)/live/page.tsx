@@ -19,6 +19,18 @@ type TimerState = {
   current_station_index: number;
   station_time_seconds: number;
   transition_time_seconds: number;
+  auto_mode: boolean;
+  current_round: number;
+  total_rounds: number | null;
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  running: "▶ En curso",
+  paused: "⏸ Pausado",
+  transition: "↻ Cambio de estación",
+  round_pause: "⏸ Cambio de estudiantes",
+  circuit_complete: "✓ Circuito completo",
+  ready: "Listo para iniciar",
 };
 
 const SEVERITY_OPTIONS = [
@@ -60,6 +72,9 @@ export default function LivePage() {
     current_station_index: 0,
     station_time_seconds: 480,
     transition_time_seconds: 120,
+    auto_mode: false,
+    current_round: 1,
+    total_rounds: null,
   });
 
   const [controlMessage, setControlMessage] = useState<string | null>(null);
@@ -113,6 +128,9 @@ export default function LivePage() {
       current_station_index: Number(data.current_station_index ?? 0),
       station_time_seconds: Number(data.station_time_seconds ?? prev.station_time_seconds),
       transition_time_seconds: Number(data.transition_time_seconds ?? prev.transition_time_seconds),
+      auto_mode: Boolean(data.auto_mode ?? prev.auto_mode),
+      current_round: Number(data.current_round ?? prev.current_round),
+      total_rounds: data.total_rounds == null ? null : Number(data.total_rounds),
     }));
     setReceivedAt(Date.now());
   }, [liveQuery.data]);
@@ -166,6 +184,9 @@ export default function LivePage() {
         current_station_index: Number(data.current_station_index ?? prev.current_station_index),
         station_time_seconds: Number(data.station_time_seconds ?? prev.station_time_seconds),
         transition_time_seconds: Number(data.transition_time_seconds ?? prev.transition_time_seconds),
+        auto_mode: Boolean(data.auto_mode ?? prev.auto_mode),
+        current_round: Number(data.current_round ?? prev.current_round),
+        total_rounds: data.total_rounds == null ? null : Number(data.total_rounds),
       }));
       setReceivedAt(Date.now());
     }).catch(() => { /* el WS seguirá empujando updates */ });
@@ -184,9 +205,29 @@ export default function LivePage() {
       current_station_index: liveSnapshot.currentStationIndex,
       station_time_seconds: liveSnapshot.stationTimeSeconds,
       transition_time_seconds: liveSnapshot.transitionTimeSeconds,
+      auto_mode: liveSnapshot.autoMode,
+      current_round: liveSnapshot.currentRound,
+      total_rounds: liveSnapshot.totalRounds,
     });
     setReceivedAt(liveSnapshot.receivedAt);
   }, [liveSnapshot]);
+
+  // M1 (F1): timbre de inicio cuando el circuito automático entra a una nueva
+  // fase de estación por su cuenta (sin acción del operador). El timbre de fin
+  // ya lo dispara el cruce del contador por 0. El timbre puntual server-push
+  // llega en F2.
+  const prevStatusRef = useRef<string>("");
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = timerState.status;
+    if (
+      timerState.auto_mode &&
+      timerState.status === "running" &&
+      (prev === "transition" || prev === "round_pause")
+    ) {
+      chime("start");
+    }
+  }, [timerState.status, timerState.auto_mode]);
 
   const sendAction = useCallback(async (action: string) => {
     setControlMessage(null);
@@ -285,7 +326,16 @@ export default function LivePage() {
           </button>
         </div>
         <p className="text-[3vw] font-semibold uppercase tracking-[0.3em] text-white/60">
-          {timerState.status === "transition" ? "Transición" : `Estación ${timerState.current_station_index}`}
+          {timerState.auto_mode && timerState.total_rounds
+            ? `Ronda ${timerState.current_round}/${timerState.total_rounds} · `
+            : ""}
+          {timerState.status === "transition"
+            ? "Transición"
+            : timerState.status === "round_pause"
+              ? "Cambio de estudiantes"
+              : timerState.status === "circuit_complete"
+                ? "Circuito completo"
+                : `Estación ${timerState.current_station_index}`}
         </p>
         <p
           className={`font-bold tabular-nums leading-none ${
@@ -298,10 +348,7 @@ export default function LivePage() {
           {formatTime(displaySeconds)}
         </p>
         <p className="mt-4 text-[2.5vw] font-semibold uppercase tracking-[0.2em] text-white/70">
-          {timerState.status === "running" ? "▶ En curso" :
-           timerState.status === "paused" ? "⏸ Pausado" :
-           timerState.status === "transition" ? "↻ Cambio de estación" :
-           timerState.status === "ready" ? "Listo para iniciar" : timerState.status}
+          {STATUS_LABELS[timerState.status] ?? timerState.status}
         </p>
         <ProjectorEscape onExit={() => setProjectorMode(false)} />
       </div>
@@ -329,11 +376,15 @@ export default function LivePage() {
                 <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
                   timerState.status === "running" ? "bg-green-500" :
                   timerState.status === "paused" ? "bg-yellow-500" :
-                  timerState.status === "transition" ? "bg-orange-500" : "bg-slate-500"
+                  timerState.status === "transition" ? "bg-orange-500" :
+                  timerState.status === "round_pause" ? "bg-yellow-500" :
+                  timerState.status === "circuit_complete" ? "bg-emerald-600" : "bg-slate-500"
                 }`}>
                   {timerState.status === "running" ? "▶ EN VIVO" :
                    timerState.status === "paused" ? "⏸ PAUSADO" :
                    timerState.status === "transition" ? "↻ TRANSICIÓN" :
+                   timerState.status === "round_pause" ? "⏸ CAMBIO DE ALUMNOS" :
+                   timerState.status === "circuit_complete" ? "✓ COMPLETO" :
                    timerState.status.toUpperCase()}
                 </span>
               </div>
@@ -342,14 +393,21 @@ export default function LivePage() {
               {formatTime(displaySeconds)}
             </p>
             <p className="mt-3 text-lg text-slate-100/80">
+              {timerState.auto_mode && timerState.total_rounds ? (
+                <>Ronda {timerState.current_round}/{timerState.total_rounds} · </>
+              ) : null}
               Estación {timerState.current_station_index} ·{" "}
-              {timerState.status === "transition" ? "Transición" : "Estación"}:{" "}
               {timerState.status === "transition"
-                ? formatTime(timerState.transition_time_seconds)
-                : formatTime(timerState.station_time_seconds)}
+                ? `Transición: ${formatTime(timerState.transition_time_seconds)}`
+                : timerState.status === "round_pause"
+                  ? "Cambio de estudiantes"
+                  : `Estación: ${formatTime(timerState.station_time_seconds)}`}
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
-              {(["start", "pause", "resume", "reset", "next_transition"] as const).map((action) => (
+              {(timerState.auto_mode
+                ? (["start", "pause", "resume", "reset", "skip_phase"] as const)
+                : (["start", "pause", "resume", "reset", "next_transition"] as const)
+              ).map((action) => (
                 <button
                   key={action}
                   className={action === "start" ? "btn-primary" : "btn-secondary"}
@@ -365,6 +423,7 @@ export default function LivePage() {
                    action === "pause" ? "Pausar" :
                    action === "resume" ? "Reanudar" :
                    action === "reset" ? "Reiniciar" :
+                   action === "skip_phase" ? "Adelantar fase" :
                    "Sig. estación"}
                 </button>
               ))}
@@ -374,6 +433,42 @@ export default function LivePage() {
               >
                 🖥 Vista proyector
               </button>
+            </div>
+            {/* M1: circuito automático. El servidor avanza estación → transición
+                → siguiente estación → pausa entre rondas → siguiente ronda sin
+                clics. Se activa antes de iniciar el cronómetro. */}
+            <div className="mt-4 rounded-2xl border border-white/25 bg-white/5 p-3 text-sm text-white/90">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-semibold">
+                  🔁 Circuito automático{" "}
+                  <span className={timerState.auto_mode ? "text-emerald-300" : "text-white/60"}>
+                    {timerState.auto_mode ? "activado" : "desactivado"}
+                  </span>
+                </span>
+                {["idle", "ready", "sin_sesion"].includes(timerState.status) ? (
+                  <button
+                    className="rounded-full border border-white/40 px-3 py-1 text-xs font-semibold transition hover:bg-white/10"
+                    onClick={() => sendAction(timerState.auto_mode ? "disable_auto" : "enable_auto")}
+                  >
+                    {timerState.auto_mode ? "Desactivar" : "Activar"}
+                  </button>
+                ) : (
+                  <span className="text-xs text-white/60">
+                    {timerState.auto_mode
+                      ? timerState.total_rounds
+                        ? `${timerState.total_rounds} rondas · avance sin operador`
+                        : "avance sin operador"
+                      : "sólo se cambia con el cronómetro detenido"}
+                  </span>
+                )}
+              </div>
+              {timerState.auto_mode && ["idle", "ready", "sin_sesion"].includes(timerState.status) ? (
+                <p className="mt-1 text-xs text-white/60">
+                  Al iniciar corre {timerState.total_rounds ?? "?"} ronda(s) de todo el
+                  circuito con timbre en cada estación y una pausa de cambio de
+                  estudiantes entre rondas.
+                </p>
+              ) : null}
             </div>
             {/* OPT-20 F2: el buzzer — cierra la ventana de envío de la estación
                 en curso sin avanzar de estación. El servidor recoge los

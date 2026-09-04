@@ -116,7 +116,7 @@ export const api = {
   duplicateECOE: (eventId: number, payload: { name?: string; new_date?: string; copy_evaluators?: boolean }) =>
     request<ECOEEvent>(`/ecoe/${eventId}/duplicate`, { method: "POST", body: JSON.stringify(payload) }),
   dashboard: (eventId: number) => request<DashboardSummary>(`/dashboard/${eventId}`),
-  updateECOETiming: (eventId: number, payload: { station_time_minutes: number; transition_time_minutes: number; sync_existing_stations: boolean }) =>
+  updateECOETiming: (eventId: number, payload: { station_time_minutes: number; transition_time_minutes: number; inter_round_pause_minutes?: number; sync_existing_stations: boolean }) =>
     request<ECOEEvent>(`/ecoe/${eventId}/timing`, { method: "PATCH", body: JSON.stringify(payload) }),
   validation: (eventId: number) => request<Record<string, unknown>>(`/validation/${eventId}`),
 

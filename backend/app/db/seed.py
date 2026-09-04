@@ -122,6 +122,7 @@ def seed_data(db: Session) -> None:
         circuit_mode="paralelo_espejo",
         station_time_minutes=8,
         transition_time_minutes=2,
+        inter_round_pause_minutes=5,
         total_groups=2,
         passing_reference_percent=60,
         # en_ejecucion: el gate de envios solo acepta registros operativos en
@@ -353,6 +354,7 @@ def seed_data(db: Session) -> None:
         transition_time_seconds=120,
         current_station_index=1,
         remaining_seconds=480,
+        inter_round_pause_seconds=300,
     )
     db.add(live_session)
     db.flush()

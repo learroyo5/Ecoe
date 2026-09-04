@@ -305,6 +305,8 @@ def update_ecoe_timing(
     ecoe_event = db.get(ECOEEvent, ecoe_event_id)
     ecoe_event.station_time_minutes = payload.station_time_minutes
     ecoe_event.transition_time_minutes = payload.transition_time_minutes
+    if payload.inter_round_pause_minutes is not None:
+        ecoe_event.inter_round_pause_minutes = payload.inter_round_pause_minutes
     db.add(ecoe_event)
     if payload.sync_existing_stations:
         stations = db.scalars(select(Station).where(Station.ecoe_event_id == ecoe_event_id)).all()
@@ -322,7 +324,10 @@ def update_ecoe_timing(
         if live_session:
             live_session.station_time_seconds = max(1, round(payload.station_time_minutes * 60))
             live_session.transition_time_seconds = max(0, round(payload.transition_time_minutes * 60))
-            if live_session.status not in {"running", "transition"}:
+            live_session.inter_round_pause_seconds = max(
+                0, round((ecoe_event.inter_round_pause_minutes or 0) * 60)
+            )
+            if live_session.status not in {"running", "transition", "round_pause"}:
                 live_session.remaining_seconds = live_session.station_time_seconds
             db.add(live_session)
     db.commit()
@@ -362,6 +367,7 @@ def duplicate_ecoe(
         circuit_mode=ecoe_event.circuit_mode,
         station_time_minutes=ecoe_event.station_time_minutes,
         transition_time_minutes=ecoe_event.transition_time_minutes,
+        inter_round_pause_minutes=ecoe_event.inter_round_pause_minutes,
         total_groups=ecoe_event.total_groups,
         passing_reference_percent=ecoe_event.passing_reference_percent,
         status=ECOEStatus.borrador.value,

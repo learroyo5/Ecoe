@@ -1,6 +1,7 @@
 """Live panel, timer control, media, validation, results, and incidents routes."""
 
 import logging
+from datetime import timedelta
 from http.cookies import SimpleCookie
 from pathlib import Path
 
@@ -52,12 +53,22 @@ from app.services.media import (
 from app.utils.helpers import SUBMISSION_GRACE_SECONDS, compute_remaining_seconds, utcnow_naive
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginate_query
 from app.services.live_sweep import sweep_expired_phases
+from app.services.live_cycle import (
+    advance_if_expired,
+    compute_total_rounds,
+    station_slot_count,
+)
 from app.services.websocket import live_timer
 
 # Timer actions accepted by POST /live/control. `expire_phase` (OPT-20 F2)
 # ends the current phase without advancing the station index — the buzzer,
 # and the trigger for the server-side auto-submit sweep (H-opt20-6 / H-vivo-8).
-TIMER_ACTIONS = {"start", "pause", "resume", "reset", "next_transition", "expire_phase"}
+# M1: `enable_auto` / `disable_auto` toggle the automatic circuit; `skip_phase`
+# ends the current auto phase now and rolls to the next one.
+TIMER_ACTIONS = {
+    "start", "pause", "resume", "reset", "next_transition", "expire_phase",
+    "enable_auto", "disable_auto", "skip_phase",
+}
 _SWEEP_TIMER_ACTIONS = {"start", "reset", "next_transition", "expire_phase"}
 
 logger = logging.getLogger("ecoe.operational")
@@ -152,6 +163,11 @@ def live_session_state(session: LiveSession) -> dict:
         "remaining_seconds": compute_remaining_seconds(session),
         "phase_started_at": session.phase_started_at.isoformat() if session.phase_started_at else None,
         "server_now": utcnow_naive().isoformat(),
+        # M1: ciclo automático del circuito.
+        "auto_mode": session.auto_mode,
+        "current_round": session.current_round,
+        "total_rounds": session.total_rounds,
+        "inter_round_pause_seconds": session.inter_round_pause_seconds,
     }
 
 
@@ -169,6 +185,8 @@ def get_live_panel(ecoe_event_id: int, db: Session = Depends(get_db), user=Depen
     # finalize any expired phase. Idempotent, no-op while the phase is open.
     ecoe_event = db.get(ECOEEvent, ecoe_event_id)
     if ecoe_event is not None:
+        # M1: also roll the automatic circuit forward past any expired phase.
+        advance_if_expired(db, ecoe_event, commit=True)
         sweep_expired_phases(db, ecoe_event)
     db.refresh(session)
     return live_session_state(session)
@@ -203,14 +221,42 @@ def control_timer(
             station_time_seconds=max(1, round(ecoe_event.station_time_minutes * 60)),
             transition_time_seconds=max(0, round(ecoe_event.transition_time_minutes * 60)),
             remaining_seconds=max(1, round(ecoe_event.station_time_minutes * 60)),
+            inter_round_pause_seconds=max(
+                0, round((ecoe_event.inter_round_pause_minutes or 0) * 60)
+            ),
         )
         db.add(session)
         db.flush()
     now = utcnow_naive()
-    if payload.action == "start":
+    if payload.action == "enable_auto":
+        # M1: sólo antes de arrancar el circuito; congela el nº de rondas y la
+        # pausa entre rondas, y resincroniza los tiempos desde el evento.
+        if str(session.status) not in ("idle", "ready"):
+            raise HTTPException(
+                status_code=409,
+                detail="El circuito automático se activa antes de iniciar el cronómetro.",
+            )
+        session.auto_mode = True
+        session.current_round = 1
+        session.total_rounds = compute_total_rounds(db, payload.ecoe_event_id)
+        session.station_time_seconds = max(1, round(ecoe_event.station_time_minutes * 60))
+        session.transition_time_seconds = max(
+            0, round(ecoe_event.transition_time_minutes * 60)
+        )
+        session.inter_round_pause_seconds = max(
+            0, round((ecoe_event.inter_round_pause_minutes or 0) * 60)
+        )
+        session.remaining_seconds = session.station_time_seconds
+    elif payload.action == "disable_auto":
+        session.auto_mode = False
+    elif payload.action == "start":
         session.status = "running"
         session.remaining_seconds = session.station_time_seconds
         session.phase_started_at = now
+        if session.auto_mode:
+            session.current_round = 1
+            if session.total_rounds is None:
+                session.total_rounds = compute_total_rounds(db, payload.ecoe_event_id)
     elif payload.action == "pause":
         # Freeze the authoritative remaining time at the moment of pausing.
         session.remaining_seconds = compute_remaining_seconds(session)
@@ -224,15 +270,30 @@ def control_timer(
         session.current_station_index = 1
         session.remaining_seconds = session.station_time_seconds
         session.phase_started_at = None
+        # M1: limpiar el progreso de rondas; conservar la preferencia auto_mode.
+        session.current_round = 1
+        session.total_rounds = (
+            compute_total_rounds(db, payload.ecoe_event_id)
+            if session.auto_mode
+            else None
+        )
+    elif payload.action == "skip_phase":
+        # M1: terminar la fase automática actual ahora y rodar a la siguiente.
+        if not session.auto_mode or str(session.status) not in (
+            "running", "transition", "round_pause",
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="No hay una fase automática en curso para adelantar.",
+            )
+        session.phase_started_at = now - timedelta(
+            seconds=(session.remaining_seconds or 0) + 1
+        )
     elif payload.action == "next_transition":
         # H-vivo-8 (c): cap the rotation index at the number of station slots
         # (distinct station_number) so a stray click can't run the circuit past
         # its last station and desync every panel.
-        station_slots = db.scalar(
-            select(func.count(func.distinct(Station.station_number))).where(
-                Station.ecoe_event_id == payload.ecoe_event_id
-            )
-        ) or 0
+        station_slots = station_slot_count(db, payload.ecoe_event_id)
         if station_slots and session.current_station_index >= station_slots:
             raise HTTPException(
                 status_code=409,
@@ -253,6 +314,11 @@ def control_timer(
         session.phase_started_at = None
     db.add(session)
     db.flush()
+
+    # M1: tras aplicar la acción, dejar que el ciclo automático avance las
+    # fases vencidas (imprescindible para `skip_phase`; inofensivo si no aplica).
+    if session.auto_mode and ecoe_event is not None:
+        advance_if_expired(db, ecoe_event)
 
     if payload.action in _SWEEP_TIMER_ACTIONS and ecoe_event is not None:
         forced = payload.action == "expire_phase"

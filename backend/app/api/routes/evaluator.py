@@ -24,6 +24,7 @@ from app.schemas.common import (
 from app.services.dependencies import get_current_user, require_roles
 from app.services.authorization import ensure_event_access
 from app.services.live_sweep import sweep_expired_phases
+from app.services.live_cycle import advance_if_expired
 from app.utils.helpers import (
     ensure_checkin_within_time,
     ensure_primary_station_assignment,
@@ -111,6 +112,8 @@ def evaluator_context(
     ecoe_event = db.get(ECOEEvent, ecoe_event_id)
     # OPT-20 F2 safety net: finalize expired student phases before reporting
     # the evaluator's window. Idempotent; never touches evaluator records.
+    # M1: roll the automatic circuit forward first.
+    advance_if_expired(db, ecoe_event, commit=True)
     if sweep_expired_phases(db, ecoe_event).get("closed_checkins"):
         # A swept check-in may have been this station's active one.
         if focus_station:

@@ -32,6 +32,7 @@ from app.services.dependencies import require_roles
 from app.services.drafts import discard_checkin_draft, upsert_checkin_draft
 from app.services.grading import apply_auto_grading
 from app.services.live_sweep import sweep_expired_phases
+from app.services.live_cycle import advance_if_expired
 from app.services.kiosk import (
     authenticate_kiosk_token,
     issue_kiosk_token,
@@ -128,6 +129,9 @@ def kiosk_context(
     # OPT-20 F2 safety net: finalize any check-in whose live phase already
     # expired (a tablet that died mid-station, an operator who advanced the
     # clock). Idempotent and a no-op while the phase is still open or paused.
+    # M1: roll the automatic circuit forward first so the sweep sees the real
+    # current phase.
+    advance_if_expired(db, ecoe_event, commit=True)
     sweep_expired_phases(db, ecoe_event)
     base = {
         "station_id": station.id,
