@@ -452,6 +452,9 @@ class KioskSubmit(BaseModel):
 class KioskDraftUpsert(BaseModel):
     checkin_id: int
     answers: dict[str, Any] = {}
+    # Orden creciente por dispositivo; un borrador con número menor o igual
+    # al guardado se descarta (F0.2).
+    client_seq: int | None = None
 
 
 class StudentDraftUpsert(BaseModel):
@@ -460,6 +463,7 @@ class StudentDraftUpsert(BaseModel):
     student_id: int
     checkin_id: int | None = None
     answers: dict[str, Any] = {}
+    client_seq: int | None = None
 
 
 class ManualGradeSubmit(BaseModel):

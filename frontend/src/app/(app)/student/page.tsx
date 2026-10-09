@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api, isAlreadySubmittedError } from "@/lib/api";
+import { nextDraftSeq } from "@/lib/draft-seq";
 import { useECOE } from "@/lib/auth";
 import { clockOffsetMs, parseServerUtc } from "@/lib/time";
 import { useLiveTimer } from "@/lib/ws";
@@ -160,6 +161,7 @@ export default function StudentPage() {
         student_id: Number(context.student_id),
         checkin_id: Number(context.checkin_id),
         answers: answersRef.current,
+        client_seq: nextDraftSeq(),
       })
       .catch(() => {
         /* el localStorage cubre el respaldo local */

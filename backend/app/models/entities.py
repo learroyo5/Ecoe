@@ -1,6 +1,7 @@
 from datetime import date, datetime
 
 from sqlalchemy import (
+    BigInteger,
     Index,
     JSON,
     Boolean,
@@ -589,6 +590,9 @@ class StationResponseDraft(Base, TimestampMixin):
     station_id: Mapped[int] = mapped_column(ForeignKey("stations.id"), nullable=False)
     student_id: Mapped[int] = mapped_column(ForeignKey("students.id"), nullable=False)
     answers: Mapped[dict] = mapped_column(JSON, default=dict)
+    # F0.2 (H05): orden que declara el dispositivo para cada autoguardado. Un
+    # borrador que llega tarde (red lenta, reintento) no pisa a uno más nuevo.
+    client_seq: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class EvaluatorRecord(Base, TimestampMixin):

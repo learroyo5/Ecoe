@@ -93,10 +93,18 @@ class TestEvaluatorSubmissionRules:
             "/api/evaluator/submit", json=evaluator_payload(1, 5, checkin_id)
         )
         assert first.status_code == 200
-        second = auth_client.post(
+        # F0.2: repetir EXACTAMENTE la misma evaluación (reintento) es éxito
+        # con el registro ya guardado; cambiarla sigue rechazándose.
+        retry = auth_client.post(
             "/api/evaluator/submit", json=evaluator_payload(1, 5, checkin_id)
         )
-        assert second.status_code == 400
+        assert retry.status_code == 200
+        assert retry.json()["already_saved"] is True
+        changed = auth_client.post(
+            "/api/evaluator/submit",
+            json=evaluator_payload(1, 5, checkin_id) | {"observation": "otra cosa"},
+        )
+        assert changed.status_code == 400
 
 
 class TestStudentSubmissionRules:

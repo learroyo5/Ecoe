@@ -262,8 +262,9 @@ export const api = {
     student_id: number;
     checkin_id?: number;
     answers: Record<string, unknown>;
+    client_seq?: number;
   }) =>
-    request<{ saved: boolean; updated_at: string | null }>("/student/draft", {
+    request<{ saved: boolean; applied?: boolean; updated_at: string | null }>("/student/draft", {
       method: "PUT",
       body: JSON.stringify(payload),
     }),
@@ -285,7 +286,7 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   // OPT-20 F2: autoguardado server-side del borrador (mejor esfuerzo).
-  kioskDraft: (token: string, payload: { checkin_id: number; answers: Record<string, unknown> }) =>
+  kioskDraft: (token: string, payload: { checkin_id: number; answers: Record<string, unknown>; client_seq?: number }) =>
     request<{ saved: boolean; updated_at: string | null }>("/kiosk/draft", {
       method: "PUT",
       headers: { "X-Kiosk-Token": token },

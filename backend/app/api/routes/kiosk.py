@@ -12,6 +12,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -52,6 +53,18 @@ from app.utils.helpers import (
 from app.utils.serializers import serialize_media_asset
 
 router = APIRouter()
+
+def _replay_or_reject(existing: StudentResponse, answers: dict) -> dict:
+    """F0.2 (H05): un reintento de la MISMA entrega (se perdió la respuesta
+    HTTP, doble toque) es éxito y devuelve el registro ya guardado. Una
+    entrega distinta sigue rechazándose: la respuesta no se reemplaza."""
+    if (existing.answers or {}) == (answers or {}):
+        return {"saved": True, "response_id": existing.id, "already_saved": True}
+    raise HTTPException(
+        status_code=400,
+        detail="La respuesta de esta estación ya fue enviada y no puede reemplazarse",
+    )
+
 
 KIOSK_MANAGER_ROLES = (RoleCode.admin_ecoe.value, RoleCode.coordinador_operativo.value)
 
@@ -230,7 +243,6 @@ def kiosk_submit(
         raise HTTPException(
             status_code=409, detail="No hay un ingreso activo para esta estación"
         )
-    ensure_checkin_within_time(db, ecoe_event, checkin, station)
     existing_response = db.scalar(
         select(StudentResponse).where(
             StudentResponse.ecoe_event_id == kiosk.ecoe_event_id,
@@ -240,10 +252,8 @@ def kiosk_submit(
         )
     )
     if existing_response:
-        raise HTTPException(
-            status_code=400,
-            detail="La respuesta de esta estación ya fue enviada y no puede reemplazarse",
-        )
+        return _replay_or_reject(existing_response, payload.answers)
+    ensure_checkin_within_time(db, ecoe_event, checkin, station)
     response = StudentResponse(
         ecoe_event_id=kiosk.ecoe_event_id,
         station_id=kiosk.station_id,
@@ -255,8 +265,24 @@ def kiosk_submit(
         submission_kind="manual",
     )
     apply_auto_grading(response, station.student_form_definition)
-    db.add(response)
-    db.flush()
+    try:
+        with db.begin_nested():
+            db.add(response)
+            db.flush()
+    except IntegrityError:
+        # Otra entrega de este estudiante ganó la carrera (doble envío, o el
+        # barrido de fase): se responde según lo que quedó guardado.
+        winner = db.scalar(
+            select(StudentResponse).where(
+                StudentResponse.ecoe_event_id == kiosk.ecoe_event_id,
+                StudentResponse.station_id == kiosk.station_id,
+                StudentResponse.student_id == checkin.student_id,
+                StudentResponse.mode == session_mode,
+            )
+        )
+        if winner is None:  # pragma: no cover
+            raise
+        return _replay_or_reject(winner, payload.answers)
     discard_checkin_draft(db, checkin.id)
     db.add(AuditLog(
         user_email=f"kiosk:station-{kiosk.station_id}",
@@ -297,10 +323,17 @@ def kiosk_draft(
     )
     if not active_checkin or active_checkin.id != payload.checkin_id:
         raise HTTPException(status_code=409, detail="No hay un ingreso activo para esta estación")
-    draft = upsert_checkin_draft(db, checkin, payload.answers)
+    draft, applied = upsert_checkin_draft(
+        db, checkin, payload.answers, client_seq=payload.client_seq
+    )
     db.commit()
     db.refresh(draft)
-    return {"saved": True, "updated_at": draft.updated_at.isoformat() if draft.updated_at else None}
+    return {
+        "saved": True,
+        # False: llegó un borrador más viejo que el guardado y se descartó.
+        "applied": applied,
+        "updated_at": draft.updated_at.isoformat() if draft.updated_at else None,
+    }
 
 
 @router.get("/kiosk/media/{asset_id}")
