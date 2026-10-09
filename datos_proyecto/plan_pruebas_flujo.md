@@ -1,5 +1,7 @@
 # Plan de Pruebas de Flujo ECOE
 
+> **Nota (2026-10-09).** Este plan es anterior al rediseño de la intranet y a las correcciones de proceso: los nombres del menú cambiaron (Dashboard → Inicio, ECOE → Datos del ECOE, Evaluadores → Equipo) y hay pantallas y reglas nuevas (Kioscos, Contingencia, circuitos espejo, cierre con completitud). Usar junto con `MANUAL_USUARIO.md` y `docs/OPERACION_DIA_EXAMEN.md`.
+
 ## Objetivo
 
 Validar el piloto funcional del sistema actual de ECOE de punta a punta, detectando quiebres de flujo, ambiguedades operativas, validaciones faltantes y necesidades de pulido UX antes de una fase de uso mas amplia.

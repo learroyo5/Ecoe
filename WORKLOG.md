@@ -10,7 +10,7 @@ Guia corta para retomar trabajo sin reconstruir contexto desde cero.
 4. Leer `datos_proyecto/README.md`.
 5. Revisar `git status --short`.
 6. Confirmar que el stack responda con `docker compose ps`.
-7. Ejecutar `pytest` para verificar integridad del backend.
+7. Ejecutar las pruebas (ver `README.md`). En este servidor no hay pytest en el host: se corre en un contenedor a partir de la imagen `ecoe-backend`.
 
 ## Convencion de trabajo
 
@@ -20,14 +20,14 @@ Guia corta para retomar trabajo sin reconstruir contexto desde cero.
 - Al cerrar una sesion, dejar este archivo actualizado con foco en contexto util, no en detalle historico.
 - Correr `npm run build` y `pytest` antes de commitear.
 
-## Ahora mismo
+## Ahora mismo (2026-10-09)
 
-- El despliegue actual funciona localmente y por `https://ecoe.drnotus.cl` (entorno de staging/dev, no se comparte con prospectos).
-- Dominios propios en produccion desde 2026-08-25: `https://ecoe.cl` (landing de marketing), `https://app.ecoe.cl` (la plataforma, mismo backend que `ecoe.drnotus.cl`), `https://plataformaecoe.cl` (solo redirect 301 a `ecoe.cl`). Detalle completo en `datos_proyecto/operacion_despliegue.md` y `datos_proyecto/despliegue_dominios_ecoe.md`.
-- Las credenciales vigentes del servidor actual estan en `backend/.env` y `datos_proyecto/credenciales_locales.md`.
-- Usuario demo: `admin@ecoe.cl` (rol `admin_ecoe`).
-- Stack: Next.js + FastAPI + PostgreSQL en Docker Compose, 3 servicios healthy.
-- Version actual: `v2` — todas las prioridades altas del plan original completadas.
+- Produccion: `https://app.ecoe.cl` y `https://ecoe.drnotus.cl` (mismo backend). Demo: `https://demo.ecoe.cl` (mismas imagenes, base propia). Landing: `https://ecoe.cl`.
+- Entrada por tunel de Cloudflare; despliegue con `./scripts/deploy.sh` (produccion + demo).
+- Esquema en la revision Alembic `x4y5z6a7b8c9`. 545 tests backend, 143 frontend, e2e 5/5.
+- La base de produccion tiene un solo ECOE de prueba, en pilotaje, con dos circuitos armados a mano (rehacer como espejo antes de publicar).
+- Credenciales: cada entorno en su `.env` (`backend/.env`, `demo.env`); nunca en git.
+- Siguiente: pruebas del usuario sobre el nucleo. Prioridades en `NEXT_STEPS.md`.
 
 ## Sesion 2026-10-09 — Auditoria UX de la intranet (UX-1..UX-7)
 

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Plataforma web para planificación, pilotaje, ejecución y cierre de ECOE/OSCE (exámenes clínicos objetivos estructurados) en carreras de la salud. Backend FastAPI + SQLAlchemy + PostgreSQL con Alembic; frontend Next.js (App Router) + TypeScript + Tailwind. Docker Compose orquesta `frontend`, `backend` y `db`.
 
-Lectura recomendada antes de cambios estructurales o funcionales, en este orden: `README.md`, `PROJECT_STATUS.md`, `NEXT_STEPS.md`, `datos_proyecto/README.md` (si existe), y `docs/architecture/` para decisiones de fondo (auditoría estructural, plan P0, matriz de permisos).
+Lectura recomendada antes de cambios estructurales o funcionales, en este orden: `README.md`, `PROJECT_STATUS.md`, `NEXT_STEPS.md`, `datos_proyecto/operacion_despliegue.md` (servidor, túnel, demo, respaldos), y `docs/architecture/` para decisiones de fondo (matriz de permisos incluida). El backlog de auditorías y los planes viven en `docs/optimizacion/`; la bitácora por sesión, en `WORKLOG.md`.
 
 `AGENTS.md` en la raíz tiene reglas de trabajo adicionales (no exponer secretos de `backend/.env`, no revertir cambios del usuario sin permiso, agregar tests negativos en cambios de seguridad/permisos/auth, preferir commits pequeños y verificables).
 
@@ -63,7 +63,17 @@ Este stack e2e nunca debe apuntarse a producción: crea check-ins, evaluaciones 
 docker compose up --build          # frontend :3000, backend :8000 (docs en /docs), db
 ```
 
-En el servidor real, Docker solo expone a `127.0.0.1`; la salida pública va por `nginx` del sistema.
+En el servidor real, Docker solo expone a `127.0.0.1`; la entrada desde internet es un túnel de Cloudflare (`/etc/cloudflared/config.yml`) que enruta `^/api/` al backend y el resto al frontend.
+
+### Despliegue, demo y respaldos
+
+```bash
+./scripts/deploy.sh          # construye una vez y actualiza producción + instancia demo (cada backend migra su base)
+./scripts/demo_reset.sh      # recarga los ECOE de demo.ecoe.cl (app.db.seed_demo); sólo toca la base demo
+./scripts/verify_backup.sh   # ensaya la restauración del último respaldo en un PostgreSQL desechable
+```
+
+`docker-compose.demo.yml` (proyecto `ecoe-demo`, puertos 3100/8100, `demo.env` fuera de git) corre **las mismas imágenes** que producción con base, archivos y secretos propios: es el molde de "una instancia por institución". El servicio `db-backup` ejecuta `scripts/backup_loop.sh`: respaldo diario (base + archivos) y un volcado cada 5 min mientras haya un ECOE `en_ejecucion`.
 
 ## Arquitectura
 
@@ -74,26 +84,31 @@ backend/app/
 ├── api/routes/     # Routers REST + WebSocket (uno por dominio: ecoe, stations, students, staff,
 │                   #   evaluator, student_access, kiosk, grading, contingency, invitations, users, auth, operational)
 ├── core/           # config (pydantic-settings, todo vía env) y security (JWT, hashing)
-├── db/             # session, bootstrap y seed_data (datos demo)
+├── db/             # session, bootstrap, seed (datos de ejemplo) y seed_demo (instancia demo.ecoe.cl)
 ├── models/         # SQLAlchemy ORM (entities.py) + enums (enums.py)
 ├── schemas/        # Pydantic
 ├── services/       # reglas de negocio: ecoe, validation (máquina de estados), kiosk, grading,
-│                   #   results, websocket (live timer), authorization, dependencies (auth deps), invitations, media
+│                   #   results, psychometrics, websocket (live timer), live_cycle, live_sweep,
+│                   #   mirrors (circuitos espejo), event_lock (candados por estado), presence (tablero),
+│                   #   drafts, authorization, dependencies (auth deps), invitations, media
 └── utils/          # clock (reloj UTC naive centralizado), helpers (gates de envío), files, pagination
 
 frontend/src/
-├── app/(app)/...   # pantallas autenticadas por dominio (ecoe, stations, live, evaluator, student, grading, results, ...)
+├── app/(app)/...   # pantallas autenticadas por dominio (dashboard, ecoe, stations, kiosks, live, contingency,
+│                   #   evaluator, student, grading, results, ...). /ecoe/[id] sólo redirige a /ecoe
 ├── app/kiosk/       # modo kiosco (sin login de estudiante, token por estación)
-├── components/      # app-shell, ecoe-form (UI de la máquina de estados), data-table, media-preview, confirm-dialog
+├── components/      # app-shell, sidebar (grupos por fase), ecoe-form (UI de la máquina de estados),
+│                    #   confirm-provider (useConfirm), structure-lock-notice, station-board, data-table
 ├── hooks/use-api.ts # carga de datos
-└── lib/             # api.ts (cliente HTTP), auth.tsx, ws.ts (WebSocket del timer), routes.ts, types.ts
+└── lib/             # api.ts (cliente HTTP), auth.tsx, ws.ts (WebSocket del timer), routes.ts (NAV_ITEMS:
+                     #   rutas, roles y grupos del menú), ecoe-cycle.ts, live-controls.ts, types.ts
 ```
 
 Alembic (`backend/alembic/`) es la única forma soportada de crear/actualizar el schema en producción; `create_all` es un fallback opt-in solo para entornos locales desechables (`ALLOW_CREATE_ALL_FALLBACK=true`, usado por defecto en tests SQLite).
 
 ### Máquina de estados del ECOE — autoridad en el backend
 
-El ciclo de vida del ECOE (`borrador → en_configuracion → listo_para_pilotaje → en_pilotaje → pilotaje_validado → publicado → en_ejecucion → cerrado → archivado`, con retrocesos permitidos en varios tramos) vive como grafo en `backend/app/services/validation.py::ALLOWED_STATUS_TRANSITIONS`, consumido por `update_ecoe_status`. Este grafo **debe reflejar** el que ofrece la UI en `frontend/src/components/ecoe-form.tsx` — el backend es la autoridad real: cualquier salto fuera del grafo se rechaza aunque el cliente arme la request a mano. Cambiar uno sin el otro rompe la UX (botones que la UI ofrece pero el backend rechaza) o la seguridad (grafo laxo en backend). Transiciones específicas disparan efectos colaterales dentro de la misma transacción: publicar crea la `LiveSession` inicial y pasa estaciones a `publicada`; entrar a `en_ejecucion` cierra todos los check-ins `confirmado` residuales (son del pilotaje: el gate de envíos no permite check-ins reales antes) para que el panel del evaluador/kiosco no muestre un estudiante viejo como activo ni cuente en la trazabilidad real; cerrar consolida resultados (`persist_results`) y fuerza el cierre de todos los check-ins abiertos, congelando la operación.
+El ciclo de vida del ECOE (`borrador → en_configuracion → listo_para_pilotaje → en_pilotaje → pilotaje_validado → publicado → en_ejecucion → cerrado → archivado`, con retrocesos permitidos antes de la ejecución, reapertura `cerrado → en_ejecucion` y `archivado` terminal) vive como grafo en `backend/app/services/validation.py::ALLOWED_STATUS_TRANSITIONS`, consumido por `update_ecoe_status`. Este grafo **debe reflejar** el que ofrece la UI en `frontend/src/components/ecoe-form.tsx` — el backend es la autoridad real: cualquier salto fuera del grafo se rechaza aunque el cliente arme la request a mano. Cambiar uno sin el otro rompe la UX (botones que la UI ofrece pero el backend rechaza) o la seguridad (grafo laxo en backend). Transiciones específicas disparan efectos colaterales dentro de la misma transacción: publicar crea la `LiveSession` inicial y pasa estaciones a `publicada`; entrar a `en_ejecucion` cierra todos los check-ins `confirmado` residuales (son del pilotaje: el gate de envíos no permite check-ins reales antes) para que el panel del evaluador/kiosco no muestre un estudiante viejo como activo ni cuente en la trazabilidad real; cerrar consolida resultados (`persist_results`) y fuerza el cierre de todos los check-ins abiertos, congelando la operación.
 
 **Desde la auditoría de proceso 2026-10-09 (PROC):** `cerrado` admite además volver a `en_ejecucion` (reapertura: sólo `admin_ecoe`/global, `transition_reason` ≥ 10 caracteres, borra el snapshot y queda auditada) y `archivado` es terminal. La transición a `cerrado` falla con `IncompleteClosureError` (409 `incomplete_students`) si hay estudiantes activos con estaciones esperadas de su circuito sin nota, salvo `force_close_incomplete`, que las consolida en 0 (`StationResult.is_missing`). `publicado → en_ejecucion` reinicia la `LiveSession`.
 
@@ -145,6 +160,16 @@ Los endpoints de contingencia auditan envíos fuera de ventana en vez de simplem
 
 **Inmutabilidad (OPT-1):** con el evento `cerrado`/`archivado` y snapshot `ECOEResult`, `read_results` sirve el número congelado tal como se consolidó — los eventos cerrados antes de OPT-17 conservan su razón-de-sumas vieja. Sólo los eventos que se **consoliden desde OPT-17 en adelante** usan la fórmula nueva, y sólo cambian de nota si tienen estaciones de máximo heterogéneo (con todas las estaciones del mismo máximo, `promedio(%) == razón de sumas` exactamente). Un evento cerrado **sin** snapshot cae al recálculo en vivo → ya usa la fórmula nueva.
 
+### Ingreso activo, envíos y borradores (Fase 0, octubre 2026)
+
+- **Un solo ingreso activo** por estación y por estudiante: índices únicos parciales sobre `station_checkins` (`status = 'confirmado'`) y `SELECT … FOR UPDATE` de estación y estudiante en `confirm_station_checkin`. Reconfirmar al mismo estudiante devuelve su ingreso; los fixtures de tests usan `conftest.activate_checkin` y parten sin ingresos heredados.
+- Estados de un check-in: `confirmado`, `cerrado`, `anulado` (este último no cuenta en trazabilidad ni habilita contingencia).
+- **Envíos idempotentes**: repetir exactamente el mismo envío (kiosco, estudiante, evaluador) responde 200 con `already_saved`; uno distinto se rechaza. Los borradores del estudiante llevan `client_seq` y uno más viejo no pisa a uno nuevo.
+- La **clave de respuestas** nunca sale del servidor: kiosco y estudiante reciben `public_form_definition`.
+- El puntaje del evaluador se valida contra el desglose por criterio (`ensure_score_matches_breakdown`).
+- Al reabrir un ECOE cerrado el acta vigente se archiva en `ecoe_result_versions`.
+- Los WebSocket revalidan sesión y permisos cada `WS_REVALIDATE_SECONDS`.
+
 ### Modo kiosco
 
 `backend/app/services/kiosk.py`: en vez de que cada estudiante haga login en una tablet compartida por estación, la estación tiene un único token (generado con `secrets.token_urlsafe`, solo su SHA-256 se guarda en BD — mismo patrón que las invitaciones de usuario). Emitir un token nuevo revoca automáticamente el anterior (un solo dispositivo activo por estación). El backend resuelve quién responde a partir del check-in activo confirmado en esa estación, no de una sesión de usuario.
@@ -154,6 +179,8 @@ Los endpoints de contingencia auditan envíos fuera de ventana en vez de simplem
 `backend/app/services/dependencies.py::require_roles` combina tres fuentes en orden: rol global del usuario (`admin_global` es el único bypass universal) → `StaffAssignment` (rol por evento) → `ECOEPermission` (permiso explícito por evento). Esto es una puerta gruesa; la autorización fina por evento la hace después `ensure_event_access` en `services/authorization.py`. `require_global_roles` es distinto y deliberadamente no acepta roles delegados por evento — existe para recursos institucionales (gestión de usuarios) donde un permiso de ECOE nunca debe alcanzar.
 
 ### WebSocket / panel en vivo
+
+`GET /live/{id}/board` (`services/presence.py`) entrega el tablero de estaciones y la verificación previa: kioscos y evaluadores anotan `last_seen_at` al consultar su contexto (a lo más cada 15 s) y se consideran en línea si reportaron en los últimos 45 s.
 
 `backend/app/services/websocket.py::LiveTimerManager` es un singleton en memoria que agrupa conexiones por `ecoe_event_id` y hace broadcast a todos los clientes conectados a ese evento (start/pause/resume/reset/next_transition, incidencias). El frontend se conecta desde `frontend/src/lib/ws.ts`. Al no persistir el estado de las conexiones, un reinicio del proceso backend implica que los clientes deben reconectar (manejado en frontend con reconexión automática visible en UI).
 

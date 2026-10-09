@@ -1,7 +1,8 @@
 # Operación del día del examen (checklist)
 
-Guía operativa para correr un ECOE real con esta plataforma servida desde
-`ecoe.drnotus.cl` (Mac mini + nginx + Cloudflare/DNS). Imprimir y marcar.
+Guía operativa para correr un ECOE real con esta plataforma (`app.ecoe.cl`,
+servidor propio detrás de un túnel de Cloudflare). Imprimir y marcar.
+El uso de cada pantalla está en `MANUAL_USUARIO.md`.
 
 ## T-7 días
 
@@ -9,8 +10,9 @@ Guía operativa para correr un ECOE real con esta plataforma servida desde
 - [ ] Pilotaje realizado con las interfaces reales y **hallazgos registrados** en la pantalla Pilotaje.
 - [ ] Estudiantes cargados y activos; números ECOE impresos/comunicados.
 - [ ] Evaluadores creados como usuarios, asignados a su estación (una principal por persona) y con credenciales probadas por ellos mismos.
+- [ ] **Si el ECOE es en espejo**: el segundo circuito se creó con «Crear circuito espejo» (no a mano), cada estación de **cada** circuito tiene su evaluador, y cada estudiante tiene asignado su circuito. Definir en qué piso o sala corre cada uno.
 - [ ] Estaciones con formulario: puntajes y claves de respuesta definidos en el Constructor (lo que no tenga puntos NO suma a resultados).
-- [ ] Prueba de red EN EL RECINTO: abrir `https://ecoe.drnotus.cl` desde el wifi real, correr una estación de prueba completa.
+- [ ] Prueba de red EN EL RECINTO: abrir `https://app.ecoe.cl` desde el wifi real (en cada piso, si hay dos circuitos), correr una estación de prueba completa.
 - [ ] Plan B de conectividad definido (hotspot 4G con los kioscos y el panel apuntando por ahí).
 - [ ] **Congelamiento**: desde que el ECOE está `publicado` la plataforma bloquea estaciones, formularios, multimedia, tiempos, y borrar/renumerar estudiantes. Para cambiar algo hay que **despublicar**, corregir y volver a publicar.
 

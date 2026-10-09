@@ -1,5 +1,7 @@
 # Ajuste publico de ECOE en Dr. Notus
 
+> **Histórico (marzo 2026).** Describe la publicación por `nginx` anterior al túnel de Cloudflare. La topología vigente está en `operacion_despliegue.md`, sección «Entrada desde internet».
+
 ## Objetivo
 
 Dejar `ecoe.drnotus.cl` funcionando como producto independiente, sin loop HTTPS y con una sola entrada publica de API en `/api`.

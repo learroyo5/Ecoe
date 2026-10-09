@@ -1,5 +1,7 @@
 # Despliegue de dominios ECOE (ecoe.cl / plataformaecoe.cl / app.ecoe.cl)
 
+> **Histórico (agosto 2026).** Registro de cómo se montaron los dominios con `nginx` y certificados Let's Encrypt en el servidor anterior. Desde septiembre de 2026 la entrada es un túnel de Cloudflare y `app.ecoe.cl` no pasa por nginx; ver `operacion_despliegue.md`, sección «Entrada desde internet».
+
 **Estado: COMPLETADO Y VERIFICADO EN PRODUCCION (2026-08-25).** Este documento es un registro de como se hizo realmente (difiere en algunos puntos del plan original con el que se arranco), util como referencia para agregar un cuarto dominio/subdominio, reemitir un certificado, o entender el porque de una decision. La referencia rapida vigente del estado actual esta en `operacion_despliegue.md`; este doc es el detalle paso a paso.
 
 ## Objetivo

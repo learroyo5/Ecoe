@@ -1,6 +1,6 @@
 # P0 matriz inicial de permisos
 
-Fecha: 2026-06-29
+Fecha: 2026-06-29 · última revisión: 2026-10-09 (filas nuevas de octubre y corrección de las de panel en vivo)
 
 ## Principios
 
@@ -40,16 +40,23 @@ Fecha: 2026-06-29
 | Staff | Si | Si | Si parcial | No | No | No |
 | Buscar cuenta por correo exacto | Si | No | No | No | No | No |
 | Invitar/asignar miembro al ECOE | Si | No | No | No | No | No |
-| Estaciones | Si | Si | No | No | Via `/evaluator/context` [^ctx] | No |
+| Estaciones | Si | Si | Lectura | No | Via `/evaluator/context` [^ctx] | No |
+| Circuitos espejo (crear, sincronizar, eliminar) | Si | Si | No | No | No | No |
+| Enlaces de kiosco (emitir, revocar) | Si | No | Si | No | No | No |
 | Instrumentos/plantillas/pacientes | Si | Si | Lectura | No | Via `/evaluator/context` [^ctx] | Via `/student/access` [^ctx] |
 | Pilotaje | Si | Si | Crear/ver | No | No | No |
-| Live HTTP control | Si | No | Si | Si | No | No |
-| Live WebSocket | Si | No | Si | Si | No | No |
-| Incidencias | Si | No | Si | Si | No | No |
+| Live HTTP control | Si | Si | Si | Si | No | No |
+| Live WebSocket (sólo lectura del reloj) | Si | Si | Si | Si | Si | Si |
+| Tablero de estaciones / verificación previa (`/live/{id}/board`) | Si | Si | Si | Si | No | No |
+| Incidencias | Si | Si | Si | Si | No | No |
 | Evaluacion | Si | No | Si | No | Solo estacion asignada | No |
+| Confirmar / anular ingreso (check-in) | Si | No | Si | No | Solo estacion asignada | No |
+| Contingencia (transcribir, rectificar) | Si | No | Si | No | No | No |
 | Correccion diferida (`/grading`) | Si | Si | No | No | No | No |
 | Respuesta estudiante | Si | No | Si | No | No | Solo su usuario/check-in |
-| Resultados | Si | Si | Si | No | No | No |
+| Resultados y actas anteriores | Si | Si | Si | No | No | No |
+| Cerrar ECOE (incluido forzar con incompletos) | Si | Si | No | No | No | No |
+| Reabrir un ECOE cerrado | Si | No | No | No | No | No |
 | Consolidar resultados | Si | Si | Si | No | No | No |
 | Media estudiante | Si | Si | Si | No | No | Solo estacion confirmada |
 | Media evaluador | Si | Si | Si | No | Solo estacion asignada | No |
@@ -59,6 +66,22 @@ El `admin_global` hereda las capacidades de `admin_ecoe` sobre todos los eventos
 La columna `corrector` (omitida de la tabla por brevedad) solo tiene `Si` en "Listar/ver ECOE asignado" y en "Correccion diferida (`/grading`)", y ahi acotado a las estaciones de su `StaffAssignment`. Todo lo demas es `No`. Ver `docs/architecture/EVALUACION_DIFERIDA_FASE1.md`.
 
 [^ctx]: `evaluador` y `estudiante` **no** tienen lectura directa de los bancos de estaciones, instrumentos, plantillas ni pacientes simulados: esos GET (`CONTENT_MANAGER_ROLES` en `app/api/routes/stations.py`) responden `403` para ellos. El contenido que necesitan para operar (guion de la estacion, formulario del estudiante, pauta del evaluador, multimedia de su audiencia) llega ya filtrado por `/api/evaluator/context/{ecoe_event_id}` y `/api/student/access`, resuelto a partir del check-in confirmado y de la asignacion de estacion, no de un permiso de lectura sobre el banco.
+
+## Candados por estado del ECOE (octubre 2026)
+
+Los permisos por rol dicen *quién*; el estado del evento dice *cuándo* (`services/event_lock.py`). Se aplican a todos los roles, incluido `admin_global`:
+
+| Acción | Hasta `pilotaje_validado` | `publicado` | `en_ejecucion` | `cerrado` / `archivado` |
+|---|---|---|---|---|
+| Crear, editar o borrar estaciones; multimedia; circuitos espejo | Sí | No | No | No |
+| Tiempos y circuito del evento | Sí | No | No | No |
+| Borrar, depurar o renumerar estudiantes | Sí | No | No | No |
+| Agregar estudiantes; cambiar su estado | Sí | Sí | Sí (no suspender a quien ya tiene registros) | No |
+| Equipo (alta, reasignación, baja) | Sí | Sí | Sí | No |
+| Datos descriptivos del evento | Sí | Sí | Sí | No |
+| Check-in, evaluaciones, respuestas, contingencia | Sólo `en_pilotaje` | No | Sí | No |
+
+Una estación espejo, además, no admite cambios de diseño en ningún estado: se edita su original.
 
 ## Incorporacion de miembros por ECOE
 
@@ -91,3 +114,9 @@ Plantillas y pacientes simulados (`StationTemplate` / `SimulatedPatient`, OPT-7b
 - Un administrador de ECOE no puede enumerar cuentas, invitar para otro ECOE ni asignar `admin_ecoe`.
 - Una cuenta pendiente o suspendida no puede iniciar sesion.
 - Una invitacion vencida, reutilizada o reemplazada no puede activar la cuenta.
+- El formulario que recibe el estudiante o el kiosco nunca incluye la clave de respuestas.
+- Un evaluador no puede anular el ingreso de una estacion que no es la suya.
+- Un coeditor no puede reabrir un ECOE cerrado; un evaluador no puede usar contingencia ni rectificar.
+- Estudiantes y evaluadores no pueden leer el tablero de estaciones ni las actas anteriores.
+- Con el ECOE publicado o posterior, ningun rol puede editar la estructura; cerrado, ninguno puede cambiar datos.
+- Un WebSocket abierto se cierra cuando la cuenta se suspende o el token deja de ser valido.

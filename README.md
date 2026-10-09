@@ -1,246 +1,168 @@
-# Proyecto Tecnologico ECOE
+# Plataforma ECOE
 
-Plataforma web para planificacion, pilotaje, ejecucion y cierre de ECOE/OSCE en carreras de la salud.
+Plataforma web para planificar, pilotear, ejecutar y cerrar ECOE/OSCE (exámenes clínicos objetivos estructurados) en carreras de la salud.
 
-**Version actual: v2** — CRUD completo del ECOE, constructor de estaciones con multimedia, panel en vivo con WebSocket, gestion de incidencias en tiempo real, y suite de tests.
+- Producción: `https://app.ecoe.cl` (también `https://ecoe.drnotus.cl`, mismo backend)
+- Demostración: `https://demo.ecoe.cl` (misma versión, base de datos propia)
+- Landing: `https://ecoe.cl`
 
-## Punto de partida
+## Por dónde empezar
 
-Si vamos a retomar desarrollo sobre este repo, conviene leer en este orden:
+Leer en este orden:
 
-1. `README.md`
-2. `PROJECT_STATUS.md`
-3. `NEXT_STEPS.md`
-4. `datos_proyecto/README.md`
+1. `README.md` (este archivo)
+2. `PROJECT_STATUS.md` — qué está construido y qué límites tiene
+3. `NEXT_STEPS.md` — qué sigue
+4. `CLAUDE.md` — arquitectura y reglas que no son evidentes leyendo el código
+5. `datos_proyecto/operacion_despliegue.md` — servidor, túnel, respaldos, demo
 
-Eso deja claro:
+Para operar un examen: `docs/OPERACION_DIA_EXAMEN.md`. Para usar la plataforma: `MANUAL_USUARIO.md`.
 
-- como levantar el stack
-- cual es el estado real del proyecto
-- cual es la prioridad de trabajo
-- donde mirar operacion, credenciales y notas de producto
+## Stack
 
-## Arquitectura
+| Capa | Tecnología |
+|---|---|
+| Backend | FastAPI, SQLAlchemy 2, Pydantic, Alembic, PostgreSQL 16 |
+| Frontend | Next.js (App Router), TypeScript, Tailwind CSS |
+| Tiempo real | WebSocket (cronómetro, timbre, incidencias) |
+| Infraestructura | Docker Compose (`frontend`, `backend`, `db`, `db-backup`), túnel de Cloudflare |
+| Pruebas | pytest (SQLite y PostgreSQL con migraciones), vitest, Playwright |
 
 ```text
-ecoe/
-├── backend/
-│   ├── app/
-│   │   ├── api/         # Routers REST + WebSocket
-│   │   ├── core/        # Configuracion y seguridad
-│   │   ├── db/          # Session, bootstrap y seeds
-│   │   ├── models/      # SQLAlchemy ORM
-│   │   ├── schemas/     # Validacion Pydantic
-│   │   ├── services/    # Reglas de negocio y dependencias
-│   │   └── utils/       # Archivos e importadores
-│   ├── alembic/         # Migraciones de base de datos
-│   ├── tests/           # Tests con pytest + fastapi.testclient
-│   └── Dockerfile
-├── frontend/
-│   ├── src/app/         # App Router y pantallas (incluye /ecoe/[id])
-│   ├── src/components/  # Shell, tablas, formularios, cards, media-preview
-│   ├── src/hooks/       # Carga de datos
-│   └── src/lib/         # API client, auth y tipos
-└── docker-compose.yml
+backend/app/
+├── api/routes/   # REST + WebSocket, un router por dominio
+├── core/         # configuración (variables de entorno) y seguridad (JWT, hashing)
+├── db/           # sesión, seed base y seed_demo (instancia de demostración)
+├── models/       # entidades SQLAlchemy y enums
+├── schemas/      # Pydantic
+├── services/     # reglas de negocio: validación y estados, resultados, psicometría,
+│                 #   cronómetro (live_cycle, live_sweep), espejos, candados por estado,
+│                 #   presencia y tablero, kiosco, corrección, invitaciones
+└── utils/        # reloj, gates de envío y deadlines, archivos, paginación
+backend/alembic/  # migraciones (única forma de cambiar el esquema)
+backend/tests/    # pytest
+
+frontend/src/
+├── app/(app)/    # pantallas autenticadas
+├── app/kiosk/    # modo kiosco (tablet de estación, sin login)
+├── components/   # shell, barra lateral, formularios, diálogos, tablero de estaciones
+└── lib/          # cliente API, autenticación, rutas y permisos, WebSocket
+
+scripts/          # deploy, demo, respaldos, e2e
+docs/             # operación del día del examen, arquitectura, backlog y planes
 ```
 
-## Modulos incluidos
+## Qué hace
 
-### Gestion del ECOE (v2)
-- Formulario completo con validacion frontend, organizado en 3 secciones (Datos generales, Configuracion del circuito, Parametros de tiempo/evaluacion).
-- `circuit_mode` como selector con 4 modos documentados.
-- Transiciones de estado guiadas con botones de accion y modales de confirmacion (borrador → configuracion → pilotaje → publicado → ejecucion → cerrado → archivado).
-- Vista de detalle `/ecoe/[id]` con 4 tabs: General, Estaciones, Participantes, Pilotajes.
-- Duplicado de ECOE con opcion de copiar evaluadores y estaciones.
+El ECOE sigue un ciclo con autoridad en el backend:
 
-### Autenticacion y usuarios
-- Autenticacion con JWT (cookie + Bearer) y control por rol.
-- Panel institucional de usuarios (`/users`) — solo `admin_global`.
-- Roles: `admin_global`, `admin_ecoe`, `coeditor_docente`, `coordinador_operativo`, `evaluador`, `estudiante`, `cronometrador` y `miembro` como identidad institucional neutra.
-- El administrador global crea ECOE y delega administradores por evento; `admin_ecoe` queda limitado a los eventos asignados.
-- El administrador de un ECOE puede buscar una cuenta por correo exacto e incorporarla a su evento. Si la cuenta ya esta activa, se reutiliza y recibe una asignacion propia del ECOE; si no existe, se crea pendiente y se entrega una invitacion de activacion de un solo uso.
-- La invitacion no entrega una contrasena al administrador: el usuario define la suya al activar la cuenta. El enlace expira por configuracion (`INVITATION_EXPIRE_HOURS`, 72 horas por defecto) y, mientras no exista integracion de correo, se muestra una sola vez para compartirlo por un canal seguro.
-- Una misma identidad puede tener roles distintos en varios ECOE. Solo `admin_global` puede suspender cuentas o delegar `admin_ecoe`; un administrador de ECOE no puede reactivar cuentas suspendidas.
+`borrador → en configuración → listo para pilotaje → en pilotaje → pilotaje validado → publicado → en ejecución → cerrado → archivado`
 
-### Estaciones
-- Listado con cards, badges de estado, y boton de edicion por estacion.
-- Constructor con 4 pasos guiados: origen, pedagogia, instrucciones, recursos.
-- Asociacion de plantilla, instrumento de evaluacion y paciente simulado desde el constructor.
-- Upload de multimedia con validacion por tipo, selector de audiencia, y preview inline (MediaPreview).
+**Configurar**
+- Datos del ECOE, tiempos y porcentaje de aprobación.
+- Estaciones con el Constructor (identidad, pauta, instrucciones, recursos), o desde el banco.
+- **Circuitos espejo**: se diseña un circuito y la plataforma crea su copia idéntica para otro piso o sala; las estaciones espejo no se editan por separado.
+- Nómina de estudiantes (manual o Excel/CSV) y equipo (evaluadores, correctores, coordinación, cronometrador) con invitación por correo.
+- Biblioteca reutilizable: banco de estaciones, plantillas, instrumentos y pacientes simulados.
 
-### Banco de plantillas, instrumentos y pacientes simulados
+**Preparar**
+- Validación que bloquea pilotaje y publicación mientras falte algo.
+- Pilotaje separado de la ejecución real: sus registros nunca entran a las notas.
+- Desde la publicación, la estructura queda bloqueada; para cambiarla hay que despublicar.
 
-### Pilotaje separado de ejecucion real
+**Día del examen**
+- Panel en vivo: cronómetro central (manual o circuito automático por rondas), timbre, vista proyector, incidencias.
+- Tablero de estaciones y verificación previa: qué evaluador y qué tablet están conectados y qué falta registrar.
+- Evaluador: confirma al estudiante por número ECOE y registra la pauta; avisa si el número corresponde a otra estación u otro circuito; permite anular un ingreso equivocado.
+- Kiosco: una tablet por estación con formulario o multimedia, sin login del estudiante.
+- El servidor guarda borradores y cierra las ventanas vencidas aunque una tablet falle.
+- Contingencia: transcribir lo resuelto en papel y rectificar registros, con auditoría.
 
-### Panel en vivo (WebSocket)
-- Cronometro central sincronizado en tiempo real via WebSocket (`/ws/live/{id}`).
-- Controles: start, pause, resume, reset, next_transition.
-- Gestion de incidencias: creacion rapida, resolucion, reapertura, con broadcast en tiempo real.
-- Severidad: baja, media, alta, critica.
+**Cerrar**
+- Corrección diferida de respuestas abiertas.
+- El cierre exige que cada estudiante tenga todas sus estaciones, o que la dirección lo fuerce (las faltantes cuentan 0).
+- Acta congelada con identidad y cobertura; reapertura controlada, con motivo, que archiva el acta anterior.
+- Resultados por estudiante y por estación, análisis psicométrico, exportación a Excel.
 
-### Evaluador
-- Identificacion de estudiante por numero ECOE.
-- Render dinamico de instrumentos: checklist (toggle Si/No) y puntaje numerico.
-- Bloqueo efectivo por tiempo: timer en rojo, campos deshabilitados al expirar.
-
-### Estudiante
-- Identificacion por numero ECOE.
-- Formulario dinamico con 3 tipos de pregunta: seleccion unica, multiple, texto corto.
-- Auto-guardado en localStorage y envio automatico al expirar el tiempo.
-- Visualizacion de multimedia (imagen, video, audio, PDF).
-
-### Resultados
-- Consolidacion automatica, porcentaje, nota equivalente.
-- Exportacion Excel y PDF de contingencia.
-
-### Seeds demo
-- 1 ECOE de ejemplo
-- 5 estaciones
-- 10 estudiantes
-- 3 evaluadores/colaboradores
-- 1 paciente simulado
-- 1 pilotaje inicial
-
-## Levantar con Docker
+## Levantar en local
 
 ```bash
+cp backend/.env.example backend/.env      # completar SECRET_KEY y contraseñas
 docker compose up --build
 ```
 
-Servicios:
-
 - Frontend: `http://localhost:3000`
-- Backend: `http://localhost:8000`
-- Docs API: `http://localhost:8000/docs`
+- API: `http://localhost:8000` (documentación en `/docs`)
 
-Estado verificado en este servidor:
+Fuera de producción y con `AUTO_SEED_DEMO=true` se cargan cuentas y un ECOE de ejemplo. Las credenciales vigentes de cada entorno están en su archivo `.env`, nunca en este repositorio.
 
-- Docker expone solo a `127.0.0.1`
-- la salida publica actual va por `nginx` del sistema
-- dominio publicado: `https://ecoe.drnotus.cl`
-- health backend publico: `https://ecoe.drnotus.cl/api/health`
+## Pruebas
 
-Acceso desde otro equipo en la red:
-
-- UI: `http://IP_DEL_SERVIDOR:3000`
-- API directa: `http://IP_DEL_SERVIDOR:8000`
-
-El frontend ya viene configurado para consumir la API mediante proxy interno (`/backend/api`), por lo que al abrir la UI desde otra maquina no depende de `localhost` del cliente.
-
-## Credenciales
-
-- Las credenciales activas del servidor actual no son las del README historico.
-- Las claves locales vigentes estan en `backend/.env`.
-- Referencia operativa: `datos_proyecto/credenciales_locales.md`
-- Usuario demo: `admin@ecoe.cl`
-
-## Variables de entorno
-
-Frontend:
+Backend (desde `backend/`):
 
 ```bash
-cp frontend/.env.example frontend/.env.local
+python3 -m pytest                      # SQLite, rápido
+TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q
 ```
 
-Backend:
+La segunda forma aplica las migraciones Alembic sobre PostgreSQL y es la que corre CI; es la única que ejercita restricciones únicas, claves foráneas y concurrencia real. **Nunca apuntarla a una base con datos.**
+
+Frontend (desde `frontend/`):
 
 ```bash
-cp backend/.env.example backend/.env
+npm test          # vitest
+npm run lint
+npm run build
 ```
 
-## Ejecucion local sin Docker
+Flujo completo de punta a punta (stack desechable, puertos 13001/18001):
 
-Backend:
+```bash
+./scripts/run_e2e.sh
+```
+
+CI (`.github/workflows/ci.yml`) corre los tres: backend sobre PostgreSQL, frontend, y el flujo e2e.
+
+## Migraciones
 
 ```bash
 cd backend
-python3 -m pip install --break-system-packages -r requirements.txt
-uvicorn app.main:app --reload
+alembic upgrade head
+alembic revision --autogenerate -m "descripcion"
 ```
 
-Frontend:
+Cada backend aplica las migraciones pendientes sobre su propia base al arrancar.
+
+## Despliegue
+
+En el servidor:
 
 ```bash
-cd frontend
-npm install
-npm run dev
+./scripts/deploy.sh
 ```
 
-Si quieres exponerlo fuera de la red local en un servidor Ubuntu:
+Construye las imágenes una vez y actualiza producción y la instancia demo con ellas. Antes de un cambio con migraciones, respaldar producción (comando en el encabezado del script).
 
-```bash
-docker compose up --build -d
-```
+Otros scripts:
 
-Para este proyecto, la recomendacion actual no es exponer Docker directo a internet. En este servidor la publicacion se hace con `nginx` como reverse proxy sobre `127.0.0.1`.
-
-Referencia de despliegue:
-
-- `datos_proyecto/operacion_despliegue.md`
-- `datos_proyecto/ajuste_publico_ecoe.md`
-
-## Tests
-
-```bash
-cd backend
-python3 -m pytest tests/test_api.py -v
-```
-
-23 tests cubriendo: health, auth, CRUD ECOE, estaciones, incidencias (crear/resolver/reabrir), paginacion, y seguridad de archivos.
-
-## Migraciones (Alembic)
-
-```bash
-cd backend
-alembic upgrade head          # aplicar migraciones
-alembic revision --autogenerate -m "descripcion"  # generar nueva migracion
-```
-
-## Endpoints principales
-
-- `POST /api/auth/login`
-- `GET /api/dashboard/{ecoe_event_id}`
-- `GET|POST /api/ecoe` — `PUT /api/ecoe/{id}` — `POST /api/ecoe/{id}/duplicate`
-- `GET|POST /api/students` — `PATCH /api/students/{id}/status` — `POST /api/students/import`
-- `GET|POST /api/staff` — `PATCH /api/staff/{id}` — `POST /api/staff/import`
-- `GET|POST|PUT /api/stations` — `PUT /api/stations/{id}`
-- `GET|POST /api/templates`
-- `GET|POST /api/instruments`
-- `GET|POST /api/simulated-patients`
-- `GET|POST /api/pilotage` — `POST /api/pilotage/{id}/archive`
-- `GET|POST /api/live/control` — `WS /ws/live/{id}`
-- `GET|POST /api/incidents` — `PATCH /api/incidents/{id}/resolve`
-- `GET|POST|PATCH /api/users`
-- `POST /api/evaluator/submit`
-- `POST /api/student/submit`
-- `GET /api/results/{ecoe_event_id}`
-- `POST /api/media/upload` — `GET /api/media/{station_id}` — `DELETE /api/media/{id}`
-
-## Verificacion realizada
-
-- 23 tests backend con `pytest` + SQLite (todas las clases pasando).
-- Frontend validado con `npm run build`.
-- Stack verificado en ejecucion con `docker compose ps`.
-- Frontend accesible en `/login`.
-- Backend respondiendo `GET /health -> 200 OK`.
-- Dominio publico `https://ecoe.drnotus.cl` accesible.
-
-## Historial reciente de commits (evolucion v1 → v2)
-
-| Commit | Que hizo |
+| Script | Uso |
 |---|---|
-| `88e25e4` | Rename `creador_ecoe` → `admin_ecoe`, duplicacion ECOE, CRUD usuarios |
-| `af1a0fe` | Formulario ECOE con validacion + StatusTransitionBar guiado |
-| `f48d85c` | Vista detalle ECOE con tabs |
-| `040e64f` | Listado estaciones redisenado + MediaPreview |
-| `038344c` | Gestion de incidencias con WebSocket |
-| `cc8b2e2` | Bloqueo por tiempo, tests (23/23), Alembic, storage fix |
+| `scripts/demo_reset.sh` | Recarga los ECOE de muestra de `demo.ecoe.cl` (sólo toca la base demo) |
+| `scripts/verify_backup.sh` | Ensaya la restauración del último respaldo en una base desechable |
+| `scripts/restore_db.sh` | Restaura un respaldo sobre producción (pide confirmación) |
+| `scripts/backup_loop.sh` | Lo usa el servicio `db-backup`: diario, y cada 5 min con un ECOE en ejecución |
 
-## Decisiones de esta version
+Detalle de servidor, túnel y respaldos: `datos_proyecto/operacion_despliegue.md`.
 
-- Persistencia con migraciones Alembic + creacion automatica en startup como respaldo.
-- Multimedia y exportaciones almacenadas en volumen local del backend, ruta configurable via `STORAGE_PATH`.
-- Permisos por rol global y relaciones por ECOE, con scoping de recursos sensibles.
-- Cronometro manual y operativo, sincronizado entre clientes via WebSocket.
-- Pilotaje y ejecucion real estan separados a nivel de modelo y registros.
-- Incidencias gestionables en tiempo real con broadcast WebSocket.
+## Documentación
+
+| Documento | Contenido |
+|---|---|
+| `PROJECT_STATUS.md` | Estado, módulos, decisiones y límites |
+| `NEXT_STEPS.md` | Pendientes priorizados |
+| `MANUAL_USUARIO.md` | Uso de la plataforma por rol |
+| `docs/OPERACION_DIA_EXAMEN.md` | Lista de verificación para correr un examen |
+| `docs/architecture/` | Matriz de permisos y decisiones de fondo |
+| `docs/optimizacion/BACKLOG.md` | Hallazgos de auditorías y su estado |
+| `docs/optimizacion/PLANES/SAAS__multiinstitucional.md` | Plan multiinstitucional |
+| `WORKLOG.md` | Bitácora por sesión |

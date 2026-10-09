@@ -4,6 +4,8 @@ Referencia rapida para recuperar el entorno del proyecto en este servidor.
 
 ## Servidor actual
 
+> Los datos de host e IP de esta sección y las secciones «Proxy del servidor», «Reglas críticas del router», «DNS esperado en Cloudflare» y «Recuperación tras corte de luz» describen la topología **anterior** (publicación por nginx con puertos abiertos en el router). Se conservan como referencia histórica; lo vigente es «Entrada desde internet», más abajo.
+
 - Host Tailscale: `learroyo-macmini7-1`
 - IP Tailscale: `100.105.88.51`
 - IP LAN reservada objetivo: `192.168.0.2`
@@ -197,15 +199,19 @@ El endurecimiento actual protege el proyecto en LAN e internet directa. La expos
 
 ## Backups (C6)
 
-- El servicio `db-backup` de `docker-compose.yml` hace `pg_dump` diario a `./backups/ecoe-YYYYMMDD-HHMMSS.sql.gz` con rotacion de 14 dias.
-- Antes de cada ECOE real: forzar un backup manual con
-  `docker exec ecoe-db pg_dump -U ecoe ecoe | gzip > backups/ecoe-pre-evento-$(date +%Y%m%d).sql.gz`
-- Copia fuera del servidor: sincronizar `backups/` a otro equipo/nube (rsync/rclone) — pendiente de configurar destino.
+- El servicio `db-backup` ejecuta `scripts/backup_loop.sh`: `pg_dump` diario a `./backups/ecoe-YYYYMMDD-HHMMSS.sql.gz` **más** el volumen de archivos a `./backups/storage-*.tar.gz`, con rotacion de 14 dias. Mientras haya un ECOE `en_ejecucion`, ademas un volcado cada 5 minutos en `./backups/live/` (se conservan 36).
+- Copia externa cifrada diaria por cron (`scripts/offsite_drive_push.sh`, ver `offsite_cron.log`).
+- Ensayo de restauracion sin tocar produccion: `./scripts/verify_backup.sh`.
+- Antes de cada ECOE real o despliegue con migraciones: backup manual. La carpeta `backups/` es de root, asi que se escribe a traves del contenedor:
+  `docker exec ecoe-db pg_dump -U ecoe ecoe | gzip | docker exec -i ecoe-db-backup sh -c "cat > /backups/ecoe-pre-evento-$(date +%Y%m%d).sql.gz"`
 - Restore: `./scripts/restore_db.sh backups/<archivo>.sql.gz` (detiene backend, recrea la BD, restaura, levanta backend). Probar el restore al menos una vez por semestre.
-- El storage multimedia vive en el volumen `ecoe_backend_storage`; respaldarlo con
-  `docker run --rm -v ecoe_backend_storage:/s -v $(pwd)/backups:/b alpine tar czf /b/storage-$(date +%Y%m%d).tar.gz -C /s .`
+- El storage multimedia vive en el volumen `ecoe_backend_storage` y ya entra al respaldo diario (`storage-*.tar.gz`).
 
-## Deploy con los cambios de hardening (2026-07-08)
+## Deploy
+
+Vigente: `./scripts/deploy.sh` (construye una vez y actualiza produccion y demo; cada backend aplica sus migraciones al arrancar). Imagenes anteriores quedan etiquetadas a mano antes de cada despliegue importante (`docker tag ecoe-backend:latest ecoe-backend:pre-<cambio>`).
+
+Notas del despliegue de hardening de 2026-07-08 (historico):
 
 1. `docker compose build backend frontend`
 2. `docker compose up -d` (la migracion `d4e5f6a7b8c9` se aplica sola al arrancar)

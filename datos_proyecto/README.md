@@ -9,11 +9,12 @@ Indice rapido para no perdernos entre documentos de apoyo.
 - Operacion y despliegue del servidor actual: `operacion_despliegue.md`
 - Credenciales locales del servidor actual: `credenciales_locales.md`
 - Contexto de producto y roadmap largo: `base_producto_y_roadmap.md`
-- Ajustes del despliegue publico: `ajuste_publico_ecoe.md`
-- Dominios propios (ecoe.cl / app.ecoe.cl / plataformaecoe.cl), como se armaron: `despliegue_dominios_ecoe.md`
+- Ajustes del despliegue publico por nginx (historico): `ajuste_publico_ecoe.md`
+- Dominios propios, como se armaron en el servidor anterior (historico): `despliegue_dominios_ecoe.md`
 - Fuente real del landing de `ecoe.cl` (copia exacta de lo desplegado): `ecoe-cl-landing.html`, `ecoe-cl-terminos.html`, `ecoe-cl-privacidad.html`
 - Sistema visual y lenguaje de interfaz: `design_system_drnotus.md`
-- Plan manual de pruebas de flujo: `plan_pruebas_flujo.md`
+- Plan manual de pruebas de flujo (anterior al rediseno de octubre 2026): `plan_pruebas_flujo.md`
+- Instancia demo, tunel de Cloudflare y respaldos: `operacion_despliegue.md`
 
 ## Convencion recomendada
 

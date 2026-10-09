@@ -1,373 +1,332 @@
-# Manual de Usuario — Plataforma ECOE
+# Manual de usuario — Plataforma ECOE
 
-> Versión 2.0 · Última actualización: 2026-06-03
+> Última actualización: 2026-10-09. Para la lista de verificación del día del examen, ver `docs/OPERACION_DIA_EXAMEN.md`.
 
 ## Índice
 
-1. [Introducción](#1-introducción)
+1. [Cómo está organizada la plataforma](#1-cómo-está-organizada-la-plataforma)
 2. [Acceso y roles](#2-acceso-y-roles)
-3. [Gestión de usuarios](#3-gestión-de-usuarios)
-4. [Crear y configurar un ECOE](#4-crear-y-configurar-un-ecoe)
-5. [Construir estaciones](#5-construir-estaciones)
-6. [Cargar estudiantes](#6-cargar-estudiantes)
-7. [Asignar evaluadores y colaboradores](#7-asignar-evaluadores-y-colaboradores)
-8. [Validación y publicación](#8-validación-y-publicación)
-9. [Pilotaje](#9-pilotaje)
-10. [Ejecución en vivo](#10-ejecución-en-vivo)
-11. [Interfaz del evaluador](#11-interfaz-del-evaluador)
-12. [Interfaz del estudiante](#12-interfaz-del-estudiante)
-13. [Resultados y exportaciones](#13-resultados-y-exportaciones)
-14. [Flujo completo recomendado](#14-flujo-completo-recomendado)
+3. [Datos del ECOE y su ciclo](#3-datos-del-ecoe-y-su-ciclo)
+4. [Estaciones](#4-estaciones)
+5. [Circuitos espejo](#5-circuitos-espejo)
+6. [Estudiantes](#6-estudiantes)
+7. [Equipo](#7-equipo)
+8. [Validación, pilotaje y publicación](#8-validación-pilotaje-y-publicación)
+9. [Día del examen](#9-día-del-examen)
+10. [Cierre: corrección y resultados](#10-cierre-corrección-y-resultados)
+11. [Biblioteca](#11-biblioteca)
+12. [Flujo completo recomendado](#12-flujo-completo-recomendado)
 
 ---
 
-## 1. Introducción
+## 1. Cómo está organizada la plataforma
 
-La Plataforma ECOE permite planificar, ejecutar y cerrar Evaluaciones Clínicas Objetivas Estructuradas (ECOE/OSCE) para carreras de la salud. Cubre el ciclo completo: desde la creación del evento hasta la exportación de resultados.
+La barra lateral sigue el ciclo del examen:
 
-### Pantallas principales
-
-| Pantalla | ¿Quién la usa? | ¿Para qué? |
+| Grupo | Pantallas | Para qué |
 |---|---|---|
-| Dashboard | Admin, Coeditor, Coordinador | Vista general del ECOE activo |
-| ECOE | Admin, Coeditor | Crear, editar, duplicar y cambiar estado del ECOE |
-| Estaciones | Admin, Coeditor | Listar y construir estaciones |
-| Estudiantes | Admin, Coeditor, Coordinador | Cargar y gestionar estudiantes |
-| Evaluadores | Admin, Coeditor | Asignar evaluadores y colaboradores |
-| Banco de estaciones | Admin, Coeditor | Repositorio reusable de estaciones |
-| Plantillas | Admin, Coeditor | Configuraciones base para estaciones |
-| Instrumentos | Admin, Coeditor | Pautas de evaluación |
-| Paciente simulado | Admin, Coeditor | Personajes para estaciones con actuación |
-| Pilotaje | Admin, Coeditor, Coordinador | Ejecuciones de prueba |
-| Validación | Admin, Coeditor | Verificar requisitos antes de publicar |
-| Publicación | Admin | Publicar ECOE para ejecución real |
-| Panel en vivo | Admin, Coordinador, Cronometrador | Control del cronómetro e incidencias |
-| Evaluador | Evaluador | Evaluar estudiantes en su estación |
-| Estudiante | Estudiante | Responder formulario de la estación |
-| Resultados | Admin, Coeditor, Coordinador | Ver y exportar resultados |
-| Usuarios | Admin | Gestionar cuentas de usuario |
+| — | **Inicio** | Fase actual del ECOE y el siguiente paso recomendado |
+| **Este ECOE** | Datos del ECOE · Estaciones · Estudiantes · Equipo | Armar el examen |
+| **Preparación** | Validación · Pilotaje · Publicación | Comprobar y ensayar antes del día |
+| **Día del examen** | Panel en vivo · Kioscos · Contingencia · Vista de evaluador | Operar el examen |
+| **Cierre** | Corrección · Resultados | Corregir, consolidar y exportar |
+| **Biblioteca** | Banco de estaciones · Plantillas · Instrumentos · Pacientes simulados | Material reutilizable entre exámenes |
+| **Institución** | Usuarios | Cuentas (sólo administración global) |
+
+Cada persona ve sólo las pantallas de su rol.
+
+Arriba de cada pantalla aparece el **ECOE activo** con su estado y fecha, y el selector **Cambiar de ECOE**. Todo lo que ves corresponde a ese evento. Si el ECOE está en ejecución, la plataforma pide confirmación antes de cambiar.
 
 ---
 
 ## 2. Acceso y roles
 
-### Inicio de sesión
+Ingresa con tu correo y contraseña en la dirección de tu institución (por ejemplo `https://app.ecoe.cl/login`).
 
-Accede desde `https://ecoe.drnotus.cl/login` con tu correo y contraseña.
+**Primera vez.** Las cuentas no se crean con una contraseña entregada por otra persona: recibes un correo de invitación con un enlace de activación y defines tu propia contraseña. El enlace vence (72 horas por defecto); si venció, pide a la administración del ECOE que reinicie tu acceso.
 
-### Roles disponibles
-
-| Rol | Permisos principales |
+| Rol | Qué puede hacer |
 |---|---|
-| **admin_ecoe** | Acceso completo: crear ECOE, gestionar usuarios, publicar, ver resultados |
-| **coeditor_docente** | Colaborar en la construcción de estaciones, cargar estudiantes y evaluadores |
-| **coordinador_operativo** | Gestionar estudiantes, pilotaje, panel en vivo e incidencias |
-| **cronometrador** | Solo panel en vivo: controlar el cronómetro |
-| **evaluador** | Solo interfaz del evaluador: evaluar estudiantes en su estación asignada |
-| **estudiante** | Solo interfaz del estudiante: responder formulario de su estación |
+| **Administración global** | Crear ECOE, gestionar cuentas, delegar administradores de un ECOE. Acceso a todo |
+| **Administración del ECOE** | Todo dentro de sus eventos: configurar, invitar al equipo, publicar, ejecutar, cerrar y reabrir |
+| **Coeditor docente** | Diseñar estaciones, cargar estudiantes y equipo, validar, publicar, ver resultados |
+| **Coordinación operativa** | Estudiantes, panel en vivo, kioscos, contingencia, confirmar ingresos en cualquier estación |
+| **Cronometrador** | Panel en vivo |
+| **Evaluador** | Su estación: confirmar estudiantes y registrar la pauta |
+| **Corrector** | Corregir las respuestas abiertas de sus estaciones |
+| **Estudiante** | Responder el formulario de la estación en que fue confirmado |
 
-### Seleccionar ECOE activo
-
-En la barra lateral izquierda, bajo el nombre del ECOE, hay un selector **"Cambiar"** que permite elegir en qué ECOE estás trabajando. Todas las pantallas (Estudiantes, Estaciones, Evaluadores, etc.) muestran los datos del ECOE seleccionado.
-
----
-
-## 3. Gestión de usuarios
-
-> Solo disponible para el rol **admin_ecoe**.
-
-### Crear un usuario
-
-1. Ve a **Usuarios** en la barra lateral.
-2. Completa el formulario: correo, nombre completo, contraseña y rol.
-3. Haz clic en **Crear usuario**.
-
-### Editar o desactivar un usuario
-
-En la tabla de usuarios, usa los botones **Editar** para cambiar nombre, rol, contraseña, o activar/desactivar la cuenta.
-
-> ⚠️ **Importante para evaluadores y colaboradores**: antes de importar evaluadores en la sección Evaluadores, cada persona debe tener una cuenta de usuario creada aquí con el mismo correo y rol.
+Una misma persona puede tener roles distintos en ECOE distintos.
 
 ---
 
-## 4. Crear y configurar un ECOE
+## 3. Datos del ECOE y su ciclo
 
-### Crear un ECOE nuevo
+### Crear un ECOE
 
-1. Ve a **ECOE** en la barra lateral.
-2. En la sección **"Crear nuevo ECOE"** completa:
-   - **Datos generales**: nombre, fecha, curso, escuela, docente responsable, correo de contacto.
-   - **Configuración del circuito**: modo (paralelo en espejo, secuencial, independientes, mixto), total de estaciones, grupos y estudiantes.
-   - **Parámetros de tiempo y evaluación**: minutos por estación, minutos de transición, porcentaje de aprobación.
-3. Haz clic en **Crear nuevo ECOE**.
+Sólo la administración global. En **Datos del ECOE**, botón **+ Nuevo ECOE**: datos generales (nombre, fecha, curso, escuela, docente responsable, correo), modo de circuito, minutos por estación, minutos de transición, pausa entre rondas y porcentaje de aprobación. Queda en **Borrador** y seleccionado.
 
-El nuevo ECOE aparecerá en estado **Borrador** y quedará seleccionado automáticamente.
+Para repetir un examen con otro grupo usa **Duplicar ECOE**: copia las estaciones (incluidos los circuitos espejo) y, si quieres, los evaluadores. Nunca copia estudiantes.
 
-### Editar un ECOE existente
+### Pestañas
 
-1. Selecciona el ECOE en el selector de la barra lateral.
-2. Modifica los campos en **Datos generales y estado**.
-3. Haz clic en **Guardar ECOE**.
+- **General**: edición de los datos.
+- **Estaciones**, **Participantes**, **Pilotajes**: resumen con enlace a cada pantalla.
 
-### Cambiar el estado del ECOE
+### Estado
 
-El ECOE avanza por estados mediante botones de acción con confirmación:
+La barra de estado muestra el estado actual y las acciones posibles:
 
 ```
 Borrador → En configuración → Listo para pilotaje → En pilotaje
 → Pilotaje validado → Publicado → En ejecución → Cerrado → Archivado
 ```
 
-Cada transición requiere confirmación. El sistema valida automáticamente las condiciones necesarias (por ejemplo, no permite publicar sin estaciones).
+Cada cambio pide confirmación y la plataforma comprueba que se cumplan las condiciones (por ejemplo, no deja publicar con bloqueos de validación). Se puede retroceder en casi todos los tramos antes de la ejecución.
 
-### Duplicar un ECOE
+**Qué se puede editar en cada etapa:**
 
-1. Haz clic en **Duplicar ECOE**.
-2. Ingresa el nombre, fecha y elige si copiar también los evaluadores asignados.
-3. Haz clic en **Crear copia**.
-
-La estructura de estaciones siempre se copia. Los estudiantes nunca se copian (es un nuevo grupo).
-
-### Ver detalle del ECOE
-
-Haz clic en **"Ver detalle completo →"** en el panel de Evento activo para ver la vista completa con pestañas: General, Estaciones, Participantes, Pilotajes.
+| Etapa | Estructura (estaciones, pautas, formularios, tiempos, numeración) | Nómina y equipo |
+|---|---|---|
+| Hasta pilotaje validado | Editable | Editable |
+| Publicado | **Bloqueada**. Para cambiarla: Despublicar | Editable |
+| En ejecución | Bloqueada | Se puede agregar un estudiante rezagado y reasignar equipo |
+| Cerrado / Archivado | Bloqueada | Bloqueada |
 
 ---
 
-## 5. Construir estaciones
+## 4. Estaciones
 
-### Listado de estaciones
+En **Estaciones** ves las estaciones agrupadas por circuito, con su tipo, tiempo, puntaje máximo y estado.
 
-Ve a **Estaciones**. Verás las estaciones del ECOE activo en formato de tarjetas con su número, nombre, tipo, circuito, tiempo y estado. El subtítulo muestra cuántas estaciones hay configuradas.
+### Crear o editar
 
-### Crear una estación nueva
+**+ Nueva estación** abre el Constructor, en cuatro pasos:
 
-1. Haz clic en **"+ Nueva estación"**.
-2. El constructor tiene 4 pasos guiados:
-   - **Paso 1 — Origen y base**: elige crear desde cero, desde el banco, o desde plantilla. Define nombre, tipo y circuito.
-   - **Paso 2 — Instrumento de evaluación**: selecciona una plantilla de referencia, un instrumento existente o crea uno nuevo (lista de cotejo, rúbrica simple, escala de puntaje). Asocia un paciente simulado si corresponde.
-   - **Paso 3 — Instrucciones operativas**: define la instrucción previa, las instrucciones dentro de la estación y la guía para el evaluador.
-   - **Paso 4 — Recursos y contingencia**: lista materiales, sube archivos multimedia (imagen, audio, video, PDF) y define el formulario del estudiante si la estación lo requiere.
-3. Haz clic en **Guardar estación**.
+1. **Identidad**: nombre, tipo, circuito; se puede partir de una plantilla o del banco.
+2. **Instrumento**: la pauta que usará el evaluador (lista de cotejo, rúbrica o escala), y el formulario del estudiante si la estación lo requiere. Las preguntas pueden ser de selección única, selección múltiple o texto corto; define los puntos y la respuesta correcta de cada una. Las de texto con puntaje requieren **corrección diferida**.
+3. **Instrucciones**: previa al ingreso, dentro de la estación y guía para el evaluador.
+4. **Recursos**: materiales, y archivos multimedia indicando para quién son (estudiante, evaluador o ambos).
 
-### Editar una estación
+Una estación debe poder puntuarse: necesita evaluador con pauta, o un formulario con puntos.
 
-Haz clic en **Editar** en la tarjeta de la estación. El constructor se abre con los datos precargados en modo "editando ECOE".
+### Modo kiosco
 
-### Multimedia en estaciones
+Las estaciones con formulario o multimedia usan una tablet. Se vinculan desde **Kioscos** (ver sección 9).
 
-En el Paso 4, puedes subir archivos. Selecciona:
-- **Visible para**: Estudiante, Evaluador, Paciente simulado o Coordinación.
-- **Archivo**: arrastra o selecciona el archivo (imagen, audio, video, PDF, Word).
-- Los archivos subidos muestran una previsualización inline.
+### Borrar
+
+Sólo antes de publicar. Una estación con registros no se borra.
 
 ---
 
-## 6. Cargar estudiantes
+## 5. Circuitos espejo
 
-> Los estudiantes **no necesitan cuenta de usuario** en el sistema. Se identifican por su Número ECOE en la interfaz del estudiante.
+Úsalo cuando el mismo circuito se corre en paralelo, por ejemplo circuito A en un piso y circuito B en otro, para evaluar al doble de estudiantes por ronda.
 
-### Carga masiva desde Excel/CSV
+**No crees las estaciones dos veces.**
 
-1. Ve a **Estudiantes**.
-2. Descarga la **plantilla Excel** (botón verde) o **plantilla CSV**.
-3. Abre el archivo. La **pestaña "Estudiantes"** tiene los encabezados en la fila 1. La pestaña **"Instrucciones"** explica cómo usarla.
-4. Completa una fila por cada estudiante:
+1. Diseña todas las estaciones **una sola vez**, en un circuito (por ejemplo «Circuito A»).
+2. En **Estaciones**, pulsa **Crear circuito espejo** y dale nombre («Circuito B»).
+3. La plataforma crea las mismas estaciones con la misma pauta, formulario, puntaje e instrucciones, marcadas como **Espejo**.
 
-   | Columna | Obligatorio | Descripción |
-   |---|---|---|
-   | nombre | ✅ | Nombre del estudiante |
-   | apellidos | ✅ | Apellidos completos |
-   | rut | ✅ | Con guion y dígito verificador (ej: 11111111-1) |
-   | correo | ✅ | Email del estudiante |
-   | numero_ecoe | ❌ | Se asigna automáticamente |
-   | grupo | ❌ | Nombre del grupo (default: Grupo 1) |
-   | circuito | ❌ | Nombre del circuito (default: Circuito A) |
+Reglas:
 
-5. Elimina las filas de ejemplo.
-6. Guarda como `.xlsx` o `.csv` (UTF-8).
-7. Arrastra el archivo al campo de importación o selecciónalo.
-8. El sistema mostrará un resumen detallado: cuántos se importaron, cuántos se omitieron por RUT duplicado y cuántos por falta de datos.
+- Una estación espejo **no se edita por separado**. Su botón dice **Editar la original**; lo que guardes en la original se copia solo a sus espejos.
+- Lo que sí es propio de cada estación física: su **evaluador**, su **tablet** y su paciente simulado.
+- La multimedia se sube una vez, en la original.
+- Si agregas una estación al circuito original después de crear el espejo, usa **Sincronizar espejo**.
+- **Eliminar circuito espejo** borra el circuito completo (no el original).
+- Asigna cada estudiante a su circuito (campo *circuito*): rendirá sólo las estaciones de ese circuito.
 
-### Alta manual
+La validación **bloquea** el pilotaje y la publicación si hay más de un circuito y no son copia exacta.
 
-Completa el formulario de la derecha con nombre, apellidos, RUT, correo, grupo y circuito. El Número ECOE se asigna automáticamente.
-
-### Acciones sobre estudiantes
-
-- **Suspender / Reactivar**: cambia el estado del estudiante sin borrarlo.
-- **Borrar**: elimina permanentemente al estudiante.
-- **Reasignar Número ECOE**: renumera a todos los estudiantes en orden correlativo.
-- **Limpiar duplicados por RUT**: elimina registros duplicados conservando el primero.
-
-### Paginación
-
-Si hay más de 50 estudiantes, la tabla muestra controles de paginación al final: **← Anterior | Siguiente →** con el total visible.
+En Resultados, cada estación aparece una vez con todos los estudiantes y el promedio de cada circuito al lado.
 
 ---
 
-## 7. Asignar evaluadores y colaboradores
+## 6. Estudiantes
 
-> ⚠️ **Paso previo obligatorio**: cada evaluador o colaborador debe tener una **cuenta de usuario** creada en la sección **Usuarios** con el mismo correo y rol. Si no, la importación los rechazará.
+### Carga masiva
 
-### Carga masiva desde Excel/CSV
+En **Estudiantes**, descarga la plantilla (Excel o CSV), complétala y súbela:
 
-1. Ve a **Evaluadores**.
-2. Descarga la **plantilla Excel** o **plantilla CSV**.
-3. Completa una fila por persona:
+| Columna | Obligatoria | Descripción |
+|---|---|---|
+| nombre | Sí | |
+| apellidos | Sí | |
+| rut | Sí | Con guion y dígito verificador |
+| correo | Sí | |
+| grupo | No | Por defecto «Grupo 1» |
+| circuito | No | Por defecto «Circuito A». En espejo, indica el de cada estudiante |
 
-   | Columna | Obligatorio | Descripción |
-   |---|---|---|
-   | nombre | ✅ | Nombre de la persona |
-   | apellidos | ✅ | Apellidos completos |
-   | correo | ✅ | Debe coincidir con el usuario creado en Usuarios |
-   | rol | ✅ | evaluador, coeditor_docente, coordinador_operativo, o cronometrador |
+El **Número ECOE** se asigna solo (E001, E002…). Al terminar se informa cuántos se importaron y cuántos se omitieron por RUT duplicado o datos faltantes.
 
-4. Arrastra el archivo al campo de importación.
+También hay alta manual, uno a uno.
 
-### Alta manual
+### Acciones
 
-Completa el formulario de la derecha con nombre, apellidos, correo, rol y estación asignada. Haz clic en **Agregar al equipo**.
+- **Suspender / Reactivar**: un estudiante suspendido no cuenta en la nómina ni en los resultados. Úsalo para los ausentes. No se puede suspender a quien ya tiene registros mientras el ECOE está en ejecución.
+- **Borrar**, **Reasignar Número ECOE** y **Limpiar duplicados por RUT**: sólo antes de publicar.
+
+En modo kiosco los estudiantes no necesitan cuenta: se identifican por su Número ECOE ante el evaluador.
 
 ---
 
-## 8. Validación y publicación
+## 7. Equipo
+
+En **Equipo** se ve la composición requerida (administración, coeditor, coordinación, cronometrador, evaluadores) y quién falta.
+
+### Agregar a una persona
+
+Escribe su correo. Si ya tiene cuenta, se la asigna al ECOE; si no, se crea pendiente y recibe una **invitación** para activarla. Elige el rol y, para un evaluador, su **estación principal** (puede asignarse después en la tabla). Un evaluador tiene una sola estación; un corrector puede tener varias.
+
+También se puede importar el equipo desde Excel/CSV.
+
+### Otras acciones
+
+- **Reasignar** estación o rol desde la tabla.
+- **Reiniciar acceso**: envía un nuevo enlace a quien no pudo activar o perdió su contraseña.
+- **Borrar** una asignación.
+
+En un ECOE en espejo, cada estación de cada circuito necesita su propio evaluador.
+
+---
+
+## 8. Validación, pilotaje y publicación
 
 ### Validación
 
-Ve a **Validación**. El sistema revisa automáticamente si el ECOE cumple las condiciones para:
-- **Pilotaje**: requiere estaciones completas y estudiantes cargados.
-- **Publicación**: requiere pilotaje validado.
-- **Ejecución en vivo**: requiere ECOE publicado.
+Muestra, por estación y para el evento, qué falta para pilotear, publicar e iniciar. Los **bloqueos** impiden avanzar; las **advertencias** conviene resolverlas. Cada problema enlaza a la pantalla donde se corrige.
 
-La pantalla muestra checks ✅ y bloqueos ❌ con detalle de lo que falta.
+### Pilotaje
 
-### Publicar
+Con el ECOE **En pilotaje** se ensaya con las mismas pantallas del día del examen. Todo lo registrado queda marcado como pilotaje y **no entra a las notas**.
 
-Cuando el ECOE pasa la validación de publicación, ve a **Publicación** o usa el botón de estado en **ECOE** para cambiar a **Publicado**.
+Recomendado: pilotear con el **Panel en vivo** y con transición, como se correrá el día real, y provocar a propósito un número mal tipeado, una tablet apagada y una pausa.
 
----
+En **Pilotaje** se registran los ensayos y sus hallazgos, y se ve el análisis de las respuestas del ensayo. **Validar pilotaje** no se bloquea por ese análisis, pero lo advierte.
 
-## 9. Pilotaje
+### Publicación
 
-El pilotaje permite hacer ejecuciones de prueba sin afectar los datos reales.
-
-1. Ve a **Pilotaje**.
-2. Haz clic en **Crear pilotaje**, asígnale un nombre y alcance.
-3. Durante el pilotaje, el panel en vivo funciona igual que en ejecución real, pero los datos se marcan como prueba.
-4. Al terminar, puedes **archivar** el pilotaje.
+Deja el ECOE listo para el día: crea la sesión en vivo y **congela la estructura**. Si hay que corregir algo, **Despublicar**, corregir y volver a publicar.
 
 ---
 
-## 10. Ejecución en vivo
+## 9. Día del examen
 
-### Panel central
+### Kioscos
 
-Ve a **Panel en vivo**. Verás:
+En **Kioscos** están todas las estaciones que necesitan tablet. **Generar todos los enlaces** crea uno por estación; abre cada enlace en la tablet de esa estación. Los enlaces se muestran una sola vez; generar uno nuevo invalida el anterior de esa estación.
 
-- **Cronómetro central**: muestra el tiempo restante de la estación actual, sincronizado en tiempo real vía WebSocket.
-- **Controles**: Iniciar, Pausar, Reanudar, Reiniciar, Siguiente estación.
-- **Indicador de estado**: EN VIVO (verde), PAUSADO (amarillo), TRANSICIÓN (naranja).
+### Panel en vivo
 
-Cuando el coordinador acciona un control, todos los clientes conectados (evaluadores, estudiantes) reciben la actualización instantáneamente.
+- **Cronómetro central**: es el reloj de todo el circuito. Iniciar, Pausar, Reanudar, Reiniciar y Sig. estación; los que no corresponden al momento aparecen deshabilitados.
+- **Circuito automático** (se activa antes de iniciar): avanza solo estación → transición → siguiente estación, con pausa entre rondas para el cambio de estudiantes.
+- **Pausar** congela el tiempo para todos; nadie pierde su ventana durante la pausa.
+- **Finalizar la estación en curso**: cierra la fase antes de tiempo.
+- **Vista proyector** y volumen del timbre.
+- **Estaciones en vivo**: por estación, si el evaluador y la tablet están conectados, qué estudiante está confirmado y si ya hay evaluación y respuesta. Arriba, la **verificación previa**: debe decir «todo listo» antes de iniciar.
+- **Incidencias**: registrar, resolver y reabrir.
 
-### Incidencias
+Para empezar el examen real, en **Datos del ECOE** pasa el evento a **En ejecución**. El cronómetro parte limpio.
 
-Durante la ejecución, puedes registrar incidencias:
+### Evaluador
 
-1. Haz clic en **"+ Registrar incidencia"**.
-2. Completa: título, detalle (opcional), severidad (baja/media/alta/crítica), y número de estación (opcional).
-3. Haz clic en **Registrar incidencia**.
+1. Ingresa el **Número ECOE** del estudiante y confirma. Puede hacerlo durante la transición: el tiempo del estudiante es el de la estación que viene.
+2. Verifica nombre y número.
+3. Registra la pauta. Se guarda sola como borrador mientras la llenas.
+4. **Guardar evaluación** y confirma. La pantalla queda lista para el siguiente.
 
-Las incidencias aparecen en tiempo real para todos los usuarios del panel. Cada incidencia se puede **Resolver** (✓) o **Reabrir**. Las incidencias activas se muestran primero, con color según severidad.
+Avisos que puede mostrar al confirmar:
 
----
+- **Figura en otra estación en esta misma rotación** o **es de otro circuito**: casi siempre es un número mal tipeado. Corrige el número, o confirma sólo si el estudiante realmente está contigo.
+- **Ya fue evaluado en esta estación**.
 
-## 11. Interfaz del evaluador
+Si confirmaste a la persona equivocada: **No es este estudiante: anular ingreso** (sólo mientras no haya evaluación ni respuesta).
 
-> Para usar esta interfaz, el evaluador debe tener una cuenta de usuario con rol `evaluador` y estar asignado a una estación del ECOE activo.
+El evaluador tiene hasta el fin de la transición para terminar de registrar.
 
-1. El evaluador inicia sesión y es dirigido automáticamente a la interfaz del evaluador.
-2. Ve su estación asignada y el **cronómetro visible** (solo lectura).
-3. **Confirma al estudiante**: ingresa el Número ECOE del estudiante y haz clic en **Confirmar ingreso**.
-4. Verifica nombre y número en el panel **"Estudiante confirmado"**.
-5. **Evalúa**:
-   - Si la estación tiene **lista de cotejo**: marca cada ítem como Cumplido/No cumplido.
-   - Si la estación tiene **rúbrica o escala**: ingresa el puntaje por ítem.
-   - Agrega una observación opcional.
-6. Haz clic en **Guardar evaluación**. Confirma la acción.
-7. La vista se limpia para recibir al siguiente estudiante.
+### Estudiante
 
-> ⚠️ **Bloqueo por tiempo**: cuando el cronómetro llega a 0, el timer se pone en rojo y todos los campos se deshabilitan. Ya no se puede enviar la evaluación.
+En la tablet de la estación (kiosco) ve sus instrucciones, el material y el formulario apenas el evaluador lo confirma. Responde y pulsa **Enviar respuesta final**. Lo que escribe se guarda en el servidor mientras responde; si el tiempo termina, se envía lo que alcanzó a escribir.
 
----
+En las estaciones **sin evaluador**, alguien de coordinación confirma el ingreso de cada estudiante desde **Vista de evaluador**.
 
-## 12. Interfaz del estudiante
+### Contingencia
 
-> El estudiante no necesita cuenta de usuario. Se identifica con su **Número ECOE**.
+Para lo que se resolvió en papel o quedó mal registrado. Elige estación y Número ECOE:
 
-1. El estudiante accede a la interfaz desde un dispositivo (tablet o computador).
-2. Ingresa su **Número ECOE** y hace clic en **Verificar mi ingreso**.
-3. Una vez que el evaluador confirma su ingreso, el estudiante ve:
-   - **Instrucción previa** de la estación.
-   - **Instrucciones dentro de la estación**.
-   - **Material de apoyo** (imágenes, PDF, video, audio).
-   - **Formulario del estudiante** con preguntas de la estación.
-4. Responde las preguntas. Las respuestas se guardan automáticamente en el navegador.
-5. Haz clic en **Enviar respuesta final** o espera a que el tiempo termine (se envía automáticamente).
+- **Respuesta del estudiante**: transcribe el formulario. Reemplaza una respuesta que el servidor autoenvió en blanco; no reemplaza una que el estudiante envió por sí mismo.
+- **Evaluación**: registra el puntaje de la pauta en papel, o **rectifica** una ya enviada indicando el motivo.
 
-### Tipos de pregunta del formulario
-
-- **Selección única**: elige una opción de una lista desplegable.
-- **Selección múltiple**: marca una o más opciones con checkboxes.
-- **Texto corto**: escribe una respuesta breve.
+Todo queda en la auditoría. Sólo funciona con el ECOE en pilotaje o en ejecución: **hazlo antes de cerrar**.
 
 ---
 
-## 13. Resultados y exportaciones
+## 10. Cierre: corrección y resultados
 
-### Ver resultados
+### Corrección
 
-Ve a **Resultados**. Verás la tabla de resultados por estudiante con puntaje total, porcentaje y nota equivalente.
+Los correctores ven las respuestas abiertas pendientes de sus estaciones, con la pauta de referencia, y asignan puntaje. Lo que no se corrige no suma a la nota.
 
-### Exportar
+### Cerrar el ECOE
 
-- **Excel**: haz clic en el botón de exportación Excel para descargar la planilla con todos los resultados.
-- **PDF de contingencia**: genera un PDF imprimible por estación para respaldo físico.
+En **Datos del ECOE**, **Cerrar ECOE**. Si algún estudiante tiene estaciones sin registro, el cierre **se detiene y los lista**. Opciones:
 
----
+- Ingresar lo que falta por **Contingencia**.
+- **Suspender** a quien estuvo ausente.
+- **Cerrar de todas formas**: cada estación faltante cuenta **0**.
 
-## 14. Flujo completo recomendado
+Al cerrar se consolida el **acta**, que ya no cambia.
 
-### Fase 1: Planificación
+Si después aparece algo sin ingresar, la administración del ECOE puede **Reabrir ejecución** indicando el motivo. El acta anterior queda archivada y visible en Resultados como «Actas anteriores». Un ECOE **archivado** ya no se reabre.
 
-1. **Crear ECOE** → completar datos generales, circuito y parámetros.
-2. **Crear usuarios** → dar de alta a evaluadores, coeditores, coordinadores y cronometradores con sus roles.
-3. **Construir estaciones** → una por una, definiendo instrumentos, instrucciones y multimedia.
+### Resultados
 
-### Fase 2: Carga de participantes
+- **Notas**: puntaje, porcentaje y nota por estudiante, con estaciones rendidas sobre las esperadas. El porcentaje es el promedio del logro en cada estación (todas pesan igual).
+- **Por estación**: promedio y dispersión; en espejo, el promedio de cada circuito.
+- **Análisis**: confiabilidad del examen y comportamiento de cada estación y criterio.
+- **Trazabilidad**: quién fue confirmado, evaluado y respondió; estudiantes completos y parciales.
+- **Actividad**: secuencia de lo ocurrido.
 
-4. **Cargar estudiantes** → desde Excel con la plantilla descargable.
-5. **Asignar evaluadores** → desde Excel (requiere que ya tengan cuenta de usuario).
-
-### Fase 3: Pilotaje
-
-6. **Validar** → revisar que el ECOE cumpla condiciones para pilotaje.
-7. **Iniciar pilotaje** → ejecutar prueba, registrar incidencias, ajustar.
-8. **Validar pilotaje** → confirmar que todo funciona.
-
-### Fase 4: Ejecución real
-
-9. **Publicar ECOE** → visible para evaluadores y estudiantes.
-10. **Iniciar ejecución** → panel en vivo, control de cronómetro, incidencias.
-11. **Cerrar ECOE** → finalizar la ejecución.
-
-### Fase 5: Cierre
-
-12. **Ver resultados** → consolidación automática.
-13. **Exportar** → Excel y PDF.
-14. **Archivar ECOE** → el ECOE queda en modo solo lectura.
+**Exportar Excel** descarga todo en varias hojas. El **PDF de contingencia** es la hoja imprimible por estación para operar si falla la plataforma; no contiene resultados.
 
 ---
 
-> 📝 Este manual se actualiza con cada funcionalidad nueva. Última versión siempre en el repositorio.
+## 11. Biblioteca
+
+Material que se reutiliza entre exámenes:
+
+- **Banco de estaciones**: diseños completos que se pueden traer a un ECOE.
+- **Plantillas**: estructuras base por tipo de estación.
+- **Instrumentos**: pautas (listas de cotejo, rúbricas, escalas). Una pauta en uso por un ECOE en pilotaje o en una etapa posterior no se puede editar; se guarda como copia nueva.
+- **Pacientes simulados**: personajes y guiones.
+
+Se archivan en vez de borrarse y se pueden restaurar.
+
+---
+
+## 12. Flujo completo recomendado
+
+**Configurar**
+1. Crear el ECOE (o duplicar uno anterior) y pasarlo a *En configuración*.
+2. Diseñar las estaciones en un circuito. Si es en espejo, **Crear circuito espejo**.
+3. Cargar estudiantes (con su circuito) e invitar al equipo; asignar evaluador a cada estación.
+
+**Preparar**
+4. Revisar **Validación** hasta que no queden bloqueos.
+5. Pilotear con el panel en vivo y registrar hallazgos; validar el pilotaje.
+6. Publicar.
+
+**Día del examen**
+7. Generar enlaces en **Kioscos** y abrirlos en cada tablet.
+8. Esperar la verificación previa «todo listo» en el Panel en vivo.
+9. Pasar a *En ejecución* e iniciar el cronómetro.
+10. Resolver lo que ocurra con Pausar, Incidencias y Contingencia.
+
+**Cerrar**
+11. Transcribir el papel por Contingencia y terminar la Corrección.
+12. Revisar Trazabilidad; cerrar el ECOE.
+13. Revisar Resultados y exportar el Excel.
+14. Archivar cuando ya no se necesite reabrir.

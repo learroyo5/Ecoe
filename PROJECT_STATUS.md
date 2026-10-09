@@ -4,11 +4,11 @@
 
 - Nombre: `Proyecto Tecnologico ECOE`
 - Objetivo: plataforma web para planificacion, pilotaje, ejecucion, contingencia y cierre de ECOE/OSCE para carreras de la salud.
-- Estado actual: `v2 funcional`
+- Estado actual: en pilotaje interno; núcleo endurecido en octubre 2026 (ver abajo). Todavía sin un examen real con estudiantes.
 
 ## Estado general
 
-La v2 del producto esta completa y ya paso su primer ensayo funcional real con el equipo (2026-08-18, ver seccion abajo): CRUD del ECOE con maquina de estados real en backend, constructor de estaciones con multimedia y formularios puntuables, panel en vivo con WebSocket con reconexion automatica y vista proyector, modo kiosco por estacion para tablets compartidas, correccion manual de respuestas, registro por contingencia, invitaciones/reinicio de acceso por correo real, y suite de tests (394 backend sobre SQLite y Postgres + 78 frontend + e2e Playwright del flujo dorado; CI verde). El proyecto corre con Docker Compose en este servidor con salida publica por `nginx`; ver la seccion "Pipeline de optimización + Fase 2" mas abajo para el estado actual.
+La v2 del producto esta completa y ya paso su primer ensayo funcional real con el equipo (2026-08-18, detalle en `NEXT_STEPS.md`): CRUD del ECOE con maquina de estados real en backend, constructor de estaciones con multimedia y formularios puntuables, panel en vivo con WebSocket con reconexion automatica y vista proyector, modo kiosco por estacion para tablets compartidas, correccion manual de respuestas, registro por contingencia, invitaciones/reinicio de acceso por correo real, y suite de tests (394 backend sobre SQLite y Postgres + 78 frontend + e2e Playwright del flujo dorado; CI verde). El proyecto corre con Docker Compose en este servidor con salida publica por `nginx`; ver la seccion "Pipeline de optimización + Fase 2" mas abajo para el estado actual.
 
 ### Estabilizacion pre-examen (fases 1-5, julio 2026)
 
@@ -56,158 +56,86 @@ Ciclo completo de auditoría → triage → implementación sobre el flujo enter
 
 **Nota metodológica:** el cambio de fórmula de OPT-17 solo afecta eventos que se **consoliden desde ahora** y solo si tienen estaciones de puntaje máximo distinto; los ya `cerrado`/`archivado` conservan su snapshot. El cambio de deadline de OPT-20 (check-in tardío = menos tiempo) **debe pilotarse antes de un examen real**.
 
+### Octubre 2026 — navegación, integridad del proceso y circuitos espejo (desplegado)
+
+Cuatro bloques de trabajo, todos en `main` y en producción (detalle por sesión en `WORKLOG.md`, hallazgos en `docs/optimizacion/BACKLOG.md`):
+
+- **Navegación y UX (UX-1…7):** barra lateral agrupada por fase del ciclo, encabezado con el estado del ECOE, Inicio con el siguiente paso, Datos del ECOE en una sola pantalla, Kioscos, Resultados con pestañas, textos y confirmaciones unificados.
+- **Auditoría del proceso (PROC-1…24):** se corrigió la pérdida de la estación al confirmar durante la transición, la clave de respuestas que viajaba al estudiante, el check-in equivocado sin vuelta atrás y la contingencia que no podía reemplazar un autoenvío. Se agregaron candados por estado, cierre que exige completitud (o lo fuerza la dirección con 0), reapertura auditada, acta con identidad congelada, puntaje del evaluador validado contra la pauta, y el tablero de estaciones con verificación previa.
+- **Fase 0 del plan multiinstitucional:** un solo ingreso activo por estación y por estudiante (garantizado por la base), envíos idempotentes, borradores ordenados, acta versionada, sockets que respetan la revocación, respaldo cada 5 minutos durante un examen y restauración ensayada.
+- **Circuitos espejo:** se diseña un circuito y se genera su copia idéntica; resultados y psicometría por estación de diseño con desglose por circuito.
+
+Además: instancia de demostración `demo.ecoe.cl` con base propia, y despliegue conjunto con `scripts/deploy.sh`.
+
 ## Arquitectura implementada
 
-- Frontend:
-  - Next.js con App Router
-  - TypeScript
-  - Tailwind CSS
-  - layout con menu lateral y pantallas operativas
-  - ruta dinamica `/ecoe/[id]` para vista de detalle
-- Backend:
-  - FastAPI
-  - SQLAlchemy ORM
-  - Pydantic
-  - WebSocket para tiempo real
-  - autenticacion JWT (cookie + Bearer) por rol
-  - migraciones Alembic
-  - tests con pytest + SQLite
-- Base de datos:
-  - PostgreSQL en Docker Compose
-- Infraestructura:
-  - `frontend`, `backend` y `db` separados en `docker-compose.yml`
+- Frontend: Next.js (App Router), TypeScript, Tailwind CSS. La API se consume por el mismo origen (`/api`, reescritura interna hacia el backend).
+- Backend: FastAPI, SQLAlchemy, Pydantic, WebSocket, JWT (cookie + Bearer), migraciones Alembic.
+- Base de datos: PostgreSQL 16. Alembic es la única forma de cambiar el esquema; cada backend migra su base al arrancar.
+- Infraestructura: Docker Compose con `frontend`, `backend`, `db` y `db-backup`. Entrada desde internet por túnel de Cloudflare.
+- Instancias: producción y demo corren las mismas imágenes con bases, archivos y secretos separados.
 
 ## Modulos implementados
 
-- Autenticacion:
-  - login con JWT (cookie + Bearer)
-  - sesion por token
-  - proteccion por rol
-  - panel institucional de usuarios (`admin_global`)
-  - delegacion de `admin_ecoe` por evento
-- Gestion ECOE:
-  - listado con selector de ECOE activo
-  - formulario completo en 3 secciones con validacion frontend
-  - transiciones de estado guiadas con modales de confirmacion
-  - duplicado con opcion de copiar evaluadores y estaciones
-  - vista de detalle `/ecoe/[id]` con 4 tabs (General, Estaciones, Participantes, Pilotajes)
-- Estudiantes:
-  - alta manual
-  - importacion CSV/Excel
-  - listado con paginacion
-- Evaluadores y colaboradores:
-  - alta manual
-  - importacion CSV/Excel
-  - listado con paginacion
-- Estaciones:
-  - listado con cards y badges de estado
-  - constructor con 4 pasos guiados
-  - edicion de estaciones existentes
-  - asociacion de plantilla, instrumento y paciente simulado
-  - upload de multimedia con preview inline (MediaPreview)
-- Banco de plantillas
-- Banco de instrumentos
-- Gestor de paciente simulado
-- Pilotaje:
-  - creacion
-  - listado
-  - archivado
-  - separacion de datos de prueba
-- Panel en vivo:
-  - cronometro central sincronizado via WebSocket
-  - start/pause/resume/reset/transition
-  - broadcast de estado en tiempo real a todos los clientes
-- Incidencias:
-  - creacion rapida con severidad (baja/media/alta/critica)
-  - resolucion y reapertura
-  - broadcast en tiempo real via WebSocket
-  - contadores de activas/resueltas
-- Interfaz evaluador:
-  - identificacion de estudiante
-  - render dinamico de instrumentos (checklist + puntaje numerico)
-  - bloqueo efectivo por tiempo (timer rojo, campos deshabilitados)
-- Interfaz estudiante:
-  - identificacion por numero ECOE
-  - formulario dinamico (3 tipos de pregunta)
-  - auto-guardado local y envio automatico al expirar el tiempo
-  - visualizacion de multimedia
-- Resultados:
-  - consolidacion automatica
-  - porcentaje
-  - nota equivalente
-  - exportacion Excel
-  - exportacion PDF de contingencia
+- **Acceso y cuentas:** login, roles globales y por evento, invitaciones por correo con activación, suspensión con revocación de sesiones, panel institucional de usuarios.
+- **Datos del ECOE:** edición, barra de estado con transiciones guiadas, duplicado (conserva circuitos espejo), creación (administración global).
+- **Estaciones:** Constructor en 4 pasos, banco de estaciones, multimedia por audiencia, circuitos espejo (crear, sincronizar, eliminar).
+- **Biblioteca:** plantillas, instrumentos (pautas) y pacientes simulados con edición, archivado y restauración.
+- **Estudiantes y equipo:** alta manual e importación, numeración ECOE, asignación de evaluadores y correctores por estación.
+- **Validación, pilotaje y publicación:** chequeos por estación y por evento, pilotaje con registros aislados y análisis, publicación que congela la estructura.
+- **Panel en vivo:** cronómetro central manual o circuito automático por rondas, timbre, vista proyector, incidencias, tablero de estaciones con verificación previa, borradores de evaluador pendientes.
+- **Operación de estación:** pantalla de evaluador (check-in, pauta, borrador en servidor), pantalla de estudiante, modo kiosco por estación.
+- **Contingencia:** transcripción de respuestas y evaluaciones en papel, rectificación con motivo.
+- **Corrección diferida:** cola por corrector con pauta de referencia.
+- **Resultados:** nota por estación y agregada (promedio de porcentajes por estación), acta congelada al cierre con versiones anteriores, trazabilidad, análisis psicométrico, exportación a Excel y PDF de contingencia.
 
-## Datos demo cargados
+## Datos demo
 
-- 1 ECOE de ejemplo
-- 5 estaciones
-- 10 estudiantes
-- 3 evaluadores/colaboradores
-- 1 paciente simulado
-- 1 pilotaje
+- El seed base (`app/db/seed.py`, sólo fuera de producción) crea cuentas por rol y un ECOE de ejemplo.
+- La instancia `demo.ecoe.cl` usa `app/db/seed_demo.py`: «ECOE Medicina Interna 2026» en ejecución y en espejo (4 estaciones × 2 circuitos, primera ronda registrada) y «ECOE Cirugía 2026» cerrado con acta (12 estudiantes × 5 estaciones). Se recarga con `scripts/demo_reset.sh`.
+- La base de producción todavía contiene el ECOE de prueba del equipo, en pilotaje.
 
-## Verificaciones ya realizadas
+## Verificaciones (2026-10-09)
 
-- `npm run build`, `npm run lint` y `npm test` (29 tests frontend con vitest)
-- 167 tests backend con `pytest`, verdes tanto en SQLite como en PostgreSQL real aplicando migraciones Alembic (lo que corre CI). Cubren health, auth, CRUD ECOE, estaciones, incidencias, paginacion, seguridad de archivos, matriz de permisos, maquina de estados, gate de envios, kiosco, correccion e invitaciones de equipo
-- `docker compose up --build -d`
-- acceso UI por red local
-- acceso backend por healthcheck y endpoints autenticados
-- verificacion local de `http://127.0.0.1:3000`
-- verificacion local de `http://127.0.0.1:8000/health`
-- verificacion publica de `https://ecoe.drnotus.cl`
-- verificacion publica de `https://ecoe.drnotus.cl/api/health`
-- dominios propios de producto en produccion desde 2026-08-25: `https://ecoe.cl` (landing), `https://app.ecoe.cl` (plataforma, mismo backend), `https://plataformaecoe.cl` (redirect a `ecoe.cl`) — detalle en `datos_proyecto/operacion_despliegue.md`
+- Backend: 545 tests con pytest, verdes en SQLite y en PostgreSQL aplicando las migraciones (lo que corre CI). Incluye una prueba de concurrencia real de check-in.
+- Frontend: 143 tests con vitest, lint sin errores, build de producción.
+- Flujo dorado e2e (Playwright) 5 de 5 sobre el stack desechable; agregado al CI.
+- Restauración del respaldo ensayada con `scripts/verify_backup.sh`.
+- `https://app.ecoe.cl`, `https://ecoe.drnotus.cl` y `https://demo.ecoe.cl` verificados por HTTP tras cada despliegue.
+
+Lo que **no** está verificado: un ECOE real con estudiantes, carga con muchas tablets simultáneas, y la revisión visual de todas las pantallas con cada rol.
 
 ## Decisiones importantes tomadas
 
-- El frontend consume la API mediante proxy interno (`/backend/api`) para evitar romper acceso desde otras maquinas de la red.
-- La persistencia usa migraciones Alembic + creacion automatica de tablas en startup como respaldo.
-- El control combina autoridad institucional global con roles efectivos por ECOE.
-- La incorporacion de equipos es descentralizada por evento: `admin_ecoe` puede reutilizar una cuenta activa o emitir una invitacion de activacion para una identidad nueva, sin acceso al directorio institucional completo ni a las contrasenas. Vale igual para el alta de a uno y para la importacion masiva.
-- Las identidades son institucionales y unicas por correo; las funciones operativas se representan como asignaciones independientes por ECOE. La cuenta es duena de su nombre: un tipeo en el formulario de alta nunca crea una identidad divergente para el mismo correo.
-- `station_ids` solo tiene significado funcional para el rol `evaluador`; el resto de los roles opera sobre el ECOE completo.
-- El cronometro es manual y operativo, sincronizado entre clientes via WebSocket.
-- Pilotaje y ejecucion real estan separados a nivel de modelo y registros.
-- Las incidencias se transmiten en tiempo real via WebSocket.
-- El storage path de multimedia es configurable via `STORAGE_PATH`.
+- El backend es la autoridad: máquina de estados, deadlines, puntajes y permisos se resuelven en el servidor.
+- Identidades únicas por correo dentro de una instalación; las funciones se asignan por ECOE.
+- Pilotaje y ejecución real están separados por modo en cada registro.
+- La nota agregada es el promedio de los porcentajes por estación; el estándar es compensatorio con un umbral global.
+- Desde la publicación la estructura no se edita; con el ECOE cerrado no cambia nada salvo una reapertura explícita.
+- Una estación sin registro no se ignora: bloquea el cierre o cuenta 0 si se fuerza.
+- En espejo, la estación de diseño es la unidad de análisis; las estaciones espejo no se diseñan por separado.
+- Multiinstitución: mismo núcleo con una base independiente por institución. Hoy, una instancia por institución con las mismas imágenes (ver `docs/optimizacion/PLANES/SAAS__multiinstitucional.md`).
 
 ## Limites actuales
 
-- No hay reproduccion real de audio integrada en el cronometro; solo estructura preparada.
-- Hay scoping por ECOE, estacion, audiencia y check-in; aun falta ACL institucional mas granular para bancos compartidos y otras unidades academicas.
-- Las invitaciones nuevas se comparten manualmente; aun no hay envio por correo ni recuperacion automatica del enlace mostrado una vez. Con SMTP configurado, el import podria repartir las invitaciones solo y el panel de enlaces dejaria de ser necesario.
-- Un evaluador solo admite una estacion principal a la vez: cubrir dos estaciones exige dos personas distintas.
-- La pausa del cronometro central no extiende las ventanas de envio de la rotacion en curso; esos casos se resuelven por contingencia (documentado en docs/OPERACION_DIA_EXAMEN.md).
-- La operacion publica depende de configuracion externa de `nginx`, router y Cloudflare, no solo del repo.
-
-## Estado de la primera prueba funcional real (hecha, 2026-08-18)
-
-El ECOE demo `ECOE Medicina Interna 2026` (id 1) sigue en `en_pilotaje`. El ensayo general con el equipo se corrio de punta a punta: check-in, cronometro y evaluacion/kiosco en las 5 estaciones (1, 3 y 5 con evaluador real logueado; 2 y 4 cubiertas por coordinacion operativa vía el nuevo selector de estacion). Pilotaje `circuito_completo` con hallazgos registrados (`pilot_run` id 3, ver pantalla Pilotaje).
-
-Durante la preparacion y el ensayo se encontraron y corrigieron en vivo:
-
-- `update_station` regresaba el estado de una estacion ya publicada a `incompleta`/`lista_para_pilotaje` al editarla, desincronizandola del resto (asi fue como la estacion 2 quedo en `lista_para_pilotaje`).
-- `update_ecoe_timing` no resincronizaba la `LiveSession` existente: el cronometro en vivo seguia mostrando los minutos de cuando se creo la sesion (8 min), no los configurados despues en la pestana ECOE (5 min).
-- La pantalla Estaciones no distinguia cuales necesitan Modo kiosco (formulario de estudiante y/o multimedia); ahora lo marca y deshabilita el boton en las que no aplica.
-- `admin_ecoe`/`coordinador_operativo` no podian hacer check-in en una estacion sin evaluador asignado: la pantalla Evaluador solo mostraba la estacion propia del usuario. Ahora esos roles ven un selector con todas las estaciones del evento.
-- Invitaciones y reinicio de acceso ahora envian correo real (SMTP configurado en `backend/.env`); antes el enlace de activacion solo se mostraba una vez en pantalla para repartir a mano.
-
-Pendiente antes del examen real: asignar evaluador fijo a las estaciones 2 y 4 (hoy las cubre coordinacion en el ensayo), y hacer la prueba de red formal en el recinto real.
+- No hay plan de rotación generado: quién parte en qué estación se organiza fuera de la plataforma.
+- Repartir estudiantes entre circuitos es manual (campo circuito o columna del Excel).
+- Las estaciones sin evaluador necesitan que coordinación confirme a cada estudiante; el estudiante no puede identificarse solo en el kiosco.
+- Un evaluador tiene una sola estación principal.
+- Un solo proceso backend: el cronómetro en vivo no está preparado para varios procesos.
+- Producción, demo y pruebas comparten el mismo servidor físico.
+- El frontend recibe todas las variables del backend y los proxies de confianza no están acotados (pendiente F0.5).
+- Sin SSO, sin MFA y sin separación entre operador central y administrador de institución.
+- Cumplimiento de protección de datos (Ley 21.719, vigente desde 2026-12-01) sin revisar.
 
 ## Repo y continuidad
 
-- Repo remoto: `git@github.com:learroyo5/Ecoe.git`
-- Rama principal de trabajo: `main`
-- Fuente de verdad del proyecto: este repositorio
-- Ultimo commit: `4168e8c` — fix: mostrar el enlace Evaluador a admin_ecoe y coordinador_operativo
+- Repo remoto: `git@github.com:learroyo5/Ecoe.git`, rama `main`.
+- Bitácora por sesión: `WORKLOG.md`. Backlog y planes: `docs/optimizacion/`.
 
-## Recomendacion para continuar en otro servidor
+## Para continuar en otro servidor
 
-1. Clonar repo desde GitHub.
-2. Levantar con Docker Compose.
-3. Leer `README.md`, este archivo, `NEXT_STEPS.md` y `datos_proyecto/README.md`.
-4. Ejecutar `alembic upgrade head` para asegurar que el schema este al dia.
-5. Ejecutar `pytest` para verificar integridad. Contra PostgreSQL real (lo que corre CI): `TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q`, creando antes la base `ecoe_test` si no existe.
-6. Continuar por iteraciones pequenas con commit frecuente.
+1. Clonar el repo y crear `backend/.env` a partir de `backend/.env.example`.
+2. `docker compose up --build -d` (las migraciones corren al arrancar).
+3. Leer `README.md`, este archivo, `NEXT_STEPS.md` y `CLAUDE.md`.
+4. Correr las pruebas (ver README). Para PostgreSQL, usar una base vacía dedicada a tests.

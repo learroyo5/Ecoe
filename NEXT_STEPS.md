@@ -75,9 +75,9 @@ Ciclo auditoría → triage → implementación sobre el flujo completo. Detalle
 - Limpieza de ~24 ramas `opt/*` / `ops/*` locales ya mergeadas.
 - 1 `evaluator_record` con `mode='ejecucion'` en el evento de pilotaje (dato viejo) — decidir si se corrige o se descarta con el resto del pilotaje.
 
-## Prioridad actual
+## Completado 2026-08-18 — primera prueba funcional real
 
-1. ~~Primera prueba funcional real~~ ✅ (2026-08-18)
+- Ensayo general con el equipo:
    - ~~Ensayo general con el equipo usando la app en `en_pilotaje`~~ → hecho: check-in, cronometro y evaluacion/kiosco de punta a punta en las 5 estaciones (1, 3 y 5 con evaluador real; 2 y 4 cubiertas por coordinacion). Pilotaje `circuito_completo` con hallazgos registrados (`pilot_run` id 3).
    - Bugs encontrados y corregidos durante la preparacion y el ensayo (quedaron en commits separados):
      - Editar una estacion publicada en el Constructor regresaba su estado a `incompleta`/`lista_para_pilotaje`, desincronizandola del resto.
@@ -88,115 +88,73 @@ Ciclo auditoría → triage → implementación sobre el flujo completo. Detalle
    - Retro pendiente: definir evaluador fijo para las estaciones 2 y 4 (hoy las cubre coordinacion), y hacer la prueba de red formal en el recinto real antes del examen.
    - Ya corregido en el mismo ensayo: el reloj del kiosco seguia corriendo tras enviar (ahora se congela), y la pantalla dejaba visible la identidad/respuestas del estudiante anterior para quien llegara despues (ahora se reemplaza por una pantalla neutra hasta que el evaluador confirme al siguiente).
 
-2. Evaluación diferida Fase 2 (diseño en `docs/architecture/EVALUACION_DIFERIDA_FASE1.md`, sección final)
-   - Adjuntar entregables (PDF, foto, audio, video) por estudiante/estación para corregir estaciones **sin formulario** (p. ej. un procedimiento grabado).
-   - Registro puntuable "en blanco" por check-in confirmado, para estaciones que se puntúan solo desde papel/observación.
-   - Puntuación estructurada contra los ítems de la pauta (mismo renderer que la pantalla Evaluador) con comentario por ítem, en vez de número libre.
-   - Edición de las estaciones de un corrector desde la tabla de Evaluadores (hoy solo en el alta).
-   - Opcional: doble corrección ciega e índice de acuerdo inter-rater.
+## Completado en octubre 2026 (desplegado)
 
-3. Rotacion autonoma en estaciones kiosco-solo sin evaluador (diseno, NO implementar aun)
-   - Hoy el check-in de una estacion solo lo cierra un humano (el evaluador/coordinador confirma al siguiente estudiante por numero ECOE). En estaciones sin evaluador asignado (kiosco puro, ej. 2 y 4) eso exige que alguien este pendiente igual, lo que le quita el sentido a que sean "autonomas".
-   - Opciones a evaluar mas adelante, no excluyentes:
-     a. Auto-cierre por deadline: cuando pasa `submission_deadline` (o un margen corto despues), el backend cierra el check-in solo (job o chequeo perezoso en el poll del kiosco) y la tablet vuelve a esperar — pero sigue faltando quien confirme la identidad del siguiente.
-     b. Auto-identificacion del estudiante en el kiosco: reusar el mismo patron de `/student` (login por numero ECOE) para que el propio estudiante se confirme al llegar, sin depender de que un evaluador lo haga por el — mismo nivel de confianza que ya existe en la interfaz Estudiante.
-     c. Rotacion atada al circuito: si el panel en vivo ya sincroniza la estacion actual de cada grupo (`current_station_index`), la identidad podria resolverse por asignacion de grupo/circuito en vez de confirmacion manual por instancia.
-   - Cualquier opcion debe mantener la misma garantia de privacidad ya corregida arriba (nunca mostrar al siguiente estudiante la identidad/respuestas del anterior).
+- Navegación y UX de la intranet (UX-1…7).
+- Auditoría del proceso y sus correcciones (PROC-1…24): transición, clave de respuestas, anulación de ingresos, contingencia, candados por estado, cierre con completitud, reapertura, acta con identidad, tablero de estaciones.
+- Fase 0 del plan multiinstitucional: ingreso activo único, envíos idempotentes, acta versionada, sockets con revocación, respaldo en vivo y restauración ensayada, e2e en CI.
+- Circuitos espejo.
+- Instancia `demo.ecoe.cl` y despliegue conjunto (`scripts/deploy.sh`).
+- Audio del cronómetro (timbre) y respaldos automatizados, que figuraban como pendientes antiguos.
 
-4. Multimedia
-   - Mejorar preview de audio y video con controles avanzados.
-   - Definir si el material se muestra antes, durante o despues de la estacion.
+Estado por hallazgo: `docs/optimizacion/BACKLOG.md`.
 
-5. Exportaciones
-   - Mejorar formato de Excel consolidado con estadisticas por estacion.
-   - PDF por estacion con formato imprimible real (membrete, tabla de puntajes).
+## Prioridad actual
 
-6. Seguridad operativa
-   - Logout real del lado cliente (invalidar token).
-   - Expiracion de token mejor manejada (refresh token).
-   - ~~Integrar envio transaccional de invitaciones~~ ✅ (2026-08-18): SMTP configurado en `backend/.env`, invitaciones e import masivo envian correo real; se agrego ademas reinicio de acceso para cuentas activas (admin_ecoe/coeditor_docente, sin requerir admin_global).
-   - Ampliar auditoria y MFA para acciones institucionales sensibles.
+1. **Pruebas del usuario sobre el núcleo.** Recorrer de punta a punta, con el ECOE de prueba y el demo: configurar, crear circuito espejo, pilotear con el panel en vivo, ejecutar, contingencia, cerrar, reabrir. Todo depende de que esto funcione sin errores ni pérdida de datos.
+   - El ECOE de prueba de producción tiene dos circuitos armados a mano: rehacerlo como espejo antes de publicarlo.
 
-7. Testing
-   - Tests de frontend de componentes clave (kiosco, evaluador).
-   - Ampliar el e2e: pausa/contingencia y correccion manual en UI.
+2. **Operación del día del examen que aún no cubre la plataforma**
+   - Plan de rotación generado (quién parte en qué estación, por ronda y circuito) — COORD-3.
+   - Reparto de estudiantes entre circuitos.
+   - Identificación del estudiante en el kiosco para estaciones sin evaluador (PROC-12).
 
-## Prioridad media (antes "Prioridad baja")
+3. **Mínimo privilegio (F0.5)**: el frontend recibe todo `backend/.env` y `--forwarded-allow-ips` está abierto. Requiere revisar las variables reales con el usuario.
 
-1. Audio del cronometro
-   - Reproducir sonido de aviso en transiciones de estacion.
-   - Sonido configurable por ECOE.
+4. **Molde de institución**: parametrizar `docker-compose.demo.yml` (nombre, puertos, dominio), respaldo automático por instancia y marca por variable, para dar de alta una institución como una instancia más. Ver `docs/optimizacion/PLANES/SAAS__multiinstitucional.md`.
 
-2. Observabilidad
-   - Logs mas claros y estructurados.
-   - Auditoria expandida (quien hizo que, cuando, desde donde).
+5. **Antes de un cliente real**: entorno de staging separado de producción, revisión de protección de datos (Ley 21.719 desde 2026-12-01), separación entre operador central y administrador institucional.
+
+## Prioridad media
+
+1. Evaluación diferida Fase 2 (diseño en `docs/architecture/EVALUACION_DIFERIDA_FASE1.md`, sección final)
+   - Adjuntar entregables (PDF, foto, audio, video) por estudiante/estación para corregir estaciones sin formulario.
+   - Puntuación estructurada contra los ítems de la pauta con comentario por ítem.
+   - Edición de las estaciones de un corrector desde la tabla de Equipo (hoy sólo en el alta).
+   - Opcional: doble corrección ciega e índice de acuerdo.
+
+2. Pendientes menores de la auditoría de proceso: token de kiosco en la URL (PROC-18), duplicar ECOE comparte pautas con el original (PROC-20), número de orden en el borrador del evaluador.
+
+3. Multimedia: controles avanzados de audio y video; definir si el material se muestra antes, durante o después de la estación.
+
+4. Exportaciones: PDF por estación con formato imprimible (membrete, tabla de puntajes).
+
+5. Pruebas: e2e de pausa, contingencia, corrección manual y circuito espejo; prueba de carga con muchas tablets.
 
 ## Prioridad baja
 
-1. Infraestructura
-   - Backups automatizados de PostgreSQL.
-   - Healthchecks y alertas mas visibles.
-   - Procedimiento simple de rotacion de credenciales.
-
-2. ACL avanzada
-   - Permisos por unidad academica/centro para bancos institucionales compartidos.
-   - Extender reglas por recurso mas alla de ECOE, estacion, audiencia y check-in ya implementados.
+1. Observabilidad: logs estructurados, alertas, `readiness` por instancia.
+2. Seguridad: MFA para acciones institucionales, SSO cuando un cliente lo pida.
+3. ACL por unidad académica para los bancos compartidos.
+4. Un solo proceso para varias instituciones (Fases 1–2 del plan), sólo si el número de instancias lo justifica.
 
 ## Comandos utiles
 
-Levantar:
-
 ```bash
-docker compose up --build -d
+docker compose up --build -d          # levantar
+docker compose ps                     # estado
+docker compose logs -f backend        # logs
+./scripts/deploy.sh                   # publicar en producción y demo
+./scripts/demo_reset.sh               # recargar los ECOE de demo.ecoe.cl
+./scripts/verify_backup.sh            # ensayar la restauración del último respaldo
+./scripts/run_e2e.sh                  # flujo dorado en un stack desechable
 ```
 
-Ver estado:
-
-```bash
-docker compose ps
-```
-
-Ver logs:
-
-```bash
-docker compose logs -f backend
-docker compose logs -f frontend
-```
-
-Apagar:
-
-```bash
-docker compose down
-```
-
-Tests:
-
-```bash
-cd backend
-python3 -m pytest -q
-```
-
-Los mismos tests contra PostgreSQL real con migraciones Alembic (lo que corre CI):
-
-```bash
-cd backend
-TEST_DATABASE_URL=postgresql+psycopg://ecoe:ecoe@localhost:5432/ecoe_test python3 -m pytest -q
-```
-
-Migraciones:
-
-```bash
-cd backend
-alembic upgrade head
-alembic revision --autogenerate -m "descripcion del cambio"
-```
+Pruebas y migraciones: ver `README.md`.
 
 ## Nota para futuras sesiones
 
-Al retomar en otro servidor, pedir:
-
 ```text
-Lee README.md, PROJECT_STATUS.md y NEXT_STEPS.md, revisa la estructura del repo
-y continuemos desde la prioridad actual: preparar el ECOE para la primera prueba
-funcional real (ver los pendientes listados en Prioridad actual).
+Lee README.md, PROJECT_STATUS.md, NEXT_STEPS.md y CLAUDE.md, revisa WORKLOG.md
+(última sesión) y continuemos desde la prioridad actual.
 ```
