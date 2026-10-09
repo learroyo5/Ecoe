@@ -146,7 +146,20 @@ export default function ResultsPage() {
                 {
                   key: "stations_counted",
                   label: "Estaciones",
-                  render: (row) => formatNumber(row.stations_counted),
+                  // PROC-6: rendidas / esperadas; en vivo se avisa cuáles faltan.
+                  render: (row) => {
+                    const counted = formatNumber(row.stations_counted);
+                    if (row.stations_expected === undefined || row.stations_expected === null) return counted;
+                    const missing = row.missing_stations ?? [];
+                    return (
+                      <span
+                        className={missing.length > 0 ? "font-semibold text-amber-700" : undefined}
+                        title={missing.length > 0 ? `Sin registro: estación ${missing.join(", ")}` : undefined}
+                      >
+                        {counted} / {row.stations_expected}
+                      </span>
+                    );
+                  },
                 },
                 { key: "percentage", label: "Porcentaje" },
                 { key: "equivalent_grade", label: "Nota equivalente" },

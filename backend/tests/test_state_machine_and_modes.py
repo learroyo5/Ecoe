@@ -322,7 +322,8 @@ class TestCloseFreezes:
 
             response = auth_client.put(
                 "/api/ecoe/1",
-                json=_current_event_payload(auth_client, 1, ECOEStatus.cerrado.value),
+                json=_current_event_payload(auth_client, 1, ECOEStatus.cerrado.value)
+                | {"force_close_incomplete": True},
             )
             assert response.status_code == 200, response.text
             assert response.json()["status"] == ECOEStatus.cerrado.value

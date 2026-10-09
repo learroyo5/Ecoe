@@ -207,6 +207,9 @@ class StaffAssignment(Base, TimestampMixin):
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     role_code: Mapped[str] = mapped_column(String(64), nullable=False)
     station_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+    # Última vez que esta persona abrió su pantalla operativa en el evento
+    # (señal de vida para el tablero); se actualiza como mucho cada 15 s.
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     ecoe_event: Mapped["ECOEEvent"] = relationship(back_populates="staff_assignments")
 
@@ -479,6 +482,9 @@ class LiveSession(Base, TimestampMixin):
     # phase_started_at (see live_session_state in operational routes).
     remaining_seconds: Mapped[int] = mapped_column(Integer, default=480)
     phase_started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # Fase que estaba corriendo cuando se pausó (running / transition /
+    # round_pause): "Reanudar" vuelve a ESA fase, no siempre a `running`.
+    paused_from_status: Mapped[str | None] = mapped_column(String(32))
     # M1: ciclo automático del circuito. Cuando auto_mode está activo, el
     # servidor avanza estación → transición → siguiente estación → pausa entre
     # rondas → siguiente ronda sin acción del operador (services/live_cycle.py).
@@ -518,6 +524,9 @@ class StationKioskSession(Base, TimestampMixin):
     issued_by_email: Mapped[str] = mapped_column(String(255), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Última vez que la tablet consultó su contexto (señal de vida para el
+    # tablero de estaciones); se actualiza como mucho cada 15 s.
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class StationCheckIn(Base, TimestampMixin):
@@ -654,6 +663,11 @@ class StationResult(Base, TimestampMixin):
     obtained_score: Mapped[float] = mapped_column(Float, nullable=False)
     max_score: Mapped[float] = mapped_column(Float, nullable=False)
     percent_score: Mapped[float] = mapped_column(Float, nullable=False)
+    # PROC-6: estación esperada sin ningún registro al consolidar; entra al
+    # acta con 0 (cierre forzado por el director), distinguible de un 0 real.
+    is_missing: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
 
 
 class ECOEResult(Base, TimestampMixin):
@@ -670,6 +684,13 @@ class ECOEResult(Base, TimestampMixin):
     max_score: Mapped[float] = mapped_column(Float, nullable=False)
     percentage: Mapped[float] = mapped_column(Float, nullable=False)
     equivalent_grade: Mapped[float] = mapped_column(Float, nullable=False)
+    # PROC-8: el acta congela también la identidad y la cobertura con que se
+    # consolidó; nulos en snapshots anteriores (se leen entonces de `students`).
+    student_name: Mapped[str | None] = mapped_column(String(255))
+    student_rut: Mapped[str | None] = mapped_column(String(32))
+    ecoe_number: Mapped[str | None] = mapped_column(String(32))
+    stations_counted: Mapped[int | None] = mapped_column(Integer)
+    stations_expected: Mapped[int | None] = mapped_column(Integer)
 
 
 class Incident(Base, TimestampMixin):

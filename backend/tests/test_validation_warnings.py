@@ -185,10 +185,15 @@ def _build_publishable_event(db, *, status: str) -> ECOEEvent:
         student_station_instruction="Dentro",
         evaluator_instruction="",
         requires_evaluator=False,
-        requires_student_form=False,
+        # PROC-16: una estación debe poder puntuarse (evaluador o formulario
+        # con puntos); aquí, un formulario autocorregible.
+        requires_student_form=True,
         requires_deferred_grading=False,
         max_score=10,
-        student_form_definition={},
+        student_form_definition={"questions": [
+            {"type": "single_choice", "label": "p", "options": ["a", "b"],
+             "points": 10, "correct_option": "a"},
+        ]},
     ))
     db.add(PilotRun(ecoe_event_id=event.id, name="Pilotaje 1", scope="circuito_completo"))
     db.add(Student(

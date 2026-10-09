@@ -23,9 +23,13 @@ from app.schemas.common import (
 )
 from app.services.dependencies import get_current_user, require_roles
 from app.services.authorization import ensure_event_access
-from app.services.live_sweep import sweep_expired_phases
+from app.services.live_sweep import finalize_checkin_response, sweep_expired_phases
 from app.services.live_cycle import advance_if_expired
+from app.services.drafts import discard_checkin_draft
+from app.services.presence import touch_last_seen
+from app.services.grading import ensure_score_matches_breakdown, evaluator_score_from_answers
 from app.utils.helpers import (
+    current_rotation_started_at,
     ensure_checkin_within_time,
     ensure_primary_station_assignment,
     ensure_submission_stage,
@@ -84,6 +88,8 @@ def evaluator_context(
             db.add(assignment)
             db.commit()
             db.refresh(assignment)
+        if assignment:
+            touch_last_seen(db, assignment)
         assigned_stations = (
             db.scalars(
                 select(Station)
@@ -262,6 +268,74 @@ def confirm_station_checkin(
                 },
             )
 
+    # PROC-11: en circuitos espejo cada estudiante rinde las estaciones de SU
+    # circuito. Si no coincide, lo más probable es un número mal tipeado.
+    station_circuit = str(station.circuit_name or "").strip().lower()
+    student_circuit = str(student.circuit_name or "").strip().lower()
+    if (
+        station_circuit and student_circuit and station_circuit != student_circuit
+        and not payload.confirm_other_circuit
+        and student_circuit in {
+            str(name or "").strip().lower()
+            for name in db.scalars(
+                select(Station.circuit_name).where(Station.ecoe_event_id == payload.ecoe_event_id)
+            ).all()
+        }
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "student_other_circuit",
+                "message": (
+                    f"{student.ecoe_number} · {student.name} {student.last_name} pertenece al "
+                    f"{student.circuit_name} y esta estación es del {station.circuit_name}. "
+                    "Verifica el Número ECOE antes de continuar."
+                ),
+            },
+        )
+    # PROC-3: el mismo estudiante no puede estar en dos estaciones dentro de la
+    # misma rotación. Si figura confirmado en otra, casi siempre es un número
+    # mal tipeado: se avisa en vez de dejarlo en ambas. Ingresos de rotaciones
+    # anteriores (lo normal: nadie cerró el de su estación previa) se cierran.
+    rotation_start = current_rotation_started_at(db, payload.ecoe_event_id)
+    other_open_checkins = db.scalars(
+        select(StationCheckIn).where(
+            StationCheckIn.ecoe_event_id == payload.ecoe_event_id,
+            StationCheckIn.student_id == student.id,
+            StationCheckIn.station_id != payload.station_id,
+            StationCheckIn.status == "confirmado",
+        )
+    ).all()
+    same_rotation = [
+        item for item in other_open_checkins
+        if rotation_start is not None and item.confirmed_at >= rotation_start
+    ]
+    if same_rotation and not payload.move_from_other_station:
+        other_station = db.get(Station, same_rotation[0].station_id)
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "student_in_other_station",
+                "station_number": other_station.station_number if other_station else None,
+                "station_name": other_station.name if other_station else "",
+                "message": (
+                    f"{student.ecoe_number} · {student.name} {student.last_name} figura "
+                    f"confirmado en la estación {other_station.station_number if other_station else '?'} "
+                    "en esta misma rotación. Verifica el Número ECOE antes de continuar."
+                ),
+            },
+        )
+    for item in other_open_checkins:
+        other_station = db.get(Station, item.station_id)
+        if item in same_rotation:
+            # El evaluador confirmó que el estudiante está aquí: el otro
+            # ingreso fue el error. Se anula sin generar respuesta alguna.
+            _annul_checkin(db, item, session_mode, actor_email=user.email,
+                           reason="movido a otra estación en la misma rotación")
+        else:
+            finalize_checkin_response(db, ecoe_event, item, other_station, session_mode)
+            item.status = "cerrado"
+            db.add(item)
     existing_station_checkins = db.scalars(
         select(StationCheckIn).where(
             StationCheckIn.ecoe_event_id == payload.ecoe_event_id,
@@ -270,6 +344,10 @@ def confirm_station_checkin(
         )
     ).all()
     for item in existing_station_checkins:
+        # El ingreso anterior se cierra al confirmar al siguiente: antes hay
+        # que dejar su respuesta (borrador o en blanco), o lo que escribió se
+        # pierde si el barrido de fase todavía no pasó.
+        finalize_checkin_response(db, ecoe_event, item, station, session_mode)
         item.status = "cerrado"
         db.add(item)
 
@@ -323,6 +401,96 @@ def confirm_station_checkin(
         "evaluator_submission_exists": False,
         "student_response_exists": False,
     }
+
+
+def _annul_checkin(
+    db: Session, checkin: StationCheckIn, session_mode: str, *, actor_email: str, reason: str
+) -> None:
+    """Marca un ingreso como `anulado` y descarta lo provisorio que colgaba de
+    él (borrador del estudiante y borrador del evaluador). Nunca toca registros
+    definitivos: el llamador debe haber verificado que no existen."""
+    discard_checkin_draft(db, checkin.id)
+    evaluator_draft = db.scalar(
+        select(EvaluatorRecord).where(
+            EvaluatorRecord.ecoe_event_id == checkin.ecoe_event_id,
+            EvaluatorRecord.station_id == checkin.station_id,
+            EvaluatorRecord.student_id == checkin.student_id,
+            EvaluatorRecord.mode == session_mode,
+            EvaluatorRecord.is_draft.is_(True),
+        )
+    )
+    if evaluator_draft is not None:
+        db.delete(evaluator_draft)
+    checkin.status = "anulado"
+    db.add(checkin)
+    db.add(AuditLog(
+        user_email=actor_email,
+        action="annul_station_checkin",
+        target_type="StationCheckIn",
+        target_id=str(checkin.id),
+        payload={
+            "ecoe_event_id": checkin.ecoe_event_id,
+            "station_id": checkin.station_id,
+            "student_id": checkin.student_id,
+            "reason": reason,
+        },
+    ))
+
+
+@router.post("/station-checkins/{checkin_id}/annul")
+def annul_station_checkin(
+    checkin_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("evaluador", "coordinador_operativo", "admin_ecoe")),
+):
+    """Anula un ingreso confirmado por error (PROC-3).
+
+    Sólo mientras el ingreso siga `confirmado` y no exista ningún registro
+    definitivo del estudiante en esa estación: una vez que hay evaluación o
+    respuesta, lo que corresponde es contingencia, no borrar el rastro.
+    """
+    checkin = db.get(StationCheckIn, checkin_id)
+    if not checkin:
+        raise HTTPException(status_code=404, detail="Ingreso no encontrado")
+    event_roles = ensure_event_access(db, user, checkin.ecoe_event_id,
+                        RoleCode.admin_ecoe.value,
+                        RoleCode.coordinador_operativo.value,
+                        RoleCode.evaluador.value)
+    ecoe_event = db.get(ECOEEvent, checkin.ecoe_event_id)
+    session_mode = ensure_submission_stage(ecoe_event)
+    _ensure_station_assigned_to_evaluator(
+        db, user, event_roles, checkin.ecoe_event_id, checkin.station_id
+    )
+    if checkin.status != "confirmado":
+        raise HTTPException(status_code=409, detail="El ingreso ya no está activo y no puede anularse")
+    has_evaluation = db.scalar(
+        select(func.count()).select_from(EvaluatorRecord).where(
+            EvaluatorRecord.ecoe_event_id == checkin.ecoe_event_id,
+            EvaluatorRecord.station_id == checkin.station_id,
+            EvaluatorRecord.student_id == checkin.student_id,
+            EvaluatorRecord.mode == session_mode,
+            EvaluatorRecord.is_draft.is_(False),
+        )
+    ) or 0
+    has_response = db.scalar(
+        select(func.count()).select_from(StudentResponse).where(
+            StudentResponse.ecoe_event_id == checkin.ecoe_event_id,
+            StudentResponse.station_id == checkin.station_id,
+            StudentResponse.student_id == checkin.student_id,
+            StudentResponse.mode == session_mode,
+        )
+    ) or 0
+    if has_evaluation or has_response:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Este ingreso ya tiene una evaluación o respuesta registrada; "
+                "no se puede anular. Corrígelo por contingencia."
+            ),
+        )
+    _annul_checkin(db, checkin, session_mode, actor_email=user.email, reason="anulado manualmente")
+    db.commit()
+    return {"annulled": True, "checkin_id": checkin.id}
 
 
 def _ensure_station_assigned_to_evaluator(
@@ -389,7 +557,12 @@ def upsert_evaluator_draft(
             status_code=400,
             detail="La estación no tiene un puntaje máximo válido configurado",
         )
-    provisional_score = max(0.0, min(float(payload.score_obtained), authoritative_max))
+    # PROC-10: si viene el desglose por criterio, la suma la hace el servidor.
+    breakdown_score = evaluator_score_from_answers(db, station, payload.answers)
+    provisional_score = max(0.0, min(
+        float(payload.score_obtained) if breakdown_score is None else breakdown_score,
+        authoritative_max,
+    ))
 
     record = db.scalar(
         select(EvaluatorRecord).where(
@@ -500,6 +673,10 @@ def submit_evaluator_record(
             status_code=400,
             detail=f"El puntaje obtenido debe estar entre 0 y {authoritative_max}",
         )
+    # PROC-10: el total debe ser la suma de la pauta, calculada en el servidor.
+    payload.score_obtained = ensure_score_matches_breakdown(
+        db, station, payload.answers, payload.score_obtained
+    )
     if existing_record is not None:
         # OPT-20 F3: promote an autosaved draft to a final record. The max
         # score is recomputed authoritatively, never trusting the draft.

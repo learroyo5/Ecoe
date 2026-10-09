@@ -128,6 +128,26 @@ def auth_client(client):
     return client
 
 
+@pytest.fixture
+def demo_event_in_setup():
+    """El evento demo (id 1) se siembra `en_ejecucion`. Desde PROC-5 la
+    estructura queda bloqueada a partir de `publicado`, así que los tests que
+    crean o editan estaciones / multimedia / tiempos sobre el demo lo ponen
+    temporalmente en `en_configuracion`."""
+    from app.models.entities import ECOEEvent
+
+    with TestingSessionLocal() as db:
+        event = db.get(ECOEEvent, 1)
+        previous = event.status
+        event.status = "en_configuracion"
+        db.commit()
+    yield
+    with TestingSessionLocal() as db:
+        event = db.get(ECOEEvent, 1)
+        event.status = previous
+        db.commit()
+
+
 @pytest.fixture(scope="module")
 def unauth_client():
     """Separate unauthenticated client for tests that need no session."""

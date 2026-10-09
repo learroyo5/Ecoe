@@ -38,13 +38,33 @@ _RUNNABLE_EVENT_STATUSES = {
 _MAX_FASTFORWARD_STEPS = 500
 
 
+def _circuit_key(value: str | None) -> str:
+    return str(value or "").strip().lower()
+
+
+def circuit_layout(db: Session, ecoe_event_id: int) -> dict[str, int]:
+    """Nº de estaciones por circuito (``{clave_circuito: estaciones}``)."""
+    rows = db.execute(
+        select(Station.circuit_name, func.count(Station.id))
+        .where(Station.ecoe_event_id == ecoe_event_id)
+        .group_by(Station.circuit_name)
+    ).all()
+    layout: dict[str, int] = {}
+    for circuit_name, count in rows:
+        key = _circuit_key(circuit_name)
+        layout[key] = layout.get(key, 0) + int(count)
+    return layout
+
+
 def station_slot_count(db: Session, ecoe_event_id: int) -> int:
-    """Número de estaciones del circuito (station_number distintos)."""
-    return db.scalar(
-        select(func.count(func.distinct(Station.station_number))).where(
-            Station.ecoe_event_id == ecoe_event_id
-        )
-    ) or 0
+    """Posiciones de una ronda: estaciones del circuito más largo.
+
+    PROC-11: en circuitos espejo (A: 1–3, B: 4–6) los circuitos corren EN
+    PARALELO, así que una ronda son 3 fases, no 6. Con un único circuito es
+    simplemente el número de estaciones, como antes.
+    """
+    layout = circuit_layout(db, ecoe_event_id)
+    return max(layout.values(), default=0)
 
 
 def active_student_count(db: Session, ecoe_event_id: int) -> int:
@@ -57,12 +77,33 @@ def active_student_count(db: Session, ecoe_event_id: int) -> int:
 
 
 def compute_total_rounds(db: Session, ecoe_event_id: int) -> int:
-    """⌈estudiantes_activos / nº estaciones⌉ — nunca menos de 1."""
-    slots = station_slot_count(db, ecoe_event_id) or 1
-    students = active_student_count(db, ecoe_event_id)
-    if students <= 0:
+    """Rondas necesarias para que todos pasen — nunca menos de 1.
+
+    Por circuito: cada uno atiende a tantos estudiantes por ronda como
+    estaciones tiene, y el circuito manda es el que más rondas necesita. Si
+    algún estudiante activo no calza con el circuito de ninguna estación, se
+    cae al cálculo global: ⌈estudiantes / estaciones totales⌉.
+    """
+    layout = circuit_layout(db, ecoe_event_id)
+    total_stations = sum(layout.values()) or 1
+    rows = db.execute(
+        select(Student.circuit_name, func.count(Student.id))
+        .where(Student.ecoe_event_id == ecoe_event_id, Student.is_active.is_(True))
+        .group_by(Student.circuit_name)
+    ).all()
+    students_by_circuit: dict[str, int] = {}
+    for circuit_name, count in rows:
+        key = _circuit_key(circuit_name)
+        students_by_circuit[key] = students_by_circuit.get(key, 0) + int(count)
+    total_students = sum(students_by_circuit.values())
+    if total_students <= 0:
         return 1
-    return max(1, -(-students // slots))  # ceil division
+    if all(key in layout for key in students_by_circuit):
+        return max(
+            1,
+            max(-(-count // layout[key]) for key, count in students_by_circuit.items()),
+        )
+    return max(1, -(-total_students // total_stations))  # ceil division
 
 
 def _phase_deadline(session: LiveSession):

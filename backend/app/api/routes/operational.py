@@ -74,6 +74,9 @@ _SWEEP_TIMER_ACTIONS = {"start", "reset", "next_transition", "expire_phase"}
 
 logger = logging.getLogger("ecoe.operational")
 
+from app.services.event_lock import ensure_structure_editable
+from app.services.presence import build_station_board
+
 router = APIRouter()
 
 # ── WebSocket: Live Timer ──────────────────────────────────────────────
@@ -173,6 +176,22 @@ def get_live_panel(ecoe_event_id: int, db: Session = Depends(get_db), user=Depen
     return live_session_state(session)
 
 
+@router.get("/live/{ecoe_event_id}/board")
+def get_station_board(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Tablero de estaciones + verificación previa para coordinación: por
+    estación, evaluador y kiosco (asignados, con señal reciente), estudiante
+    confirmado y si ya hay evaluación / respuesta. Sólo lectura."""
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.admin_ecoe.value,
+                        RoleCode.coeditor_docente.value,
+                        RoleCode.coordinador_operativo.value,
+                        RoleCode.cronometrador.value)
+    ecoe_event = db.get(ECOEEvent, ecoe_event_id)
+    if ecoe_event is None:
+        raise HTTPException(status_code=404, detail="ECOE no encontrado")
+    return build_station_board(db, ecoe_event)
+
+
 @router.post("/live/control")
 def control_timer(
     payload: TimerAction,
@@ -232,6 +251,7 @@ def control_timer(
         session.auto_mode = False
     elif payload.action == "start":
         session.status = "running"
+        session.paused_from_status = None
         session.remaining_seconds = session.station_time_seconds
         session.phase_started_at = now
         if session.auto_mode:
@@ -239,15 +259,26 @@ def control_timer(
             if session.total_rounds is None:
                 session.total_rounds = compute_total_rounds(db, payload.ecoe_event_id)
     elif payload.action == "pause":
-        # Freeze the authoritative remaining time at the moment of pausing.
+        if str(session.status) not in ("running", "transition", "round_pause"):
+            raise HTTPException(status_code=409, detail="No hay una fase en curso que pausar.")
         session.remaining_seconds = compute_remaining_seconds(session)
+        # PROC-24: recordar qué fase se interrumpe para reanudarla tal cual.
+        session.paused_from_status = str(session.status)
         session.status = "paused"
         session.phase_started_at = None
     elif payload.action == "resume":
-        session.status = "running"
+        # PROC-9: reanudar una sesión que nunca partió arrancaba el reloj sin
+        # pasar por "Iniciar" (sin barrido ni ronda inicial).
+        if str(session.status) != "paused":
+            raise HTTPException(
+                status_code=409, detail="Sólo se puede reanudar un cronómetro en pausa."
+            )
+        session.status = session.paused_from_status or "running"
+        session.paused_from_status = None
         session.phase_started_at = now
     elif payload.action == "reset":
         session.status = "ready"
+        session.paused_from_status = None
         session.current_station_index = 1
         session.remaining_seconds = session.station_time_seconds
         session.phase_started_at = None
@@ -336,6 +367,7 @@ async def upload_media(
     db: Session = Depends(get_db),
     user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
+    ensure_structure_editable(db, ecoe_event_id, "cargar multimedia")
     if target_viewer not in ALLOWED_VIEWERS:
         raise HTTPException(
             status_code=400,
@@ -416,6 +448,10 @@ def delete_media(
         asset_id,
         writable=True,
     )
+    if asset.station_id:
+        media_station = db.get(Station, asset.station_id)
+        if media_station is not None:
+            ensure_structure_editable(db, media_station.ecoe_event_id, "borrar multimedia")
     file_path = Path(asset.file_path)
     # Commit the DB deletion first: if it fails, the file on disk is still
     # referenced by a valid row. Deleting the file afterwards is best-effort
@@ -485,6 +521,13 @@ def get_results(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(
 @router.post("/results/{ecoe_event_id}/consolidate")
 def consolidate_results(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
+    consolidated_event = db.get(ECOEEvent, ecoe_event_id)
+    if consolidated_event is not None and str(consolidated_event.status) in {"cerrado", "archivado"}:
+        # El acta de un evento cerrado sólo se regenera reabriéndolo (PROC-7).
+        raise HTTPException(
+            status_code=409,
+            detail="El ECOE está cerrado: su acta ya está consolidada y no se puede regenerar.",
+        )
     results = persist_results(db, ecoe_event_id, actor_email=user.email)
     return {
         "consolidated": True,

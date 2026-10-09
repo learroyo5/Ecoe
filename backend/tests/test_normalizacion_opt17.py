@@ -164,7 +164,11 @@ def _submit(client, event_id, station_id, student_id, checkin_id, answer):
 def _close(event_id: int, actor_email: str = "admin@ecoe.cl") -> None:
     with TestingSessionLocal() as db:
         event = db.get(ECOEEvent, event_id)
-        update_ecoe_status(db, event, ECOEStatus.cerrado.value, actor_email=actor_email)
+        update_ecoe_status(
+            db, event, ECOEStatus.cerrado.value, actor_email=actor_email,
+            # Estos tests no tratan la completitud del circuito (PROC-6).
+            force_close_incomplete=True,
+        )
 
 
 def _set_status(event_id: int, status: str) -> None:
@@ -360,7 +364,7 @@ def test_closed_event_with_snapshot_keeps_old_number(auth_client):
     assert body["frozen"] is True
     served = next(r for r in body["results"] if r["student_id"] == student_id)
     assert served["percentage"] == pytest.approx(80.0, abs=0.01)  # snapshot congelado
-    assert "stations_counted" not in served  # el snapshot no persiste el campo
+    assert served["stations_counted"] == 2  # PROC-8: el acta congela la cobertura
 
     with TestingSessionLocal() as db:
         live = next(r for r in compute_results(db, event_id) if r["student_id"] == student_id)

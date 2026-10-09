@@ -11,6 +11,7 @@ import { stationStatusLabel, stationTypeLabel } from "@/lib/labels";
 import { defaultRouteForRole } from "@/lib/routes";
 import { useApi } from "@/hooks/use-api";
 import { useConfirm } from "@/components/confirm-provider";
+import { StructureLockNotice } from "@/components/structure-lock-notice";
 import { SectionCard } from "@/components/section-card";
 import { StatusNotice } from "@/components/forms";
 
@@ -118,6 +119,7 @@ export default function StationsPage() {
           </Link>
         </div>
         <StatusNotice message={message} className="mt-4" />
+        <StructureLockNotice what="El diseño de las estaciones" />
       </SectionCard>
 
       {loading ? (

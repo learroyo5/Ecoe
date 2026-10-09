@@ -52,11 +52,66 @@ from app.services.grading import apply_auto_grading
 from app.utils.clock import utcnow_naive
 from app.utils.helpers import (
     SUBMISSION_GRACE_SECONDS,
+    checkin_belongs_to_next_phase,
     resolve_session_mode,
     resolve_submission_deadline,
 )
 
 _SUBMISSION_STAGES = {ECOEStatus.en_pilotaje.value, ECOEStatus.en_ejecucion.value}
+
+
+def finalize_checkin_response(
+    db: Session, ecoe_event, checkin: StationCheckIn, station: Station, mode: str
+) -> bool:
+    """Crea la ``StudentResponse`` ``auto`` de un check-in a partir de su
+    borrador (o en blanco) si la estación tiene formulario y aún no hay
+    respuesta. Devuelve ``True`` si la creó. No cambia el estado del check-in.
+
+    La usan el barrido y el check-in del siguiente estudiante: confirmar al
+    próximo cierra el ingreso del anterior, y sin esto lo que ese estudiante
+    alcanzó a escribir se perdía si el barrido aún no había pasado.
+    """
+    if station is None or not station.requires_student_form:
+        return False
+    existing = db.scalar(
+        select(StudentResponse.id)
+        .where(
+            StudentResponse.ecoe_event_id == ecoe_event.id,
+            StudentResponse.station_id == checkin.station_id,
+            StudentResponse.student_id == checkin.student_id,
+            StudentResponse.mode == mode,
+        )
+        .limit(1)
+    )
+    if existing is not None:
+        return False
+    draft = db.scalar(
+        select(StationResponseDraft).where(StationResponseDraft.checkin_id == checkin.id)
+    )
+    answers = dict(draft.answers or {}) if draft is not None else {}
+    response = StudentResponse(
+        ecoe_event_id=ecoe_event.id,
+        station_id=checkin.station_id,
+        student_id=checkin.student_id,
+        mode=mode,
+        answers=answers,
+        locked=True,
+        by_contingency=False,
+        submission_kind="auto",
+    )
+    apply_auto_grading(response, station.student_form_definition)
+    try:
+        with db.begin_nested():
+            db.add(response)
+            db.flush()
+    except IntegrityError:
+        # A manual submit / contingency / the old client autosubmit won
+        # the race on the unique key — the station is already answered.
+        db.expunge(response)
+        return False
+    discard_checkin_draft(db, checkin.id)
+    return True
+
 
 
 def sweep_expired_phases(
@@ -115,55 +170,20 @@ def sweep_expired_phases(
         if station is None or not station.requires_student_form:
             continue
 
+        # PROC-1: quien fue confirmado durante la transición espera la fase
+        # que viene; ni el buzzer (`force`) ni el barrido lo tocan todavía.
+        if checkin_belongs_to_next_phase(session, checkin):
+            continue
+
         if not force:
             deadline = resolve_submission_deadline(db, ecoe_event, checkin, station)
             if deadline is None or now <= deadline + timedelta(seconds=grace_seconds):
                 continue
 
-        existing = db.scalar(
-            select(StudentResponse.id)
-            .where(
-                StudentResponse.ecoe_event_id == ecoe_event.id,
-                StudentResponse.station_id == checkin.station_id,
-                StudentResponse.student_id == checkin.student_id,
-                StudentResponse.mode == mode,
-            )
-            .limit(1)
-        )
-        if existing is not None:
+        if not finalize_checkin_response(db, ecoe_event, checkin, station, mode):
             continue
-
-        draft = db.scalar(
-            select(StationResponseDraft).where(
-                StationResponseDraft.checkin_id == checkin.id
-            )
-        )
-        answers = dict(draft.answers or {}) if draft is not None else {}
-
-        response = StudentResponse(
-            ecoe_event_id=ecoe_event.id,
-            station_id=checkin.station_id,
-            student_id=checkin.student_id,
-            mode=mode,
-            answers=answers,
-            locked=True,
-            by_contingency=False,
-            submission_kind="auto",
-        )
-        apply_auto_grading(response, station.student_form_definition)
-        try:
-            with db.begin_nested():
-                db.add(response)
-                db.flush()
-        except IntegrityError:
-            # A manual submit / contingency / the old client autosubmit won
-            # the race on the unique key — the station is already answered.
-            db.expunge(response)
-            continue
-
         checkin.status = "cerrado"
         db.add(checkin)
-        discard_checkin_draft(db, checkin.id)
         result["auto_responses"] += 1
         result["closed_checkins"] += 1
 

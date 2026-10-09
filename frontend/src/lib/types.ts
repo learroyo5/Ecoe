@@ -496,6 +496,10 @@ export type ECOEResult = {
   /** OPT-17: nº de estaciones con actividad puntuable que entraron al promedio
    *  de `percentage`. Ausente en actas congeladas anteriores a OPT-17. */
   stations_counted?: number;
+  /** PROC-6: estaciones puntuables que el estudiante debía rendir (su circuito). */
+  stations_expected?: number;
+  /** Sólo en vivo: números de estación esperados aún sin nota. */
+  missing_stations?: number[];
 };
 
 /** OPT-16: agregado por estación. La DE es muestral (n−1) y llega `null`

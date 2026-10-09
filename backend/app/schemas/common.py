@@ -62,6 +62,10 @@ class ECOEEventCreate(ECOEEventBase):
 
 class ECOEEventUpdate(ECOEEventBase):
     status: str
+    # PROC-6: el director asume que las estaciones sin registro valen 0.
+    force_close_incomplete: bool = False
+    # PROC-7: motivo obligatorio al reabrir un ECOE cerrado.
+    transition_reason: str = ""
 
 
 class ECOEEventRead(ECOEEventBase, ORMBase):
@@ -414,6 +418,25 @@ class StationCheckInCreate(BaseModel):
     # El evaluador confirmó "hacer el check-in igual" pese al aviso de que el
     # estudiante ya tiene una evaluación registrada en esta estación.
     force: bool = False
+    # PROC-3: el estudiante figura confirmado en OTRA estación dentro de esta
+    # misma rotación; el evaluador confirmó que está aquí. Anula el otro ingreso.
+    move_from_other_station: bool = False
+    # PROC-11: el estudiante es de otro circuito que la estación; el evaluador
+    # confirmó que igual corresponde.
+    confirm_other_circuit: bool = False
+
+
+class EvaluatorRectification(BaseModel):
+    """Rectificación por contingencia de una evaluación ya enviada (PROC-2)."""
+
+    ecoe_event_id: int
+    station_id: int
+    student_id: int
+    evaluator_name: str
+    score_obtained: float
+    observation: str = ""
+    answers: dict[str, Any] = {}
+    reason: str = Field(min_length=10, max_length=500)
 
 
 class StudentAccessRequest(BaseModel):

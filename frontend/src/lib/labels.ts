@@ -75,6 +75,7 @@ const SUBMISSION_KIND_LABELS: Record<string, string> = {
   manual: "Manual",
   auto: "Automática",
   contingency: "Por contingencia",
+  rectified: "Rectificada",
   draft_finalized: "Borrador finalizado",
 };
 

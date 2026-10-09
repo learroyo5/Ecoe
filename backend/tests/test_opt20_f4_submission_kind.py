@@ -352,7 +352,7 @@ def test_evaluator_draft_promoted_via_submit_is_draft_finalized(client):
         submit = client.post("/api/evaluator/submit", json={
             "checkin_id": checkin_id, "ecoe_event_id": 1, "station_id": 1,
             "student_id": 2, "evaluator_name": "Camila Soto",
-            "score_obtained": 14, "max_score": 999, "observation": "final",
+            "score_obtained": 2, "max_score": 999, "observation": "final",
             "answers": {"item_scores": {"1": 2}},
         })
         assert submit.status_code == 200, submit.text

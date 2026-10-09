@@ -12,6 +12,7 @@ const PAGES = [
   "/dashboard",
   "/ecoe",
   "/kiosks",
+  "/contingency",
   "/stations/builder",
   "/stations/builder?stationId=2",
   "/stations/builder?stationId=4",

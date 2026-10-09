@@ -29,6 +29,7 @@ from app.schemas.common import (
 from app.services.dependencies import get_current_user, require_roles
 from app.services.dependencies import require_global_roles
 from app.services.ecoe import build_dashboard, update_ecoe_status
+from app.services.validation import IncompleteClosureError
 from app.services.authorization import (
     ADMIN_EVENT_ROLE_CODES,
     ensure_event_access,
@@ -36,7 +37,17 @@ from app.services.authorization import (
     list_accessible_ecoe_events,
 )
 
+from app.services.event_lock import (
+    EVENT_STRUCTURE_FIELDS,
+    FROZEN_STATUSES,
+    STRUCTURE_LOCKED_STATUSES,
+    ensure_structure_editable,
+)
+
 router = APIRouter()
+
+# Campos de ECOEEventUpdate que no son columnas del evento.
+_NON_COLUMN_UPDATE_FIELDS = {"status", "force_close_incomplete", "transition_reason"}
 
 
 def _station_count(db: Session, ecoe_event_id: int) -> int:
@@ -297,13 +308,49 @@ def update_ecoe(
     db: Session = Depends(get_db),
     user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
-    ensure_event_access(db, user, ecoe_event_id,
+    event_roles = ensure_event_access(db, user, ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     ecoe_event = db.get(ECOEEvent, ecoe_event_id)
     previous_status = ecoe_event.status
-    for field, value in payload.model_dump(exclude={"status"}).items():
+    # PROC-5/8: con el acta congelada no cambia ningún dato del evento; desde
+    # la publicación no cambian los tiempos ni el circuito. El formulario
+    # reenvía todos los campos en cada transición: sólo cuentan los que difieren.
+    changed_fields = {
+        field
+        for field, value in payload.model_dump(exclude=_NON_COLUMN_UPDATE_FIELDS).items()
+        if getattr(ecoe_event, field) != value
+    }
+    current = str(previous_status)
+    if changed_fields and current in FROZEN_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail="El ECOE está cerrado o archivado: sus datos ya no se pueden modificar.",
+        )
+    locked_changes = changed_fields & EVENT_STRUCTURE_FIELDS
+    if locked_changes and current in STRUCTURE_LOCKED_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Los tiempos y el circuito quedan bloqueados desde la publicación; "
+                "despublica el ECOE para modificarlos."
+            ),
+        )
+    for field, value in payload.model_dump(exclude=_NON_COLUMN_UPDATE_FIELDS).items():
         setattr(ecoe_event, field, value)
     db.add(ecoe_event)
+    # PROC-7: reabrir un cierre invalida el acta; sólo la administración del
+    # ECOE (no un coeditor) puede hacerlo.
+    if (
+        current == ECOEStatus.cerrado.value
+        and payload.status == ECOEStatus.en_ejecucion.value
+        and RoleCode.admin_ecoe.value not in event_roles
+        and user.role.code != RoleCode.admin_global.value
+    ):
+        db.rollback()
+        raise HTTPException(
+            status_code=403,
+            detail="Sólo la administración del ECOE puede reabrir un evento cerrado.",
+        )
     # El formulario de "características" es el único lugar donde se edita el
     # timing tras crear el ECOE: sin este resync, las estaciones ya creadas y
     # el panel /live (si ya hay sesión) se quedan con los minutos viejos.
@@ -312,8 +359,21 @@ def update_ecoe(
     # rejected, the field updates above are rolled back with it.
     try:
         updated_event = update_ecoe_status(
-            db, ecoe_event, payload.status, commit=False, actor_email=user.email
+            db, ecoe_event, payload.status, commit=False, actor_email=user.email,
+            force_close_incomplete=payload.force_close_incomplete,
+            transition_reason=payload.transition_reason,
         )
+    except IncompleteClosureError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "incomplete_students",
+                "message": str(exc),
+                "total": len(exc.incomplete),
+                "students": exc.incomplete[:200],
+            },
+        ) from exc
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -345,6 +405,7 @@ def update_ecoe_timing(
 ):
     ensure_event_access(db, user, ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    ensure_structure_editable(db, ecoe_event_id, "cambiar los tiempos")
     ecoe_event = db.get(ECOEEvent, ecoe_event_id)
     ecoe_event.station_time_minutes = payload.station_time_minutes
     ecoe_event.transition_time_minutes = payload.transition_time_minutes

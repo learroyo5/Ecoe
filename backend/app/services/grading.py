@@ -179,3 +179,71 @@ def apply_manual_scores(
     response.score_obtained = total
     response.graded_by_email = graded_by_email
     response.graded_at = utcnow_naive()
+
+
+# ── Evaluador: puntaje autoritativo desde la pauta (PROC-10) ──────────
+
+
+def evaluator_score_from_answers(db, station, answers: dict | None) -> float | None:
+    """Suma del desglose por criterio (`answers["item_scores"]`) validada
+    contra la pauta de la estación, o ``None`` si no viene desglose.
+
+    El total que manda el navegador deja de ser la fuente: si hay desglose,
+    cada criterio debe existir en la pauta y estar entre 0 y su puntaje, y la
+    nota es su suma. Sin desglose (transcripción de un total en papel) el
+    llamador conserva el total informado, acotado al máximo de la estación.
+    """
+    from sqlalchemy import select
+
+    from app.models.entities import AssessmentItem
+
+    raw = (answers or {}).get("item_scores") if isinstance(answers, dict) else None
+    if not isinstance(raw, dict) or not raw or not station.assessment_tool_id:
+        return None
+    items = db.scalars(
+        select(AssessmentItem).where(AssessmentItem.tool_id == station.assessment_tool_id)
+    ).all()
+    if not items:
+        return None
+    by_id = {str(item.id): item for item in items}
+    by_order = {str(item.order_index): item for item in items}
+    total = 0.0
+    for key, value in raw.items():
+        item = by_id.get(str(key)) or by_order.get(str(key))
+        if item is None:
+            raise HTTPException(
+                status_code=400,
+                detail="El desglose incluye un criterio que no pertenece a la pauta de la estación",
+            )
+        try:
+            score = float(value)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Puntaje de criterio no válido") from None
+        if score < 0 or score > float(item.score_per_item) + 1e-9:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"El criterio «{item.label}» admite entre 0 y "
+                    f"{item.score_per_item:g} puntos"
+                ),
+            )
+        total += score
+    return round(total, 4)
+
+
+def ensure_score_matches_breakdown(db, station, answers: dict | None, score_obtained: float) -> float:
+    """Devuelve el puntaje autoritativo; 400 si el total informado contradice
+    la suma del desglose (señal de un cliente defectuoso o de una request
+    armada a mano)."""
+    server_score = evaluator_score_from_answers(db, station, answers)
+    if server_score is None:
+        return float(score_obtained)
+    if abs(server_score - float(score_obtained)) > 0.01:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"El puntaje informado ({score_obtained:g}) no coincide con la suma "
+                f"de la pauta ({server_score:g})"
+            ),
+        )
+    return server_score

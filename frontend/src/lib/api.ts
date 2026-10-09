@@ -44,6 +44,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const text = await response.text();
     let detail = text || "No se pudo completar la solicitud";
     let errorCode: string | undefined;
+    let errorData: Record<string, unknown> | undefined;
     try {
       const parsed = JSON.parse(text);
       if (typeof parsed.detail === "string") {
@@ -53,6 +54,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
         // el code lo usan los callers para decidir (p. ej. re-confirmar).
         if (typeof parsed.detail.message === "string") detail = parsed.detail.message;
         errorCode = typeof parsed.detail.code === "string" ? parsed.detail.code : undefined;
+        errorData = parsed.detail as Record<string, unknown>;
       } else if (Array.isArray(parsed.detail)) {
         // FastAPI validation errors arrive as a list of objects; stringifying
         // them directly renders "[object Object]".
@@ -68,9 +70,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     // Adjuntamos el status HTTP para que los callers puedan distinguir casos
     // recuperables (p. ej. 409 "pauta no editable" → ofrecer copia) sin parsear
     // el texto del mensaje. Los callers que solo leen `.message` no se afectan.
-    const error = new Error(detail) as Error & { status?: number; code?: string };
+    const error = new Error(detail) as Error & {
+      status?: number;
+      code?: string;
+      data?: Record<string, unknown>;
+    };
     error.status = response.status;
     error.code = errorCode;
+    // Detalle estructurado completo (p. ej. la lista de incompletos al cerrar).
+    error.data = errorData;
     throw error;
   }
 
@@ -194,7 +202,9 @@ export const api = {
     request<EvaluatorContext>(
       `/evaluator/context/${eventId}${stationId ? `?station_id=${stationId}` : ""}`,
     ),
-  confirmStationCheckin: (payload: { ecoe_event_id: number; station_id: number; ecoe_number: string; force?: boolean }) =>
+  annulStationCheckin: (checkinId: number) =>
+    request<{ annulled: boolean; checkin_id: number }>(`/station-checkins/${checkinId}/annul`, { method: "POST" }),
+  confirmStationCheckin: (payload: { ecoe_event_id: number; station_id: number; ecoe_number: string; force?: boolean; move_from_other_station?: boolean; confirm_other_circuit?: boolean }) =>
     request<ConfirmCheckinResult>("/station-checkins/confirm", { method: "POST", body: JSON.stringify(payload) }),
   submitEvaluator: (payload: Record<string, unknown>) =>
     request<MutationResult>("/evaluator/submit", { method: "POST", body: JSON.stringify(payload) }),
@@ -224,6 +234,20 @@ export const api = {
       "/contingency/evaluator-record",
       { method: "POST", body: JSON.stringify(payload) },
     ),
+
+  contingencyStudentResponse: (payload: { ecoe_event_id: number; station_id: number; student_id: number; answers: Record<string, unknown> }) =>
+    request<MutationResult & { replaced_auto?: boolean }>(
+      "/contingency/student-response",
+      { method: "POST", body: JSON.stringify(payload) },
+    ),
+  rectifyEvaluatorRecord: (payload: Record<string, unknown>) =>
+    request<MutationResult & { rectified?: boolean }>(
+      "/contingency/evaluator-record/rectify",
+      { method: "POST", body: JSON.stringify(payload) },
+    ),
+
+  liveBoard: (eventId: number) =>
+    request<import("@/components/station-board").StationBoard>(`/live/${eventId}/board`),
 
   // Student access
   studentAccess: (payload: { ecoe_event_id: number; ecoe_number: string }) =>

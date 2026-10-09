@@ -37,6 +37,12 @@ export default function EvaluatorPage() {
   const [submittingEvaluation, setSubmittingEvaluation] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [showReconfirmCheckin, setShowReconfirmCheckin] = useState(false);
+  // PROC-3: el estudiante figura confirmado en otra estación en esta rotación.
+  const [otherStationWarning, setOtherStationWarning] = useState<string | null>(null);
+  // PROC-11: el estudiante pertenece a otro circuito que esta estación.
+  const [otherCircuitWarning, setOtherCircuitWarning] = useState<string | null>(null);
+  const [showAnnulCheckin, setShowAnnulCheckin] = useState(false);
+  const [annulling, setAnnulling] = useState(false);
   const [itemScoreState, setItemScoreState] = useState<{
     checkinId: string;
     scores: Record<string, number>;
@@ -255,6 +261,9 @@ export default function EvaluatorPage() {
       });
   }, []);
 
+  // Confirmaciones ya dadas para ESTE intento de ingreso: se acumulan, porque
+  // un mismo número puede disparar los dos avisos (otro circuito y otra estación).
+  const checkinOverridesRef = useRef({ move: false, circuit: false });
   const doCheckin = useCallback(async (force: boolean) => {
     setMessage(null);
     setConfirmingStudent(true);
@@ -264,7 +273,10 @@ export default function EvaluatorPage() {
         station_id: stationId,
         ecoe_number: ecoeNumber,
         force,
+        move_from_other_station: checkinOverridesRef.current.move,
+        confirm_other_circuit: checkinOverridesRef.current.circuit,
       })) as Record<string, unknown>;
+      checkinOverridesRef.current = { move: false, circuit: false };
       setContext((current) => ({
         ...(current ?? {}),
         server_now: checkin.server_now,
@@ -309,6 +321,14 @@ export default function EvaluatorPage() {
     } catch (error) {
       if ((error as { code?: string }).code === "student_already_evaluated") {
         setShowReconfirmCheckin(true);
+        return;
+      }
+      if ((error as { code?: string }).code === "student_other_circuit") {
+        setOtherCircuitWarning(error instanceof Error ? error.message : "El estudiante es de otro circuito.");
+        return;
+      }
+      if ((error as { code?: string }).code === "student_in_other_station") {
+        setOtherStationWarning(error instanceof Error ? error.message : "El estudiante figura en otra estación.");
         return;
       }
       setMessage(error instanceof Error ? error.message : "No se pudo confirmar.");
@@ -488,6 +508,15 @@ export default function EvaluatorPage() {
               <p className="mt-2 text-sm text-slate-600">
                 Verifica siempre número y nombre antes de evaluar.
               </p>
+              {!submitted && !activeCheckin.student_response_exists ? (
+                <button
+                  type="button"
+                  className="mt-3 text-sm font-semibold text-red-700 underline-offset-4 hover:underline"
+                  onClick={() => setShowAnnulCheckin(true)}
+                >
+                  No es este estudiante: anular ingreso
+                </button>
+              ) : null}
             </div>
           ) : null}
         </section>
@@ -714,7 +743,7 @@ export default function EvaluatorPage() {
       <ConfirmDialog
         open={showReconfirmCheckin}
         title="Estudiante ya evaluado en esta estación"
-        message="Este estudiante ya tiene una evaluación registrada aquí. Si confirmás, se crea un ingreso nuevo con el cronómetro corriendo, pero el formulario queda cerrado para edición (la evaluación anterior no se puede modificar durante el ECOE)."
+        message="Este estudiante ya tiene una evaluación registrada aquí. Si confirmas, se crea un ingreso nuevo con el cronómetro corriendo, pero el formulario queda cerrado para edición (la evaluación anterior no se puede modificar durante el ECOE)."
         confirmLabel="Confirmar de todas formas"
         severity="danger"
         busy={confirmingStudent}
@@ -723,6 +752,67 @@ export default function EvaluatorPage() {
           void doCheckin(true);
         }}
         onCancel={() => setShowReconfirmCheckin(false)}
+      />
+      <ConfirmDialog
+        open={otherStationWarning !== null}
+        title="Revisa el Número ECOE"
+        message={`${otherStationWarning ?? ""} Si el número es correcto y el estudiante está contigo, puedes traerlo a esta estación: se anulará su ingreso en la otra.`}
+        confirmLabel="El estudiante está aquí"
+        cancelLabel="Corregir número"
+        severity="danger"
+        busy={confirmingStudent}
+        onConfirm={() => {
+          setOtherStationWarning(null);
+          checkinOverridesRef.current.move = true;
+          void doCheckin(false);
+        }}
+        onCancel={() => {
+          setOtherStationWarning(null);
+          checkinOverridesRef.current = { move: false, circuit: false };
+        }}
+      />
+      <ConfirmDialog
+        open={otherCircuitWarning !== null}
+        title="Revisa el Número ECOE"
+        message={`${otherCircuitWarning ?? ""} Confirma sólo si coordinación lo envió a esta estación.`}
+        confirmLabel="Confirmar de todas formas"
+        cancelLabel="Corregir número"
+        severity="danger"
+        busy={confirmingStudent}
+        onConfirm={() => {
+          setOtherCircuitWarning(null);
+          checkinOverridesRef.current.circuit = true;
+          void doCheckin(false);
+        }}
+        onCancel={() => {
+          setOtherCircuitWarning(null);
+          checkinOverridesRef.current = { move: false, circuit: false };
+        }}
+      />
+      <ConfirmDialog
+        open={showAnnulCheckin}
+        title="Anular ingreso"
+        message={`Se anulará el ingreso de ${String(activeCheckin?.student_ecoe_number ?? "")} · ${String(activeCheckin?.student_name ?? "")} en esta estación, como si no se hubiera confirmado. Lo que estuviera a medio llenar se descarta.`}
+        confirmLabel="Anular ingreso"
+        severity="danger"
+        busy={annulling}
+        onConfirm={async () => {
+          if (!activeCheckin) return;
+          setAnnulling(true);
+          try {
+            await api.annulStationCheckin(Number(activeCheckin.id));
+            setContext((current) => ({ ...(current ?? {}), active_checkin: null }));
+            setScoreObtained("0");
+            setObservation("");
+            setMessage("Ingreso anulado. Confirma al estudiante correcto.");
+          } catch (error) {
+            setMessage(error instanceof Error ? error.message : "No se pudo anular el ingreso.");
+          } finally {
+            setAnnulling(false);
+            setShowAnnulCheckin(false);
+          }
+        }}
+        onCancel={() => setShowAnnulCheckin(false)}
       />
     </SectionCard>
   );

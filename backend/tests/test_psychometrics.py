@@ -542,7 +542,10 @@ def test_psychometrics_frozen_event_uses_snapshot(auth_client):
 
     with TestingSessionLocal() as db:
         event = db.get(ECOEEvent, event_id)
-        update_ecoe_status(db, event, ECOEStatus.cerrado.value, actor_email="admin@ecoe.cl")
+        update_ecoe_status(
+            db, event, ECOEStatus.cerrado.value, actor_email="admin@ecoe.cl",
+            force_close_incomplete=True,
+        )
 
     # Mutación posterior al cierre.
     with TestingSessionLocal() as db:

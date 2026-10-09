@@ -1,5 +1,6 @@
 """Server-authoritative live timer (A2)."""
 
+import pytest
 import time
 
 
@@ -72,6 +73,8 @@ class TestLiveTimer:
         assert reset["phase_started_at"] is None
         assert reset["current_station_index"] == 1
 
+    @pytest.mark.usefixtures("demo_event_in_setup")
+
     def test_timing_update_resyncs_existing_live_session(self, auth_client):
         """Regression: editing ECOE timing must not leave the running-session
         template (seconds) stuck at whatever it was when the session was
@@ -131,7 +134,13 @@ class TestLiveTimerHardening:
 
     def test_next_transition_stops_at_last_station(self, auth_client):
         stations = auth_client.get("/api/stations/1").json()
-        slots = len({s["station_number"] for s in stations})
+        # PROC-11: una ronda recorre las estaciones del circuito más largo
+        # (los circuitos espejo corren en paralelo), no todas las del evento.
+        per_circuit: dict[str, int] = {}
+        for s in stations:
+            key = (s["circuit_name"] or "").strip().lower()
+            per_circuit[key] = per_circuit.get(key, 0) + 1
+        slots = max(per_circuit.values())
         assert slots >= 2
 
         auth_client.post("/api/live/control", json={"ecoe_event_id": 1, "action": "reset"})

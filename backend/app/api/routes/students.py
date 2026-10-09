@@ -3,12 +3,12 @@
 import re
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.models.entities import Student
-from app.models.enums import RoleCode
+from app.models.entities import EvaluatorRecord, Student, StudentResponse
+from app.models.enums import ECOEStatus, RoleCode, SessionMode
 from app.schemas.common import Page, StudentCreate, StudentRead, StudentStatusUpdate
 from app.services.dependencies import get_current_user, require_roles
 from app.utils.files import parse_tabular_file
@@ -22,7 +22,28 @@ from app.utils.helpers import (
 )
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginate_query
 
+from app.services.event_lock import (
+    audit_change,
+    commit_or_conflict,
+    ensure_event_not_frozen,
+    ensure_structure_editable,
+)
+
 router = APIRouter()
+
+
+def _student_has_execution_records(db: Session, student: Student) -> bool:
+    for model in (EvaluatorRecord, StudentResponse):
+        if db.scalar(
+            select(func.count()).select_from(model).where(
+                model.ecoe_event_id == student.ecoe_event_id,
+                model.student_id == student.id,
+                model.mode == SessionMode.ejecucion.value,
+            )
+        ):
+            return True
+    return False
+
 
 
 @router.get("/students/{ecoe_event_id}", response_model=Page[StudentRead])
@@ -55,6 +76,7 @@ def create_student(
                         RoleCode.admin_ecoe.value,
                         RoleCode.coeditor_docente.value,
                         RoleCode.coordinador_operativo.value)
+    ensure_event_not_frozen(db, payload.ecoe_event_id, "agregar estudiantes")
     rut = normalize_rut(payload.rut)
     email = normalize_email(payload.email)
     existing = db.scalar(
@@ -66,6 +88,9 @@ def create_student(
                       rut=rut, email=email,
                       ecoe_number=next_student_ecoe_number(db, payload.ecoe_event_id))
     db.add(student)
+    db.flush()
+    audit_change(db, user, "create_student", "Student", student.id,
+                 {"ecoe_event_id": student.ecoe_event_id, "ecoe_number": student.ecoe_number})
     db.commit()
     db.refresh(student)
     return student
@@ -85,8 +110,26 @@ def update_student_status(
                         RoleCode.admin_ecoe.value,
                         RoleCode.coeditor_docente.value,
                         RoleCode.coordinador_operativo.value)
+    ecoe_event = ensure_event_not_frozen(db, student.ecoe_event_id, "cambiar el estado de un estudiante")
+    if (
+        str(ecoe_event.status) == ECOEStatus.en_ejecucion.value
+        and not payload.is_active
+        and _student_has_execution_records(db, student)
+    ):
+        # Suspender saca al estudiante de Resultados: con registros de la
+        # ejecución real eso haría desaparecer notas ya tomadas.
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Este estudiante ya tiene registros en la ejecución; "
+                "no se puede suspender mientras el ECOE está en ejecución."
+            ),
+        )
+    previous_active = student.is_active
     student.is_active = payload.is_active
     db.add(student)
+    audit_change(db, user, "update_student_status", "Student", student.id,
+                 {"ecoe_event_id": student.ecoe_event_id, "from": previous_active, "to": payload.is_active})
     db.commit()
     db.refresh(student)
     return student
@@ -103,8 +146,13 @@ def delete_student(
         raise HTTPException(status_code=404, detail="Estudiante no encontrado")
     ensure_event_access(db, user, student.ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    ensure_structure_editable(db, student.ecoe_event_id, "borrar estudiantes (suspéndelo en su lugar)")
+    audit_change(db, user, "delete_student", "Student", student.id,
+                 {"ecoe_event_id": student.ecoe_event_id, "ecoe_number": student.ecoe_number,
+                  "rut": student.rut, "name": f"{student.name} {student.last_name}"})
     db.delete(student)
-    db.commit()
+    commit_or_conflict(
+        db, "El estudiante tiene registros asociados y no puede borrarse; suspéndelo en su lugar.")
     return {"deleted": True}
 
 
@@ -116,6 +164,7 @@ def deduplicate_students_by_rut(
 ):
     ensure_event_access(db, user, ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    ensure_structure_editable(db, ecoe_event_id, "depurar la nómina")
     students = db.scalars(
         select(Student)
         .where(Student.ecoe_event_id == ecoe_event_id)
@@ -132,7 +181,10 @@ def deduplicate_students_by_rut(
             removed += 1
             continue
         seen_ruts.add(rut)
-    db.commit()
+    audit_change(db, user, "deduplicate_students", "ECOEEvent", ecoe_event_id,
+                 {"ecoe_event_id": ecoe_event_id, "removed": removed})
+    commit_or_conflict(
+        db, "Hay estudiantes duplicados con registros asociados; resuélvelos manualmente.")
     return {"removed": removed}
 
 
@@ -144,6 +196,7 @@ def renumber_students(
 ):
     ensure_event_access(db, user, ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    ensure_structure_editable(db, ecoe_event_id, "renumerar a los estudiantes")
     students = db.scalars(
         select(Student)
         .where(Student.ecoe_event_id == ecoe_event_id)
@@ -155,6 +208,8 @@ def renumber_students(
     for index, student in enumerate(students, start=1):
         student.ecoe_number = format_ecoe_number(index, width)
         db.add(student)
+    audit_change(db, user, "renumber_students", "ECOEEvent", ecoe_event_id,
+                 {"ecoe_event_id": ecoe_event_id, "updated": len(students)})
     db.commit()
     return {"updated": len(students)}
 
@@ -168,6 +223,7 @@ async def import_students(
 ):
     ensure_event_access(db, user, ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    ensure_event_not_frozen(db, ecoe_event_id, "importar estudiantes")
     rows = await parse_tabular_file(file)
 
     # Check that required columns exist
@@ -222,6 +278,8 @@ async def import_students(
         imported.append(student)
         existing_ruts.add(rut)
         next_numeric_value += 1
+    audit_change(db, user, "import_students", "ECOEEvent", ecoe_event_id,
+                 {"ecoe_event_id": ecoe_event_id, "imported": len(imported)})
     db.commit()
     total_skipped = skipped_rut_duplicate + skipped_missing_data
     return {

@@ -8,6 +8,7 @@ import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
 import { useLiveTimer } from "@/lib/ws";
 import { SectionCard } from "@/components/section-card";
+import { StationBoardPanel } from "@/components/station-board";
 import { liveActionBlockedReason } from "@/lib/live-controls";
 import { StatusNotice } from "@/components/forms";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -568,6 +569,8 @@ export default function LivePage() {
       </SectionCard>
 
       {/* Incidents panel */}
+      <StationBoardPanel eventId={eventId} />
+
       <SectionCard
         title="Incidencias"
         subtitle={`${activeIncidents.length} activas · ${resolvedIncidents.length} resueltas`}

@@ -155,6 +155,19 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
             blockers.append("Declara paciente simulado, pero no tiene personaje asociado.")
         if station.max_score <= 0:
             blockers.append("El puntaje máximo de la estación debe ser mayor que cero.")
+        scored_questions = sum(
+            1
+            for q in (station.student_form_definition or {}).get("questions", [])
+            if isinstance(q, dict) and _question_points(q) > 0
+        )
+        if not station.requires_evaluator and not (
+            station.requires_student_form and scored_questions > 0
+        ):
+            # PROC-16: sin evaluador y sin formulario con puntaje nada puede
+            # puntuarla; quedaría fuera de la nota de todos sin avisar.
+            blockers.append(
+                "No tiene evaluador ni formulario con puntaje: nada puede calificar esta estación."
+            )
 
         if not station.materials.strip():
             warnings.append("No se han detallado materiales o recursos físicos.")
@@ -316,7 +329,28 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
     all_stations_ready = station_count > 0 and complete_stations == station_count
 
     can_pilot = metadata_ready and students_count > 0 and station_count > 0 and timer_ready and all_stations_ready
+    # PROC-16: estaciones con kiosco pero sin evaluador — alguien de
+    # coordinación debe confirmar el ingreso de cada estudiante en cada rotación.
+    stations_without_evaluator = sorted(
+        station.station_number for station in stations
+        if not station.requires_evaluator and station.requires_student_form
+    )
+    # PROC-16: estudiantes cuyo circuito no existe entre las estaciones (con
+    # más de un circuito, no se sabe qué estaciones les corresponden).
+    station_circuits = {str(station.circuit_name or "").strip().lower() for station in stations}
+    students_without_circuit = 0
+    if len(station_circuits) > 1:
+        students_without_circuit = sum(
+            1
+            for (circuit_name,) in db.execute(
+                select(Student.circuit_name).where(
+                    Student.ecoe_event_id == ecoe_event.id, Student.is_active.is_(True)
+                )
+            ).all()
+            if str(circuit_name or "").strip().lower() not in station_circuits
+        )
     can_publish = (
+        students_count > 0 and
         metadata_ready and all_stations_ready and tools_ready and forms_ready
         and multimedia_ready and assignments_ready and deferred_grading_ready
         and timer_ready and pilot_count > 0
@@ -364,6 +398,15 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
                 None if not evaluators_without_station else (
                     "Evaluadores sin estación principal asignada (no podrán hacer check-in): "
                     + ", ".join(evaluators_without_station)
+                ),
+                None if not stations_without_evaluator else (
+                    "Estaciones sin evaluador (coordinación debe confirmar el ingreso de cada "
+                    "estudiante en cada rotación): "
+                    + ", ".join(str(number) for number in stations_without_evaluator)
+                ),
+                None if not students_without_circuit else (
+                    f"{students_without_circuit} estudiante(s) activos con un circuito que no "
+                    "corresponde a ninguna estación: se les exigirán todas las estaciones."
                 ),
                 None if not unscored_form_stations else (
                     "Estaciones con formulario sin puntaje definido (las respuestas no sumarán a Resultados): "
@@ -471,9 +514,28 @@ ALLOWED_STATUS_TRANSITIONS: dict[str, set[str]] = {
         ECOEStatus.en_ejecucion.value,
     },
     ECOEStatus.en_ejecucion.value: {ECOEStatus.cerrado.value},
-    ECOEStatus.cerrado.value: {ECOEStatus.archivado.value},
-    ECOEStatus.archivado.value: {ECOEStatus.borrador.value},
+    # PROC-7: el cierre se puede reabrir (sólo admin, con motivo, auditado)
+    # para ingresar lo que faltó; invalida el acta congelada.
+    ECOEStatus.cerrado.value: {
+        ECOEStatus.archivado.value,
+        ECOEStatus.en_ejecucion.value,
+    },
+    # "Reactivar" (archivado → borrador) se eliminó: reusaba el evento con las
+    # evaluaciones de la corrida anterior adentro. Para repetir, se duplica.
+    ECOEStatus.archivado.value: set(),
 }
+
+
+class IncompleteClosureError(ValueError):
+    """El cierre encontró estudiantes con estaciones esperadas sin nota (PROC-6)."""
+
+    def __init__(self, incomplete: list[dict]):
+        self.incomplete = incomplete
+        super().__init__(
+            f"Hay {len(incomplete)} estudiante(s) con estaciones sin registro. "
+            "Resuélvelos por contingencia, suspende a los ausentes, o fuerza el "
+            "cierre para que esas estaciones cuenten como 0."
+        )
 
 
 def update_ecoe_status(
@@ -483,6 +545,8 @@ def update_ecoe_status(
     *,
     commit: bool = True,
     actor_email: str | None = None,
+    force_close_incomplete: bool = False,
+    transition_reason: str = "",
 ) -> ECOEEvent:
     """Aplica una transición del grafo `ALLOWED_STATUS_TRANSITIONS` y sus
     efectos colaterales dentro de la misma transacción:
@@ -513,8 +577,33 @@ def update_ecoe_status(
             raise ValueError("El ECOE aún no cumple condiciones para pilotaje")
         if target_status == ECOEStatus.publicado.value and not validation["can_publish"]:
             raise ValueError("El ECOE aún no cumple condiciones para publicación")
-        if target_status == ECOEStatus.en_ejecucion.value and not validation["can_start_live"]:
+        reopening = (
+            current_status == ECOEStatus.cerrado.value
+            and target_status == ECOEStatus.en_ejecucion.value
+        )
+        if (
+            target_status == ECOEStatus.en_ejecucion.value
+            and not reopening
+            and not validation["can_start_live"]
+        ):
             raise ValueError("El ECOE aún no está listo para ejecución real")
+        if reopening:
+            if len(transition_reason.strip()) < 10:
+                raise ValueError(
+                    "Reabrir un ECOE cerrado exige indicar el motivo (al menos 10 caracteres)"
+                )
+            # El acta congelada deja de valer: se borra el snapshot y Resultados
+            # vuelve al cálculo en vivo hasta el próximo cierre.
+            from app.models.entities import AuditLog, ECOEResult, StationResult
+            db.query(ECOEResult).filter(ECOEResult.ecoe_event_id == ecoe_event.id).delete()
+            db.query(StationResult).filter(StationResult.ecoe_event_id == ecoe_event.id).delete()
+            db.add(AuditLog(
+                user_email=actor_email or "",
+                action="reopen_ecoe",
+                target_type="ECOEEvent",
+                target_id=str(ecoe_event.id),
+                payload={"ecoe_event_id": ecoe_event.id, "reason": transition_reason.strip()},
+            ))
 
     if target_status == ECOEStatus.publicado.value:
         live_session = db.scalar(
@@ -581,6 +670,31 @@ def update_ecoe_status(
         # Al entrar a la ejecución real, cualquier check-in `confirmado` que
         # sobreviva es residuo del pilotaje: ciérralo para que no aparezca
         # como sesión activa ni sume a los conteos de la ejecución.
+        if current_status == ECOEStatus.publicado.value:
+            # PROC-9: la ejecución real parte con el reloj limpio. La sesión
+            # pudo crearse y usarse en el pilotaje (estación 5, circuito
+            # terminado, modo automático…): nada de eso debe heredarse.
+            live_session = db.scalar(
+                select(LiveSession).where(LiveSession.ecoe_event_id == ecoe_event.id).limit(1)
+            )
+            if live_session is not None:
+                live_session.mode = SessionMode.ejecucion.value
+                live_session.status = "ready"
+                live_session.current_station_index = 1
+                live_session.station_time_seconds = max(1, round(ecoe_event.station_time_minutes * 60))
+                live_session.transition_time_seconds = max(
+                    0, round(ecoe_event.transition_time_minutes * 60)
+                )
+                live_session.inter_round_pause_seconds = max(
+                    0, round((ecoe_event.inter_round_pause_minutes or 0) * 60)
+                )
+                live_session.remaining_seconds = live_session.station_time_seconds
+                live_session.phase_started_at = None
+                live_session.paused_from_status = None
+                live_session.auto_mode = False
+                live_session.current_round = 1
+                live_session.total_rounds = None
+                db.add(live_session)
         residual_checkins = db.scalars(
             select(StationCheckIn).where(
                 StationCheckIn.ecoe_event_id == ecoe_event.id,
@@ -595,8 +709,31 @@ def update_ecoe_status(
         # Closing freezes the event: consolidate results in the same
         # transaction and close every check-in still open, so no submission
         # window survives the closure (the stage gate rejects new records).
-        from app.services.results import persist_results
+        from app.services.results import compute_missing_station_scores, persist_results
 
+        incomplete = compute_missing_station_scores(db, ecoe_event.id)
+        if incomplete and not force_close_incomplete:
+            raise IncompleteClosureError(incomplete)
+        if incomplete:
+            from app.models.entities import AuditLog
+            db.add(AuditLog(
+                user_email=actor_email or "",
+                action="force_close_incomplete",
+                target_type="ECOEEvent",
+                target_id=str(ecoe_event.id),
+                payload={
+                    "ecoe_event_id": ecoe_event.id,
+                    "incomplete_students": len(incomplete),
+                    "missing_station_scores": sum(
+                        len(item["missing_station_ids"]) for item in incomplete
+                    ),
+                    "students": [
+                        {"ecoe_number": item["ecoe_number"],
+                         "missing_station_numbers": item["missing_station_numbers"]}
+                        for item in incomplete
+                    ],
+                },
+            ))
         persist_results(db, ecoe_event.id, commit=False, actor_email=actor_email)
         open_checkins = db.scalars(
             select(StationCheckIn).where(

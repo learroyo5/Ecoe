@@ -32,6 +32,7 @@ from app.services.dependencies import require_roles
 from app.services.drafts import discard_checkin_draft, upsert_checkin_draft
 from app.services.grading import apply_auto_grading
 from app.services.live_sweep import sweep_expired_phases
+from app.services.presence import touch_last_seen
 from app.services.live_cycle import advance_if_expired
 from app.services.kiosk import (
     authenticate_kiosk_token,
@@ -40,6 +41,7 @@ from app.services.kiosk import (
 )
 from app.utils.clock import utcnow_naive
 from app.utils.helpers import (
+    public_form_definition,
     ensure_checkin_within_time,
     ensure_submission_stage,
     isoformat_or_none as _isoformat_or_none,
@@ -126,6 +128,7 @@ def kiosk_context(
 ):
     station = db.get(Station, kiosk.station_id)
     ecoe_event = db.get(ECOEEvent, kiosk.ecoe_event_id)
+    touch_last_seen(db, kiosk)
     # OPT-20 F2 safety net: finalize any check-in whose live phase already
     # expired (a tablet that died mid-station, an operator who advanced the
     # clock). Idempotent and a no-op while the phase is still open or paused.
@@ -185,7 +188,7 @@ def kiosk_context(
             "student_activity": station.student_activity,
             "pre_entry_instruction": station.pre_entry_instruction,
             "student_station_instruction": station.student_station_instruction,
-            "student_form_definition": station.student_form_definition,
+            "student_form_definition": public_form_definition(station.student_form_definition),
             "media_assets": [serialize_media_asset(asset) for asset in media_assets],
             "station_time_minutes": station.station_time_minutes,
             "confirmed_at": checkin.confirmed_at.isoformat(),

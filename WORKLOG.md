@@ -53,6 +53,23 @@ Ramas `ux/01…07` borradas (local y remoto) tras el merge. Auditoria de coheren
 
 Lo mas urgente antes de cualquier prueba con personas: PROC-1 (confirmar al estudiante durante la transicion le autoenvia la estacion en blanco) y PROC-4 (la clave de respuestas viaja al dispositivo del estudiante).
 
+## Sesion 2026-10-09 (c) — Correcciones de la auditoria de proceso (PROC + coordinacion)
+
+Seis ramas apiladas, **sin merge ni deploy** (decision del usuario; incluyen 3 migraciones Alembic: `r8s9t0u1v2w3`, `s9t0u1v2w3x4`, `t0u1v2w3x4y5`, todas aditivas y sin backfill):
+
+- `proc/01-transicion-y-clave`: check-in en transicion/pausa pertenece a la fase siguiente; el formulario llega al estudiante sin la clave; confirmar al siguiente conserva el borrador del anterior.
+- `proc/02-anulacion-y-contingencia`: anular ingreso, aviso de estudiante en otra estacion de la misma rotacion, contingencia sustituye autoenvios y rectifica evaluaciones; pantalla `/contingency`.
+- `proc/03-candados-por-estado`: `services/event_lock.py` (estructura bloqueada desde `publicado`, todo congelado en `cerrado`/`archivado`), 409 legibles, AuditLog de estructura.
+- `proc/04-cierre`: cierre bloqueado con incompletos (forzable → 0), reapertura `cerrado → en_ejecucion` (admin, motivo, auditada), `archivado` terminal, acta con identidad.
+- `proc/05-vivo-y-validacion`: LiveSession limpia al iniciar ejecucion, pausa que recuerda la fase, puntaje del evaluador validado contra la pauta, rondas por circuito espejo, vacios de validacion.
+- `proc/06-tablero-en-vivo`: senal de vida de kioscos/evaluadores, `GET /live/{id}/board`, verificacion previa y tablero en `/live`.
+
+Verificacion sobre `proc/06-tablero-en-vivo`: backend 503 tests en SQLite y en PostgreSQL con migraciones (eran 429); frontend `tsc`/`eslint` sin errores, 136 tests (eran 127), y flujo dorado Playwright 5/5.
+
+Cambios de comportamiento que afectan la operacion (ya reflejados en `docs/OPERACION_DIA_EXAMEN.md`): desde `publicado` no se edita estructura (hay que despublicar); el cierre exige resolver incompletos o forzarlo; el check-in avisa por otra estacion u otro circuito; el circuito automatico cuenta rondas por circuito.
+
+Pendiente: plan de rotacion generado (COORD-3), respaldo frecuente en ejecucion (COORD-4), identificacion del estudiante en kiosco para estaciones sin evaluador (PROC-12), y los de severidad baja PROC-17/18/20. Para correr pytest en este servidor: contenedor `ecoe-backend` + pytest (no hay pytest en el host).
+
 ## Sesion 2026-06-03 — Evolucion v1 → v2
 
 Se completaron las 4 fases planificadas en `NEXT_STEPS.md`:

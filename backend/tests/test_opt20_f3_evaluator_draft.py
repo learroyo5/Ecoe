@@ -314,7 +314,8 @@ def test_evaluator_draft_and_promotion_via_submit(client):
         submit = client.post("/api/evaluator/submit", json={
             "checkin_id": checkin_id, "ecoe_event_id": 1, "station_id": 1,
             "student_id": 2, "evaluator_name": "Camila Soto",
-            "score_obtained": 14, "max_score": 999, "observation": "final",
+            # PROC-10: el total debe ser la suma del desglose (2 + 2).
+            "score_obtained": 4, "max_score": 999, "observation": "final",
             "answers": {"item_scores": {"1": 2, "2": 2}},
         })
         assert submit.status_code == 200, submit.text
@@ -323,7 +324,7 @@ def test_evaluator_draft_and_promotion_via_submit(client):
         with TestingSessionLocal() as db:
             record = db.get(EvaluatorRecord, record_id)
             assert record.is_draft is False
-            assert record.score_obtained == 14
+            assert record.score_obtained == 4
             assert record.max_score == 20  # recalculado, no el 999 del cliente
             # OPT-20 F4 (plan §"FASE 4", D4): un borrador del buzzer promovido a
             # final vía /evaluator/submit se marca `draft_finalized`, no `manual`.

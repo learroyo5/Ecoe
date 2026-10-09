@@ -159,7 +159,11 @@ def _submit(client, event_id, station_id, student_id, checkin_id, answer):
 def _close(event_id: int, actor_email: str = "admin@ecoe.cl") -> None:
     with TestingSessionLocal() as db:
         event = db.get(ECOEEvent, event_id)
-        update_ecoe_status(db, event, ECOEStatus.cerrado.value, actor_email=actor_email)
+        update_ecoe_status(
+            db, event, ECOEStatus.cerrado.value, actor_email=actor_email,
+            # Estos tests no tratan la completitud del circuito (PROC-6).
+            force_close_incomplete=True,
+        )
 
 
 def _set_status(event_id: int, status: str) -> None:

@@ -21,6 +21,7 @@ from app.services.authorization import ensure_event_access
 from app.services.drafts import discard_checkin_draft, upsert_checkin_draft
 from app.services.grading import apply_auto_grading
 from app.utils.helpers import (
+    public_form_definition,
     ensure_checkin_within_time,
     ensure_submission_stage,
     get_active_checkin,
@@ -83,7 +84,10 @@ def student_access_context(
     station = db.get(Station, checkin.station_id)
     student_media_assets = db.scalars(
         select(MediaAsset)
-        .where(MediaAsset.station_id == station.id, MediaAsset.target_viewer == "estudiante")
+        .where(
+            MediaAsset.station_id == station.id,
+            MediaAsset.target_viewer.in_(["estudiante", "ambos"]),
+        )
         .order_by(MediaAsset.created_at.asc(), MediaAsset.id.asc())
     ).all()
     # Scoped by mode: a pilotaje submission must not mark the station as
@@ -107,7 +111,7 @@ def student_access_context(
         "student_activity": station.student_activity,
         "pre_entry_instruction": station.pre_entry_instruction,
         "student_station_instruction": station.student_station_instruction,
-        "student_form_definition": station.student_form_definition,
+        "student_form_definition": public_form_definition(station.student_form_definition),
         "media_assets": [serialize_media_asset(asset) for asset in student_media_assets],
         "station_time_minutes": station.station_time_minutes,
         "confirmed_at": checkin.confirmed_at.isoformat(),
