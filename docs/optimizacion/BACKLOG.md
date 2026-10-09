@@ -98,7 +98,7 @@ Origen: `hallazgos/auditoria-proceso-ecoe__2026-10-09.md` (incluye la propuesta 
 | PROC-24 | Pausar en una transición y reanudar la convertía en fase de estación | alta | por lectura → test | S · migración | hecho en rama `proc/05` · desplegado 2026-10-09 |
 | COORD-1 | Señal de vida, verificación previa y tablero de estaciones en el panel en vivo | — | propuesta B.1/B.2 | M · migración | hecho en rama `proc/06` · desplegado 2026-10-09 |
 | COORD-2 | Pantalla Contingencia (transcripción de papel y rectificación) | — | zona sin cubrir | M | hecho en rama `proc/02` · desplegado 2026-10-09 |
-| ESPEJO-1 | Circuitos espejo de primera clase: crear/sincronizar el espejo, estaciones espejo de sólo diseño, validación que bloquea si no son idénticos, resultados y psicometría por estación de diseño | — | pedido del usuario 2026-10-09 | M · migración | hecho en rama `feat/circuitos-espejo` (sin merge) |
+| ESPEJO-1 | Circuitos espejo de primera clase: crear/sincronizar el espejo, estaciones espejo de sólo diseño, validación que bloquea si no son idénticos, resultados y psicometría por estación de diseño | — | pedido del usuario 2026-10-09 | M · migración | hecho y desplegado 2026-10-09 (`d5c7a20`), producción y demo |
 | COORD-3 | Plan de rotación generado por la plataforma | — | propuesta B.3 | M–L | pendiente |
 | COORD-4 | Respaldo automático frecuente durante la ejecución | — | propuesta B.6 | S · infraestructura | pendiente |
 
