@@ -11,12 +11,12 @@ import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 
 export default function PublicationPage() {
-  const { authenticated, eventId } = useECOE();
+  const { authenticated, eventId, refreshECOE } = useECOE();
   const { data, setData } = useApi(
     () => api.validation(eventId) as Promise<Record<string, unknown>>,
     [eventId, authenticated],
   );
-  const { data: ecoeEvent } = useApi(
+  const { data: ecoeEvent, setData: setEcoeEvent } = useApi(
     () => api.ecoe(eventId) as Promise<Record<string, unknown>>,
     [eventId, authenticated],
   );
@@ -76,6 +76,8 @@ export default function PublicationPage() {
               );
               const updatedValidation = (await api.validation(eventId)) as Record<string, unknown>;
               setData(updatedValidation);
+              setEcoeEvent({ ...ecoeEvent, status: "publicado" });
+              void refreshECOE();
               setMessage("ECOE publicado correctamente. La base operativa para la ejecución real ya quedó preparada.");
             } catch (publishError) {
               setMessage(
