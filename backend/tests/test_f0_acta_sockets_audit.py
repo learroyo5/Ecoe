@@ -132,3 +132,42 @@ def test_deleting_a_student_does_not_copy_rut_or_name_into_the_audit_log(auth_cl
         assert log is not None
         assert rut not in str(log.payload) and name not in str(log.payload)
         assert log.payload["ecoe_number"] == "001"
+
+
+# ── F0.6: uploads ─────────────────────────────────────────────────────
+
+
+@pytest.mark.usefixtures("demo_event_in_setup")
+def test_oversized_upload_is_rejected_without_reading_it_whole(auth_client, monkeypatch):
+    import app.api.routes.operational as routes
+
+    monkeypatch.setattr(routes, "MAX_MEDIA_SIZE_BYTES", 1024)
+    seen: list[int] = []
+    from starlette.datastructures import UploadFile as StarletteUploadFile
+
+    original = StarletteUploadFile.read
+
+    async def spy(self, size: int = -1):
+        seen.append(size)
+        return await original(self, size)
+
+    monkeypatch.setattr(StarletteUploadFile, "read", spy)
+    response = auth_client.post(
+        "/api/media/upload?ecoe_event_id=1&station_id=1",
+        files={"file": ("grande.png", b"\x89PNG\r\n\x1a\n" + b"0" * 5000, "image/png")},
+    )
+    assert response.status_code == 400
+    # Nunca se pidió el archivo completo: a lo más el límite + 1 byte.
+    assert seen and all(0 < size <= 1025 for size in seen)
+
+
+@pytest.mark.usefixtures("demo_event_in_setup")
+def test_media_is_served_with_nosniff(auth_client):
+    uploaded = auth_client.post(
+        "/api/media/upload?ecoe_event_id=1&station_id=1&target_viewer=evaluador",
+        files={"file": ("foto.png", b"\x89PNG\r\n\x1a\n" + b"0" * 20, "image/png")},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    served = auth_client.get(f"/api/media/file/{uploaded.json()['id']}")
+    assert served.status_code == 200
+    assert served.headers["x-content-type-options"] == "nosniff"

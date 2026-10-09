@@ -72,6 +72,18 @@ Nota: `backups/` es de root; un respaldo manual se escribe a traves del contened
 
 Pendiente: revisar `docs/AUDITORIA_SAAS_MULTIINSTITUCIONAL_ECOE.md` (auditoria de Codex para multi-institucion, sin seguimiento en git); plan de rotacion generado (COORD-3), respaldo frecuente en ejecucion (COORD-4), identificacion del estudiante en kiosco para estaciones sin evaluador (PROC-12), y los de severidad baja PROC-17/18/20. Para correr pytest en este servidor: contenedor `ecoe-backend` + pytest (no hay pytest en el host).
 
+## Sesion 2026-10-09 (d) — Plan SaaS y Fase 0 de integridad
+
+Auditoria de Codex agregada a git (`docs/AUDITORIA_SAAS_MULTIINSTITUCIONAL_ECOE.md`) y contrastada en `docs/optimizacion/PLANES/SAAS__multiinstitucional.md`. Decisiones del usuario: subdominio por institucion, cuentas locales, soporte solo con sesion temporal auditada, piloto en el servidor actual, `demo.ecoe.cl` por crear y, probablemente, un VPS dedicado por institucion (lo que vuelve innecesarias las fases de multi-tenant dentro de la app).
+
+Fase 0 implementada en `saas/f0-01-concurrencia`, `saas/f0-02-envios-idempotentes`, `saas/f0-03-acta-sockets-auditoria` y `saas/f0-04-operacion` (apiladas, **sin merge ni deploy**, 3 migraciones). Detalle y estado por tarea en el plan. Verificado: 527 tests backend en PostgreSQL, 139 frontend, e2e 4/4.
+
+Importante: la rama corrige una regresion de PROC-22 que **esta en produccion** (reconfirmar al mismo estudiante en su estacion le autoenvia la respuesta en blanco).
+
+Nuevos scripts: `scripts/backup_loop.sh` (lo usa `db-backup`: diario con archivos + cada 5 min con un ECOE en ejecucion) y `scripts/verify_backup.sh` (ensayo de restauracion en un PostgreSQL desechable, sin tocar produccion).
+
+Pendiente: F0.5 (minimo privilegio de secretos y proxies) y crear `demo.ecoe.cl`.
+
 ## Sesion 2026-06-03 — Evolucion v1 → v2
 
 Se completaron las 4 fases planificadas en `NEXT_STEPS.md`:

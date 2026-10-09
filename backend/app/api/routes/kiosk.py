@@ -367,4 +367,5 @@ def kiosk_media_file(
         path=asset.file_path,
         media_type=asset.content_type,
         filename=asset.original_name,
+        headers={"X-Content-Type-Options": "nosniff"},
     )

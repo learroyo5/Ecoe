@@ -411,7 +411,9 @@ async def upload_media(
     settings = get_settings()
     media_dir = Path(settings.storage_path) / "media"
     media_dir.mkdir(parents=True, exist_ok=True)
-    content = await file.read()
+    # F0.6 (H16): nunca se lee a memoria más que el máximo permitido + 1 byte;
+    # un archivo gigante se rechaza sin cargarlo completo.
+    content = await file.read(MAX_MEDIA_SIZE_BYTES + 1)
     if len(content) > MAX_MEDIA_SIZE_BYTES:
         raise HTTPException(
             status_code=400,
@@ -495,7 +497,11 @@ def delete_media(
 @router.get("/media/file/{asset_id}")
 def get_media_file(asset_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     asset = get_media_asset_for_user(db, user, asset_id)
-    return FileResponse(path=asset.file_path, media_type=asset.content_type, filename=asset.original_name)
+    return FileResponse(
+        path=asset.file_path, media_type=asset.content_type, filename=asset.original_name,
+        # El navegador no debe reinterpretar el tipo declarado (SVG, documentos).
+        headers={"X-Content-Type-Options": "nosniff"},
+    )
 
 
 # ── Validation ─────────────────────────────────────────────────────────

@@ -139,6 +139,28 @@ Esfuerzo: **M–L**. Prueba de carga con el tamaño real de un ECOE (pico de env
 
 Requiere revisión jurídica (Ley 21.719 entra en vigencia el 2026-12-01), contrato de tratamiento de datos, responsables de operación el día del examen y ensayo en el recinto.
 
+### Estado de la Fase 0 (2026-10-09)
+
+Implementada en cuatro ramas apiladas, **sin merge ni deploy** (incluyen 3 migraciones: `u1v2w3x4y5z6`, `v2w3x4y5z6a7`, `w3x4y5z6a7b8`). Verificación sobre la rama final: backend 527 tests en PostgreSQL con migraciones (eran 503), frontend 139 (eran 136), flujo dorado e2e 4/4.
+
+| Tarea | Estado | Rama |
+|---|---|---|
+| F0.1 Check-in concurrente | **Hecho.** Bloqueo por estación y estudiante + índices únicos parciales; carrera real probada con dos clientes en PostgreSQL. Incluye la corrección de una regresión de PROC-22 (ver abajo). | `saas/f0-01-concurrencia` |
+| F0.2 Envíos idempotentes y borradores ordenados | **Hecho** para kiosco, estudiante y evaluador. El borrador del *evaluador* no lleva número de orden (un solo dispositivo, riesgo menor). | `saas/f0-02-envios-idempotentes` |
+| F0.3 Acta versionada | **Hecho.** | `saas/f0-03-acta-sockets-auditoria` |
+| F0.4 Sockets y revocación | **Hecho** (revalidación cada 30 s). | idem |
+| F0.7 Auditoría sin datos personales de más | **Hecho** para el borrado de estudiantes. El correo del equipo se conserva en el rastro: es la identidad con que se asigna. | idem |
+| F0.6 Uploads | **Hecho** (lectura acotada + `nosniff`). | `saas/f0-04-operacion` |
+| F0.8 Recuperación | **Hecho en código y probado en stack desechable:** respaldo diario con archivos, volcado cada 5 min con un ECOE en ejecución, y `scripts/verify_backup.sh` (restauración ensayada sobre el respaldo real: 5 s). Se activa al desplegar (recrea `ecoe-db-backup`). | idem |
+| F0.9 CI | **Hecho:** job e2e en el workflow; se eliminó `store_contingency_export`. El job no se ha corrido aún en GitHub. | idem |
+| F0.5 Mínimo privilegio | **No hecho.** Quitarle al frontend el `.env` completo y acotar los proxies de confianza requiere conocer las variables de `backend/.env` y la red real del proxy; hacerlo a ciegas puede romper el login en producción. Pendiente de hacerlo con el usuario. | — |
+
+**Regresión corregida en F0.1.** Desde PROC-22 (desplegado el 2026-10-09), confirmar por segunda vez al mismo estudiante en su propia estación cerraba su ingreso y le autoenviaba la respuesta en blanco. El botón se deshabilita mientras confirma, así que un doble clic no lo dispara; sí lo hace volver a tipear el número de quien ya está confirmado. Está en producción hasta que se despliegue esta fase.
+
+### D4 explicada
+
+"Pérdida máxima tolerable" es cuánto trabajo se pierde si el servidor falla en pleno examen y hay que volver al último respaldo. Con un respaldo **diario**, una falla a las 11:00 obligaría a recuperar la copia de la noche anterior: se perdería todo lo evaluado esa mañana. Con un volcado **cada 5 minutos mientras hay un ECOE en ejecución** (F0.8), lo máximo que se pierde son los últimos 5 minutos. El intervalo es configurable (`LIVE_INTERVAL_SECONDS`).
+
 ## 6. Qué no haría
 
 - **`tenant_id` en una base compartida.** Obligaría a revisar cada consulta del producto y un filtro olvidado mezcla instituciones.

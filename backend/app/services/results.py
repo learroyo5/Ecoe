@@ -1290,18 +1290,3 @@ def export_contingency_pdf(db: Session, ecoe_event_id: int, station_id: int | No
     pdf.showPage()
     pdf.save()
     return buffer.getvalue()
-
-
-def store_contingency_export(db: Session, ecoe_event_id: int, export_type: str, content: bytes) -> str:
-    settings = get_settings()
-    output_dir = Path(settings.storage_path) / "exports"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / f"{export_type}-{ecoe_event_id}.bin"
-    path.write_bytes(content)
-    db.add(ContingencyExport(
-        ecoe_event_id=ecoe_event_id,
-        export_type=export_type,
-        file_path=str(path),
-    ))
-    db.commit()
-    return str(path)
