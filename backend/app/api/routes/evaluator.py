@@ -26,6 +26,7 @@ from app.services.authorization import ensure_event_access
 from app.services.live_sweep import finalize_checkin_response, sweep_expired_phases
 from app.services.live_cycle import advance_if_expired
 from app.services.drafts import discard_checkin_draft
+from app.services.presence import touch_last_seen
 from app.services.grading import ensure_score_matches_breakdown, evaluator_score_from_answers
 from app.utils.helpers import (
     current_rotation_started_at,
@@ -87,6 +88,8 @@ def evaluator_context(
             db.add(assignment)
             db.commit()
             db.refresh(assignment)
+        if assignment:
+            touch_last_seen(db, assignment)
         assigned_stations = (
             db.scalars(
                 select(Station)

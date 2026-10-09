@@ -75,6 +75,7 @@ _SWEEP_TIMER_ACTIONS = {"start", "reset", "next_transition", "expire_phase"}
 logger = logging.getLogger("ecoe.operational")
 
 from app.services.event_lock import ensure_structure_editable
+from app.services.presence import build_station_board
 
 router = APIRouter()
 
@@ -173,6 +174,22 @@ def get_live_panel(ecoe_event_id: int, db: Session = Depends(get_db), user=Depen
         sweep_expired_phases(db, ecoe_event)
     db.refresh(session)
     return live_session_state(session)
+
+
+@router.get("/live/{ecoe_event_id}/board")
+def get_station_board(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Tablero de estaciones + verificación previa para coordinación: por
+    estación, evaluador y kiosco (asignados, con señal reciente), estudiante
+    confirmado y si ya hay evaluación / respuesta. Sólo lectura."""
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.admin_ecoe.value,
+                        RoleCode.coeditor_docente.value,
+                        RoleCode.coordinador_operativo.value,
+                        RoleCode.cronometrador.value)
+    ecoe_event = db.get(ECOEEvent, ecoe_event_id)
+    if ecoe_event is None:
+        raise HTTPException(status_code=404, detail="ECOE no encontrado")
+    return build_station_board(db, ecoe_event)
 
 
 @router.post("/live/control")

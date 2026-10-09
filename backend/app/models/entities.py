@@ -207,6 +207,9 @@ class StaffAssignment(Base, TimestampMixin):
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     role_code: Mapped[str] = mapped_column(String(64), nullable=False)
     station_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+    # Última vez que esta persona abrió su pantalla operativa en el evento
+    # (señal de vida para el tablero); se actualiza como mucho cada 15 s.
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     ecoe_event: Mapped["ECOEEvent"] = relationship(back_populates="staff_assignments")
 
@@ -521,6 +524,9 @@ class StationKioskSession(Base, TimestampMixin):
     issued_by_email: Mapped[str] = mapped_column(String(255), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Última vez que la tablet consultó su contexto (señal de vida para el
+    # tablero de estaciones); se actualiza como mucho cada 15 s.
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class StationCheckIn(Base, TimestampMixin):

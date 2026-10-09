@@ -246,6 +246,9 @@ export const api = {
       { method: "POST", body: JSON.stringify(payload) },
     ),
 
+  liveBoard: (eventId: number) =>
+    request<import("@/components/station-board").StationBoard>(`/live/${eventId}/board`),
+
   // Student access
   studentAccess: (payload: { ecoe_event_id: number; ecoe_number: string }) =>
     request<StudentAccessContext>("/student/access", { method: "POST", body: JSON.stringify(payload) }),
