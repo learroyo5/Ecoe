@@ -1,273 +1,171 @@
-# Plan de Pruebas de Flujo ECOE
+# Plan de pruebas de flujo ECOE
 
-> **Nota (2026-10-09).** Este plan es anterior al rediseño de la intranet y a las correcciones de proceso: los nombres del menú cambiaron (Dashboard → Inicio, ECOE → Datos del ECOE, Evaluadores → Equipo) y hay pantallas y reglas nuevas (Kioscos, Contingencia, circuitos espejo, cierre con completitud). Usar junto con `MANUAL_USUARIO.md` y `docs/OPERACION_DIA_EXAMEN.md`.
+Actualizado el 2026-10-09 para la plataforma tal como está desplegada (navegación nueva, candados por estado, circuitos espejo, contingencia, cierre con completitud).
 
 ## Objetivo
 
-Validar el piloto funcional del sistema actual de ECOE de punta a punta, detectando quiebres de flujo, ambiguedades operativas, validaciones faltantes y necesidades de pulido UX antes de una fase de uso mas amplia.
+Validar el núcleo de punta a punta antes de un examen real: que cada persona entienda qué hacer, que el sistema bloquee lo que está fuera de secuencia, y que **no se pierda ni se atribuya mal** ningún dato.
 
-Este plan prioriza:
+Las pruebas automáticas (545 backend, 143 frontend, flujo dorado e2e) cubren las reglas una a una. Este plan cubre lo que ellas no ven: personas reales, varias pantallas a la vez, tablets, red del recinto y errores humanos.
 
-- seguridad operativa
-- claridad de uso
-- consistencia entre roles
-- trazabilidad
-- capacidad real de ejecucion
+## Dónde probar
 
-## Alcance de esta ronda
+| Entorno | Para qué | Cuidado |
+|---|---|---|
+| `https://demo.ecoe.cl` | Recorrer pantallas con datos ya cargados (un ECOE en ejecución en espejo y otro cerrado) | Se puede recargar con `./scripts/demo_reset.sh` |
+| `https://app.ecoe.cl` | Armar un ECOE desde cero, como se hará de verdad | Hoy tiene un ECOE de prueba con dos circuitos armados a mano: rehacerlo como espejo o crear uno nuevo |
 
-Se prueba el sistema actual centralizado, no la arquitectura hibrida futura.
+Usar siempre datos ficticios.
 
-Se consideran estos roles:
+## Roles a cubrir
 
-- creador ECOE
-- coordinador operativo
-- evaluador
-- estudiante
+Administración del ECOE, coeditor, coordinación operativa, cronometrador, evaluador (al menos dos, en estaciones distintas), corrector y estudiante. Cada ronda indica con qué rol se hace.
 
-## Preparacion previa
+## Criterios de aprobación
 
-Antes de iniciar una ronda de pruebas, confirmar:
+Una prueba se aprueba si:
 
-1. el stack esta arriba
-2. existe un ECOE activo de prueba
-3. hay estudiantes cargados y numerados
-4. hay evaluadores cargados y asignados
-5. hay al menos:
-   - una estacion con pauta de evaluacion
-   - una estacion con formulario del estudiante
-   - una estacion con multimedia
-   - una estacion con paciente simulado, si aplica
+- la persona entiende qué hacer sin ayuda;
+- el sistema impide lo que está fuera de secuencia y explica por qué;
+- lo guardado sigue visible tras recargar la página o cambiar de pantalla;
+- cada registro queda asociado al estudiante, estación y circuito correctos;
+- un error humano típico tiene vuelta atrás dentro de la plataforma.
 
-## Criterios globales de aprobacion
+## Cómo registrar un hallazgo
 
-Una prueba se considera aprobada si:
+Pantalla · rol · qué se esperaba · qué ocurrió · severidad (crítica, alta, media, baja). Adjuntar captura si se puede.
 
-- el usuario entiende que hacer sin asistencia adicional
-- el sistema bloquea acciones fuera de secuencia
-- los datos guardados quedan visibles y trazables despues
-- no se pierde informacion por recarga o navegacion accidental
-- el resultado final queda asociado al estudiante, estacion y contexto correctos
+**Se corrige antes de dar por estable el núcleo** todo hallazgo que comprometa la identidad del estudiante, la asociación de respuestas, la secuencia de ejecución o cause pérdida de información.
 
-## Ronda 1. Constructor de estaciones
+---
 
-### Objetivo
+## Ronda 1 — Configurar el ECOE y sus estaciones
 
-Confirmar que la pantalla principal de construccion permite crear estaciones completas, reutilizables y coherentes.
+Rol: administración global (crear) y administración del ECOE o coeditor (resto).
 
-### Casos de prueba
+1. **Crear el ECOE** desde Datos del ECOE → «+ Nuevo ECOE». Queda en Borrador y seleccionado. Verificar que un usuario que no es administración global no ve ese botón.
+2. **Pasar a En configuración** y revisar que Inicio muestre la fase y el siguiente paso.
+3. **Crear una estación desde cero** en el Constructor: identidad, pauta (crear una nueva y también reutilizar una existente), instrucciones, recursos. Guardar, salir y volver: todo debe reaparecer.
+4. **Estación con formulario**: preguntas de selección única y múltiple con puntos y respuesta correcta, y una de texto con puntos (corrección diferida).
+5. **Estación con multimedia**: subir un archivo para el estudiante y otro para el evaluador.
+6. **Crear una estación desde el banco** y verificar que copia el contenido.
+7. **Salir del Constructor con cambios sin guardar**: debe advertir.
+8. **Cambiar los tiempos del ECOE** (probar fracción de minuto) y verificar que las estaciones los reflejan.
 
-1. Crear estacion nueva desde cero
-   - definir origen
-   - definir identidad pedagogica
-   - definir instrucciones
-   - crear pauta o asociar pauta existente
-   - crear formulario del estudiante si aplica
-   - cargar multimedia si aplica
-   - guardar
+Buscar: etiquetas poco claras, campos que se pierden al guardar, orden poco lógico.
 
-2. Crear estacion desde banco
-   - abrir banco
-   - seleccionar una estacion base
-   - revisar que copie contenido esperado
-   - ajustar sin perder integridad
-   - guardar en ECOE
+## Ronda 2 — Circuito espejo
 
-3. Editar estacion existente
-   - abrir desde listado
-   - modificar campos clave
-   - guardar
-   - verificar que los cambios reaparezcan correctamente
+Rol: administración del ECOE o coeditor.
 
-4. Validar tiempos globales del ECOE
-   - cambiar tiempo de estacion
-   - usar fraccion de minuto
-   - verificar sincronizacion con estaciones
+1. Con las estaciones ya diseñadas en «Circuito A», usar **Crear circuito espejo**. Deben aparecer las mismas estaciones en «Circuito B», marcadas «Espejo».
+2. **Editar una estación original** (por ejemplo, la guía del evaluador) y comprobar que su espejo cambió igual.
+3. **Intentar editar o borrar una estación espejo**: no debe ofrecerlo; el botón lleva a la original.
+4. **Agregar una estación nueva al circuito A**: Validación y Estaciones deben avisar que al espejo le falta; **Sincronizar espejo** lo corrige.
+5. **Eliminar el circuito espejo** y volver a crearlo.
+6. Negativo: crear a mano una estación con circuito «Circuito C» sin usar el espejo → Validación debe bloquear pilotaje y publicación.
 
-### Hallazgos a buscar
+Buscar: cualquier forma de que 1A y 1B queden distintas.
 
-- etiquetas poco claras
-- duplicidad conceptual entre campos
-- faltan botones de guardado intermedio
-- orden poco logico
-- componentes que desaparecen o se cierran sin confirmacion
+## Ronda 3 — Estudiantes y equipo
 
-## Ronda 2. Datos base y asignaciones
+Rol: administración del ECOE.
 
-### Objetivo
+1. **Importar estudiantes** con la plantilla, indicando el circuito de cada uno. Reimportar el mismo archivo: no debe duplicar.
+2. **Alta manual**, suspender, reactivar, renumerar, limpiar duplicados.
+3. **Invitar al equipo**: una persona con cuenta existente y otra nueva (debe recibir correo y activar su cuenta definiendo su contraseña). Probar **Reiniciar acceso**.
+4. **Asignar evaluador a cada estación de cada circuito**. Un evaluador debe quedar con una sola estación.
+5. **Asignar un corrector** a la estación de corrección diferida (en espejo, a ambas).
+6. Entrar como evaluador: debe llegar directo a su pantalla y ver sólo su estación.
 
-Confirmar que estudiantes y evaluadores quedan bien cargados, sin duplicados y listos para uso real.
+Buscar: correlativos inconsistentes, asignaciones ambiguas, correos que no llegan.
 
-### Casos de prueba
+## Ronda 4 — Validación, pilotaje y publicación
 
-1. Cargar estudiantes por archivo
-   - usar plantilla
-   - verificar correlativos
-   - reimportar archivo
-   - confirmar no duplicacion por RUT
+Rol: administración del ECOE o coeditor; coordinación para el ensayo.
 
-2. Gestionar estudiantes
-   - suspender
-   - reactivar
-   - borrar con confirmacion
-   - renumerar
+1. **Validación**: provocar un bloqueo (quitar el evaluador de una estación) y verificar que impide avanzar y enlaza a dónde se corrige.
+2. **Pilotaje individual** de una estación. Luego **circuito completo** (debe exigir que exista antes un pilotaje individual).
+3. **Ensayar con el Panel en vivo y con transición**, igual que el día real. Todo lo registrado debe quedar como pilotaje y **no aparecer en Resultados**.
+4. Registrar hallazgos del pilotaje y **Validar pilotaje** (revisar las advertencias del análisis).
+5. **Publicar**. Verificar que desde ese momento Estaciones, tiempos, y borrar/renumerar estudiantes quedan bloqueados, con el aviso correspondiente.
+6. **Despublicar**, corregir algo y volver a publicar.
 
-3. Cargar evaluadores por archivo
-   - usar plantilla
-   - reimportar archivo
-   - confirmar no duplicacion por correo
+Buscar: estados que no cambian aunque la acción se complete, mensajes poco claros, algo editable que debería estar bloqueado.
 
-4. Asignar evaluador principal a estacion
-   - revisar una sola estacion principal por evaluador
-   - confirmar que el evaluador luego vea solo su estacion
+## Ronda 5 — Día del examen (la más importante)
 
-### Hallazgos a buscar
+Hacerla con varias personas y dispositivos a la vez, en la red del recinto si es posible.
 
-- datos duplicados
-- correlativos inconsistentes
-- estados visualmente poco claros
-- asignaciones ambiguas o multiples
+**Montaje**
 
-## Ronda 3. Validacion, pilotaje y publicacion
+1. En **Kioscos**, generar todos los enlaces y abrir cada uno en su tablet. Cada tablet debe quedar esperando con el nombre correcto de estación.
+2. En el **Panel en vivo**, la sección «Estaciones en vivo» debe mostrar evaluadores y tablets conectados y la verificación previa en «todo listo». Apagar una tablet: debe pasar a «sin conexión» en menos de un minuto.
+3. Pasar a **En ejecución**. El cronómetro debe partir limpio (estación 1), aunque el pilotaje haya terminado en otra.
 
-### Objetivo
+**Rotación normal**
 
-Confirmar que el sistema no deja avanzar a etapas superiores sin completar los requisitos.
+4. El evaluador confirma por Número ECOE (probar `7`, `007` y `E007`), evalúa y guarda. La pantalla queda lista para el siguiente.
+5. En una estación con formulario, el estudiante responde en la tablet y envía.
+6. **Confirmar al siguiente estudiante durante la transición**: no debe perder su estación ni su tiempo.
+7. Correr al menos **dos rotaciones completas** y, si se usa, el **circuito automático** con su pausa entre rondas.
+8. En espejo: operar los dos circuitos en paralelo.
 
-### Casos de prueba
+**Errores a provocar a propósito**
 
-1. Revisar validacion
-   - identificar blockers
-   - identificar warnings
-   - verificar detalle por estacion
+9. **Número mal tipeado** de alguien que está en otra estación → debe avisar antes de confirmar.
+10. **Estudiante del otro circuito** → debe avisar.
+11. **Confirmar al equivocado y anular el ingreso**; confirmar luego al correcto.
+12. **Reconfirmar al mismo estudiante** en su estación → no debe pasar nada malo.
+13. **Doble toque en Enviar** y **reintento con mala red** → un solo registro, sin mensaje de error.
+14. **Apagar una tablet a mitad de estación**: al terminar la fase, lo que el estudiante alcanzó a escribir debe quedar guardado.
+15. **Pausar** en plena estación y reanudar; **pausar durante una transición** y reanudar (debe seguir siendo transición).
+16. **Cortar el wifi** de una estación un par de minutos y volver.
+17. **Suspender la cuenta de un evaluador** desde Usuarios: su pantalla debe dejar de recibir el cronómetro.
+18. Intentar **editar una estación** con el examen corriendo → bloqueado.
 
-2. Pilotear una estacion
-   - elegir una estacion lista
-   - crear pilotaje individual
-   - revisar que quede registrado
+**Contingencia**
 
-3. Intentar pilotear circuito completo sin prerrequisito
-   - debe bloquearse si no hubo pilotaje individual previo
+19. Una estación «en papel»: transcribir la respuesta del estudiante por **Contingencia** (debe reemplazar el autoenvío en blanco).
+20. **Rectificar** una evaluación mal enviada, con motivo.
+21. Registrar y resolver una **incidencia**.
 
-4. Pilotear circuito completo
-   - hacerlo cuando ya exista pilotaje individual
-   - revisar registro correcto
+Buscar: respuestas asociadas al estudiante equivocado, registros duplicados o perdidos, cronómetros que no coinciden entre pantallas, problemas en tablet.
 
-5. Publicar ECOE
-   - verificar que solo se habilite cuando corresponde
-   - revisar cambio de estado
-   - revisar creacion de sesion en vivo
+## Ronda 6 — Cierre y resultados
 
-### Hallazgos a buscar
+Rol: administración del ECOE; corrector.
 
-- validaciones incompletas
-- errores de secuencia
-- estados que no cambian aunque la accion se complete
-- mensajes poco claros
+1. **Corrección diferida**: el corrector puntúa las respuestas de texto.
+2. **Cerrar con estudiantes incompletos**: debe detenerse y listarlos. Probar las tres salidas: contingencia, suspender al ausente, y cerrar de todas formas (las faltantes cuentan 0).
+3. Tras cerrar: nada debe poder editarse ni registrarse.
+4. **Resultados**:
+   - *Notas*: estaciones rendidas sobre esperadas; comprobar a mano la nota de dos estudiantes.
+   - *Por estación*: en espejo, una fila por estación con el promedio de cada circuito.
+   - *Análisis*, *Trazabilidad* y *Actividad*.
+5. **Exportar Excel** y revisar que cuadre con la pantalla.
+6. **Reabrir ejecución** con motivo (sólo administración del ECOE; un coeditor no debe poder). Ingresar algo por contingencia, cerrar de nuevo y verificar que aparece «Actas anteriores».
+7. **Archivar**: ya no debe ofrecer ninguna acción.
 
-## Ronda 4. Flujo operativo evaluador-estudiante
+Buscar: diferencias entre lo ejecutado y lo registrado, exportaciones incompletas, notas que no se explican.
 
-### Objetivo
+## Ronda 7 — Operación del servidor
 
-Confirmar que el flujo real de estacion evita errores de identidad y de asociacion de respuestas.
+Rol: quien administra el servidor.
 
-### Casos de prueba
+1. `./scripts/verify_backup.sh` debe restaurar el último respaldo y listar el contenido.
+2. Con un ECOE en ejecución, comprobar que aparecen volcados nuevos en `backups/live/` cada 5 minutos.
+3. `./scripts/deploy.sh` actualiza producción y demo; ambos responden después.
+4. `./scripts/demo_reset.sh` deja el demo recién cargado.
 
-1. Ingreso del evaluador
-   - debe entrar directo a su vista
-   - no debe ver gestion avanzada
+---
 
-2. Confirmacion de estudiante por Numero ECOE
-   - probar ingreso con y sin ceros a la izquierda
-   - verificar que aparezcan numero y nombre
+## Orden sugerido
 
-3. Vista estudiante
-   - debe activarse solo despues de confirmacion
-   - debe mostrar instrucciones dentro de la estacion
-   - debe mostrar multimedia y formulario si aplican
+1. Rondas 1 a 3 (configurar).
+2. Ronda 4 (pilotaje), que ya ejercita buena parte de la 5.
+3. Ronda 5 completa con el equipo, idealmente en el recinto.
+4. Ronda 6.
+5. Ronda 7 en cualquier momento.
 
-4. Envio del estudiante
-   - una sola respuesta
-   - limpieza posterior del formulario
-   - retorno a estado inicial
-
-5. Envio del evaluador
-   - una sola evaluacion
-   - confirmacion previa
-   - retorno a identificacion de siguiente estudiante
-
-### Hallazgos a buscar
-
-- respuestas asociadas al estudiante equivocado
-- posibilidad de reenviar o sobreescribir
-- cronometro inconsistente
-- fallas en tablet o pantallas estrechas
-
-## Ronda 5. Live, resultados y trazabilidad
-
-### Objetivo
-
-Confirmar que la operacion queda visible y auditable despues de ejecutarse.
-
-### Casos de prueba
-
-1. Revisar panel live
-   - iniciar
-   - pausar
-   - reanudar
-   - transicionar
-   - resetear
-
-2. Revisar resultados
-   - puntajes por estudiante
-   - maximos y porcentajes
-   - exportacion
-
-3. Revisar trazabilidad
-   - check-ins
-   - evaluaciones
-   - respuestas del estudiante
-   - actividad reciente
-   - trazabilidad por estacion
-
-### Hallazgos a buscar
-
-- diferencias entre lo ejecutado y lo registrado
-- estaciones sin evidencia visible
-- estudiantes con registros incompletos
-- exportaciones incompletas o inconsistentes
-
-## Prioridad para esta semana
-
-Orden sugerido de trabajo:
-
-1. constructor de estaciones
-2. asignaciones y datos base
-3. validacion, pilotaje y publicacion
-4. flujo evaluador-estudiante
-5. live, resultados y trazabilidad
-
-## Como registrar hallazgos
-
-Cada hallazgo deberia anotar al menos:
-
-- modulo o pantalla
-- rol usado
-- que se esperaba
-- que ocurrio realmente
-- severidad:
-  - critica
-  - alta
-  - media
-  - baja
-
-## Regla de decision
-
-Si un hallazgo compromete:
-
-- identidad del estudiante
-- asociacion correcta de respuestas
-- secuencia de ejecucion
-- perdida de informacion
-
-entonces debe corregirse antes de dar por estable el piloto funcional.
+Complementos: `MANUAL_USUARIO.md` (uso de cada pantalla) y `docs/OPERACION_DIA_EXAMEN.md` (lista de verificación del día).

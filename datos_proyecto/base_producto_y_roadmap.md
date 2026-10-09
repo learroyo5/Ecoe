@@ -2,6 +2,8 @@
 
 Documento maestro de referencia para el proyecto `ECOE Digital`.
 
+> Revisado el 2026-10-09. Las secciones 1 a 3 conservan la visión original. Desde la 4 se describe el estado real y se contrasta esa visión con las decisiones tomadas en octubre de 2026.
+
 Su objetivo es reemplazar la dispersion de documentos fundacionales y dejar una sola base clara para:
 
 - vision del producto
@@ -45,197 +47,90 @@ El producto busca reemplazar:
 
 ## 4. Prioridad real actual
 
-La prioridad inmediata del proyecto no es construir ya la arquitectura hibrida completa, sino dejar muy solido el nucleo funcional actual para un `piloto funcional del sistema`.
+La prioridad sigue siendo la que se fijó al comienzo: **dejar muy sólido el núcleo antes de construir más arquitectura**. En palabras del propietario (2026-10-09): todo depende de que el núcleo funcione sin errores ni pérdida de datos, con flujos probados de punta a punta.
 
-Decision actual:
+Lo inmediato:
 
-- primero consolidar muy bien el sistema operativo actual
-- despues separar y endurecer `Runner` como derivacion natural del nucleo ya probado
+1. Pruebas del propietario y su equipo sobre el núcleo (`plan_pruebas_flujo.md`).
+2. Lo que el día del examen aún se organiza fuera de la plataforma: plan de rotación, reparto de estudiantes por circuito, estaciones sin evaluador.
+3. Convertir la instancia demo en un molde para dar de alta instituciones.
 
-Esto implica que hoy la prioridad es:
-
-1. constructor de estaciones
-2. flujo evaluador
-3. flujo estudiante
-4. pilotaje
-5. live panel
-6. resultados
-7. validaciones previas
-8. multimedia y formularios
+Detalle y orden: `../NEXT_STEPS.md`.
 
 ## 5. Estado actual del sistema
 
-Hoy existe una plataforma unificada funcional que ya cubre gran parte del `Studio` y parte del runtime.
+Existe una plataforma unificada, en producción (`app.ecoe.cl`) y con una instancia de demostración (`demo.ecoe.cl`), que cubre el ciclo completo. No ha corrido todavía un examen real con estudiantes.
 
-### Ya implementado con base util
+### Implementado
 
-- autenticacion y roles
-- gestion de ECOE
-- estudiantes:
-  - carga manual
-  - importacion
-  - deduplicacion
-  - suspension/reactivacion
-  - correlativo ECOE
-- evaluadores:
-  - carga manual
-  - importacion
-  - deduplicacion
-  - estacion principal asignada
-- constructor de estaciones:
-  - estructura pedagogica y operativa
-  - instrumentos
-  - formulario del estudiante
-  - multimedia por estacion
-  - paciente simulado
-- pilotaje
-- panel live
-- evaluador:
-  - check-in por numero ECOE
-  - pauta dinamica
-  - una sola evaluacion
-  - vista optimizada para tablet
-- estudiante:
-  - verificacion por numero ECOE
-  - formulario dinamico
-  - multimedia visible
-  - reloj
-  - autosave y autoenvio
-- resultados y exportaciones
+- **Cuentas y roles**: globales y por evento, invitación por correo, suspensión con revocación de sesiones.
+- **Ciclo del ECOE** con máquina de estados en el servidor y candados: la estructura se congela al publicar; nada cambia tras el cierre salvo una reapertura explícita y auditada.
+- **Estudiantes y equipo**: carga manual e importación, numeración, deduplicación, suspensión; evaluadores con estación principal, correctores con varias.
+- **Constructor de estaciones**: estructura pedagógica, pautas, formulario del estudiante con autocorrección, multimedia por audiencia, paciente simulado, banco reutilizable.
+- **Circuitos espejo**: se diseña un circuito y se genera su copia idéntica; análisis por estación de diseño.
+- **Validación y pilotaje** con registros aislados de la ejecución real y análisis del ensayo.
+- **Día del examen**: cronómetro central con autoridad en el servidor (manual o circuito automático por rondas), timbre, tablero de estaciones con verificación previa, incidencias, kiosco por estación, pantalla de evaluador con check-in y avisos de identidad.
+- **Resguardo de datos**: borradores en el servidor, autoenvío al vencer la fase, envíos idempotentes, un solo ingreso activo garantizado por la base, respaldo cada 5 minutos durante un examen y restauración ensayada.
+- **Contingencia**: transcripción del papel y rectificación con auditoría.
+- **Cierre y resultados**: corrección diferida, cierre que exige completitud, acta congelada con versiones, trazabilidad, análisis psicométrico, exportación.
 
-### Implementado de forma operativa pero aun parcial
+### Operativo pero parcial
 
-- multimedia avanzada
-- validacion previa
-- robustez de estados
-- contingencia
-- trazabilidad
-- experiencia de publicacion
+- **Plan de rotación**: la plataforma calcula rondas, pero no genera quién parte en qué estación.
+- **Estaciones sin evaluador**: requieren que coordinación confirme a cada estudiante.
+- **Multimedia avanzada**: controles de reproducción y momento de exhibición.
+- **Evaluación diferida de entregables** (procedimientos grabados, documentos): sólo diseñada.
+- **Operación institucional**: sin SSO ni MFA, sin separación entre operador central y administrador de institución, un solo servidor para producción, demo y pruebas.
 
-## 6. Principal brecha respecto de la vision original
+## 6. Brecha respecto de la visión original
 
-La mayor diferencia con la base fundacional no esta en las pantallas actuales, sino en la arquitectura.
+La visión describe tres piezas: `Studio` (autoría y análisis en la web), `Runner` (ejecución local, independiente de internet) y `Sync` (intercambio entre ambos).
 
-### Lo que aun no existe
+- **`Studio`** está cubierto por la plataforma actual.
+- **`Runner` y `Sync` no existen**: no hay ejecución local sin internet, ni paquetes de exportación e importación, ni manifiesto versionado, firma o licencia offline.
 
-- `Runner` separado
-- `Sync` separado
-- paquete Studio -> Runner
-- paquete Runner -> Studio
-- manifest versionado
-- hash y firma
-- licenciamiento offline
-- importacion/exportacion formal de publicaciones y resultados
+Hoy **el examen depende de internet en el recinto y del servidor**. Lo que se hizo para reducir ese riesgo no reemplaza a un `Runner`, lo mitiga:
 
-## 7. Diagnostico actual
+- el reloj y los plazos viven en el servidor, no en cada navegador;
+- lo que el estudiante y el evaluador escriben se guarda en el servidor mientras lo escriben;
+- una tablet que se cae no pierde lo ya guardado, y el envío se cierra solo al terminar la fase;
+- la contingencia permite seguir en papel y transcribir después;
+- respaldo frecuente durante el examen.
 
-### Respecto al piloto funcional del sistema actual
+Un corte de internet prolongado en el recinto sigue obligando a operar en papel.
 
-Estamos bien encaminados.
+## 7. Decisión abierta: `Runner` o instancias en línea
 
-El proyecto ya tiene una base suficientemente real para:
+En octubre de 2026 el propietario definió el camino multiinstitucional: **un mismo núcleo con una base de datos independiente por institución**, cada una en su subdominio, con cuentas locales y cambios del núcleo que llegan a todas (plan en `../docs/optimizacion/PLANES/SAAS__multiinstitucional.md`; `demo.ecoe.cl` es la primera instancia de ese tipo).
 
-- construir estaciones
-- asignar evaluadores
-- confirmar estudiantes
-- ejecutar respuestas y evaluaciones
-- usar multimedia
-- pilotear flujo operativo
+Ese camino es **en línea**. No contradice la visión, pero tampoco avanza hacia el `Runner`. Queda por decidir cuál de estas dos direcciones se toma para la resiliencia del día del examen:
 
-### Respecto al producto hibrido completo
+| Opción | Qué implica | Cuándo conviene |
+|---|---|---|
+| Mantener todo en línea | Exigir en cada recinto red probada y un respaldo (por ejemplo 4G), más el papel como último recurso | Si las instituciones tienen conectividad confiable; es lo más simple de operar y mantener |
+| Instancia local en el recinto | Llevar la misma imagen a un equipo dentro de la red del recinto para el día del examen y sincronizar después. Es el `Runner` de la visión, y exige resolver el `Sync` | Si hay recintos sin internet confiable o instituciones que lo pidan como requisito |
 
-Todavia hay una distancia importante.
+Mientras no se decida, no se construye nada del `Runner`. Lo ya hecho (misma imagen para toda instancia, base independiente, respaldo y restauración por instancia) sirve a ambas opciones.
 
-La vision completa de `Studio + Runner + Sync` todavia no esta materializada como arquitectura.
+## 8. Diagnóstico actual
 
-## 8. Estrategia recomendada
+- **Núcleo funcional**: completo para el ciclo de un ECOE, incluido el caso en espejo. La auditoría de proceso de octubre encontró y corrigió fallas que habrían afectado un examen real (pérdida de la estación al confirmar durante la transición, clave de respuestas expuesta, errores de identidad sin vuelta atrás).
+- **Evidencia**: pruebas automáticas amplias y un flujo de punta a punta, pero **ningún examen real** todavía. La confianza final sólo la dan las pruebas con personas, dispositivos y la red del recinto.
+- **Producto comercial**: falta la operación institucional (aislamiento por institución en serie, soporte, protección de datos, staging).
 
-### Etapa 1: consolidacion del nucleo actual
+## 9. Estrategia
 
-Objetivo:
+1. **Consolidación** — en curso. Termina cuando el plan de pruebas se complete sin hallazgos críticos y se haya corrido un ECOE real o un ensayo general equivalente.
+2. **Operación por institución** — convertir el demo en molde: alta de una institución como una instancia más, con su respaldo y su marca.
+3. **Endurecimiento institucional** — auditoría de accesos, soporte con sesión temporal, protección de datos (Ley 21.719 desde 2026-12-01), staging separado.
+4. **Resiliencia del recinto** — según la decisión de la sección 7.
 
-- convertir el sistema actual en una plataforma muy estable para piloto real
+El roadmap por sprints que tenía este documento quedó superado: lo que proponía (constructor, validaciones, pilotaje, panel en vivo, contingencia, resultados y trazabilidad) está hecho. El trabajo vigente se lleva en `../NEXT_STEPS.md` y `../docs/optimizacion/BACKLOG.md`.
 
-Focos:
+## 10. Regla de decisión
 
-- pulir constructor de estaciones
-- cerrar mejor formularios y pautas
-- pulir multimedia
-- endurecer check-in y runtime
-- mejorar pilotaje y live
-- mejorar resultados y estados
-- validar mejor antes de publicar o ejecutar
+Mientras las pruebas sigan mostrando fricciones o riesgos en la construcción y la operación de un examen, el esfuerzo principal va ahí. Arquitectura nueva (varias instituciones en un solo proceso, `Runner`) sólo cuando el núcleo esté probado con personas.
 
-### Etapa 2: separacion arquitectonica
+## 11. Conclusión
 
-Objetivo:
-
-- desprender `Runner` a partir de un nucleo ya funcional y probado
-
-Focos:
-
-- contrato de paquete
-- exportador Studio
-- importador Runner
-- exportador de resultados local
-- importador de retorno en Studio
-
-### Etapa 3: endurecimiento institucional
-
-Objetivo:
-
-- llevar el producto hacia una version defendible institucionalmente
-
-Focos:
-
-- versionado
-- firma
-- hash
-- licencia
-- auditoria
-- trazabilidad
-
-## 9. Roadmap de trabajo sugerido
-
-### Sprint 1
-
-- terminar pulido del constructor de estaciones
-- ordenar mejor plantillas, instrumentos y formularios
-- cerrar UX multimedia
-- fortalecer validaciones previas
-
-### Sprint 2
-
-- endurecer pilotaje
-- endurecer panel live
-- mejorar estados operativos
-- reforzar contingencia y persistencia
-
-### Sprint 3
-
-- mejorar resultados y trazabilidad
-- revisar checklist de publicacion interna
-- preparar especificacion del paquete Studio -> Runner
-
-### Sprint 4
-
-- primer exportador de paquete
-- primer importador local
-- esqueleto real de `Runner`
-
-## 10. Regla de decision
-
-Mientras el piloto funcional actual siga mostrando fricciones visibles en construccion y operacion, el esfuerzo principal debe ir ahi.
-
-La arquitectura hibrida completa no se abandona, pero se posterga hasta tener un nucleo operativo realmente pulido y confiable.
-
-## 11. Conclusion
-
-La direccion correcta hoy es esta:
-
-- consolidar el producto que ya existe
-- probarlo
-- pulirlo
-- y luego separar `Runner` sobre una base ya validada
-
-Eso permite avanzar con sentido practico, sin traicionar la vision original del proyecto.
+La dirección se mantiene: consolidar lo que existe, probarlo con el equipo y recién entonces ampliar. Lo que cambió respecto de la visión original es que la ampliación más cercana ya no es el `Runner`, sino atender a varias instituciones con el mismo núcleo; el `Runner` queda como una decisión abierta, no descartada.
