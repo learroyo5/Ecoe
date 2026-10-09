@@ -26,6 +26,7 @@ from app.services.authorization import ensure_event_access
 from app.services.live_sweep import finalize_checkin_response, sweep_expired_phases
 from app.services.live_cycle import advance_if_expired
 from app.services.drafts import discard_checkin_draft
+from app.services.grading import ensure_score_matches_breakdown, evaluator_score_from_answers
 from app.utils.helpers import (
     current_rotation_started_at,
     ensure_checkin_within_time,
@@ -264,6 +265,31 @@ def confirm_station_checkin(
                 },
             )
 
+    # PROC-11: en circuitos espejo cada estudiante rinde las estaciones de SU
+    # circuito. Si no coincide, lo más probable es un número mal tipeado.
+    station_circuit = str(station.circuit_name or "").strip().lower()
+    student_circuit = str(student.circuit_name or "").strip().lower()
+    if (
+        station_circuit and student_circuit and station_circuit != student_circuit
+        and not payload.confirm_other_circuit
+        and student_circuit in {
+            str(name or "").strip().lower()
+            for name in db.scalars(
+                select(Station.circuit_name).where(Station.ecoe_event_id == payload.ecoe_event_id)
+            ).all()
+        }
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "student_other_circuit",
+                "message": (
+                    f"{student.ecoe_number} · {student.name} {student.last_name} pertenece al "
+                    f"{student.circuit_name} y esta estación es del {station.circuit_name}. "
+                    "Verifica el Número ECOE antes de continuar."
+                ),
+            },
+        )
     # PROC-3: el mismo estudiante no puede estar en dos estaciones dentro de la
     # misma rotación. Si figura confirmado en otra, casi siempre es un número
     # mal tipeado: se avisa en vez de dejarlo en ambas. Ingresos de rotaciones
@@ -528,7 +554,12 @@ def upsert_evaluator_draft(
             status_code=400,
             detail="La estación no tiene un puntaje máximo válido configurado",
         )
-    provisional_score = max(0.0, min(float(payload.score_obtained), authoritative_max))
+    # PROC-10: si viene el desglose por criterio, la suma la hace el servidor.
+    breakdown_score = evaluator_score_from_answers(db, station, payload.answers)
+    provisional_score = max(0.0, min(
+        float(payload.score_obtained) if breakdown_score is None else breakdown_score,
+        authoritative_max,
+    ))
 
     record = db.scalar(
         select(EvaluatorRecord).where(
@@ -639,6 +670,10 @@ def submit_evaluator_record(
             status_code=400,
             detail=f"El puntaje obtenido debe estar entre 0 y {authoritative_max}",
         )
+    # PROC-10: el total debe ser la suma de la pauta, calculada en el servidor.
+    payload.score_obtained = ensure_score_matches_breakdown(
+        db, station, payload.answers, payload.score_obtained
+    )
     if existing_record is not None:
         # OPT-20 F3: promote an autosaved draft to a final record. The max
         # score is recomputed authoritatively, never trusting the draft.

@@ -204,7 +204,7 @@ export const api = {
     ),
   annulStationCheckin: (checkinId: number) =>
     request<{ annulled: boolean; checkin_id: number }>(`/station-checkins/${checkinId}/annul`, { method: "POST" }),
-  confirmStationCheckin: (payload: { ecoe_event_id: number; station_id: number; ecoe_number: string; force?: boolean; move_from_other_station?: boolean }) =>
+  confirmStationCheckin: (payload: { ecoe_event_id: number; station_id: number; ecoe_number: string; force?: boolean; move_from_other_station?: boolean; confirm_other_circuit?: boolean }) =>
     request<ConfirmCheckinResult>("/station-checkins/confirm", { method: "POST", body: JSON.stringify(payload) }),
   submitEvaluator: (payload: Record<string, unknown>) =>
     request<MutationResult>("/evaluator/submit", { method: "POST", body: JSON.stringify(payload) }),

@@ -421,6 +421,9 @@ class StationCheckInCreate(BaseModel):
     # PROC-3: el estudiante figura confirmado en OTRA estación dentro de esta
     # misma rotación; el evaluador confirmó que está aquí. Anula el otro ingreso.
     move_from_other_station: bool = False
+    # PROC-11: el estudiante es de otro circuito que la estación; el evaluador
+    # confirmó que igual corresponde.
+    confirm_other_circuit: bool = False
 
 
 class EvaluatorRectification(BaseModel):

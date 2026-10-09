@@ -39,6 +39,8 @@ export default function EvaluatorPage() {
   const [showReconfirmCheckin, setShowReconfirmCheckin] = useState(false);
   // PROC-3: el estudiante figura confirmado en otra estación en esta rotación.
   const [otherStationWarning, setOtherStationWarning] = useState<string | null>(null);
+  // PROC-11: el estudiante pertenece a otro circuito que esta estación.
+  const [otherCircuitWarning, setOtherCircuitWarning] = useState<string | null>(null);
   const [showAnnulCheckin, setShowAnnulCheckin] = useState(false);
   const [annulling, setAnnulling] = useState(false);
   const [itemScoreState, setItemScoreState] = useState<{
@@ -259,7 +261,10 @@ export default function EvaluatorPage() {
       });
   }, []);
 
-  const doCheckin = useCallback(async (force: boolean, moveFromOtherStation = false) => {
+  // Confirmaciones ya dadas para ESTE intento de ingreso: se acumulan, porque
+  // un mismo número puede disparar los dos avisos (otro circuito y otra estación).
+  const checkinOverridesRef = useRef({ move: false, circuit: false });
+  const doCheckin = useCallback(async (force: boolean) => {
     setMessage(null);
     setConfirmingStudent(true);
     try {
@@ -268,8 +273,10 @@ export default function EvaluatorPage() {
         station_id: stationId,
         ecoe_number: ecoeNumber,
         force,
-        move_from_other_station: moveFromOtherStation,
+        move_from_other_station: checkinOverridesRef.current.move,
+        confirm_other_circuit: checkinOverridesRef.current.circuit,
       })) as Record<string, unknown>;
+      checkinOverridesRef.current = { move: false, circuit: false };
       setContext((current) => ({
         ...(current ?? {}),
         server_now: checkin.server_now,
@@ -314,6 +321,10 @@ export default function EvaluatorPage() {
     } catch (error) {
       if ((error as { code?: string }).code === "student_already_evaluated") {
         setShowReconfirmCheckin(true);
+        return;
+      }
+      if ((error as { code?: string }).code === "student_other_circuit") {
+        setOtherCircuitWarning(error instanceof Error ? error.message : "El estudiante es de otro circuito.");
         return;
       }
       if ((error as { code?: string }).code === "student_in_other_station") {
@@ -752,9 +763,31 @@ export default function EvaluatorPage() {
         busy={confirmingStudent}
         onConfirm={() => {
           setOtherStationWarning(null);
-          void doCheckin(false, true);
+          checkinOverridesRef.current.move = true;
+          void doCheckin(false);
         }}
-        onCancel={() => setOtherStationWarning(null)}
+        onCancel={() => {
+          setOtherStationWarning(null);
+          checkinOverridesRef.current = { move: false, circuit: false };
+        }}
+      />
+      <ConfirmDialog
+        open={otherCircuitWarning !== null}
+        title="Revisa el Número ECOE"
+        message={`${otherCircuitWarning ?? ""} Confirma sólo si coordinación lo envió a esta estación.`}
+        confirmLabel="Confirmar de todas formas"
+        cancelLabel="Corregir número"
+        severity="danger"
+        busy={confirmingStudent}
+        onConfirm={() => {
+          setOtherCircuitWarning(null);
+          checkinOverridesRef.current.circuit = true;
+          void doCheckin(false);
+        }}
+        onCancel={() => {
+          setOtherCircuitWarning(null);
+          checkinOverridesRef.current = { move: false, circuit: false };
+        }}
       />
       <ConfirmDialog
         open={showAnnulCheckin}

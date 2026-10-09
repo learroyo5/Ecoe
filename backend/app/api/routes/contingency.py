@@ -26,7 +26,7 @@ from app.models.enums import RoleCode, SessionMode
 from app.schemas.common import EvaluatorRectification, EvaluatorSubmission, StudentResponseCreate
 from app.services.dependencies import require_roles
 from app.services.authorization import ensure_event_access
-from app.services.grading import apply_auto_grading
+from app.services.grading import apply_auto_grading, ensure_score_matches_breakdown
 from app.utils.helpers import (
     ensure_submission_stage,
     get_latest_checkin_any_status,
@@ -143,6 +143,9 @@ def submit_evaluator_record_by_contingency(
             status_code=400,
             detail=f"El puntaje obtenido debe estar entre 0 y {authoritative_max}",
         )
+    payload.score_obtained = ensure_score_matches_breakdown(
+        db, station, payload.answers, payload.score_obtained
+    )
     if existing_record is not None:
         # OPT-20 F3 (D3): a half-filled draft left by the buzzer is finalized
         # here — coordination sets the authoritative score, the row becomes a
@@ -299,6 +302,9 @@ def rectify_evaluator_record(
             status_code=400,
             detail=f"El puntaje obtenido debe estar entre 0 y {authoritative_max}",
         )
+    payload.score_obtained = ensure_score_matches_breakdown(
+        db, station, payload.answers, payload.score_obtained
+    )
     previous = {
         "score_obtained": record.score_obtained,
         "max_score": record.max_score,

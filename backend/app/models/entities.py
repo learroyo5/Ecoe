@@ -479,6 +479,9 @@ class LiveSession(Base, TimestampMixin):
     # phase_started_at (see live_session_state in operational routes).
     remaining_seconds: Mapped[int] = mapped_column(Integer, default=480)
     phase_started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # Fase que estaba corriendo cuando se pausó (running / transition /
+    # round_pause): "Reanudar" vuelve a ESA fase, no siempre a `running`.
+    paused_from_status: Mapped[str | None] = mapped_column(String(32))
     # M1: ciclo automático del circuito. Cuando auto_mode está activo, el
     # servidor avanza estación → transición → siguiente estación → pausa entre
     # rondas → siguiente ronda sin acción del operador (services/live_cycle.py).
