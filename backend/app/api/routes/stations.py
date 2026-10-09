@@ -20,6 +20,7 @@ from app.models.entities import (
 )
 from app.models.enums import ECOEStatus, RoleCode, StationStatus
 from app.schemas.common import (
+    MirrorCircuitRequest,
     AssessmentToolCreate,
     AssessmentToolPatch,
     AssessmentToolRead,
@@ -55,6 +56,13 @@ from app.services.instruments import (
 )
 
 from app.services.event_lock import audit_change, commit_or_conflict, ensure_structure_editable
+
+from app.services.mirrors import (
+    SHARED_DESIGN_FIELDS,
+    circuit_key,
+    propagate_design_to_mirrors,
+    sync_mirror_circuit,
+)
 
 router = APIRouter()
 
@@ -745,6 +753,20 @@ def create_station(
     if not ecoe_event:
         raise HTTPException(status_code=404, detail="ECOE no encontrado")
     ensure_structure_editable(db, payload.ecoe_event_id, "crear estaciones")
+    if any(
+        station.mirror_of_id
+        for station in db.scalars(
+            select(Station).where(Station.ecoe_event_id == payload.ecoe_event_id)
+        ).all()
+        if circuit_key(station.circuit_name) == circuit_key(payload.circuit_name)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"«{payload.circuit_name}» es un circuito espejo. Crea la estación en el circuito "
+                "original y usa «Sincronizar espejo»."
+            ),
+        )
     _reject_archived_tool(db, payload.assessment_tool_id)
     _reject_archived_template(db, payload.template_id)
     _reject_archived_patient(db, payload.simulated_patient_id)
@@ -790,6 +812,23 @@ def update_station(
     if not ecoe_event:
         raise HTTPException(status_code=404, detail="ECOE no encontrado")
     ensure_structure_editable(db, station.ecoe_event_id, "editar estaciones")
+    if station.mirror_of_id:
+        # Una estación espejo no se diseña por separado: sólo admite cambios
+        # en lo propio de la estación física (paciente simulado).
+        changed_design = sorted(
+            field for field in SHARED_DESIGN_FIELDS
+            if field in StationCreate.model_fields and getattr(payload, field) != getattr(station, field)
+        )
+        if changed_design or payload.circuit_name != station.circuit_name:
+            original = db.get(Station, station.mirror_of_id)
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Esta estación es espejo de «{original.name if original else 'la original'}» "
+                    f"({original.circuit_name if original else ''}). Edita la original: los cambios "
+                    "se copian solos a sus espejos."
+                ),
+            )
     if (payload.assessment_tool_id is not None
             and payload.assessment_tool_id != station.assessment_tool_id):
         _reject_archived_tool(db, payload.assessment_tool_id)
@@ -826,6 +865,11 @@ def update_station(
             else StationStatus.incompleta.value
         )
     db.add(station)
+    db.flush()
+    # La original manda: sus espejos reciben el mismo diseño en la misma
+    # transacción, así nunca quedan distintos.
+    if not station.mirror_of_id:
+        propagate_design_to_mirrors(db, station)
     db.commit()
     db.refresh(station)
     return station
@@ -843,6 +887,14 @@ def delete_station(
     ensure_event_access(db, user, station.ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     ensure_structure_editable(db, station.ecoe_event_id, "borrar estaciones")
+    if station.mirror_of_id:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Es una estación espejo: no se borra sola. Borra la estación original "
+                "(se van también sus espejos) o elimina el circuito espejo completo."
+            ),
+        )
     audit_change(db, user, "delete_station", "Station", station.id,
                  {"ecoe_event_id": station.ecoe_event_id, "station_number": station.station_number,
                   "name": station.name})
@@ -850,6 +902,63 @@ def delete_station(
     commit_or_conflict(
         db, "La estación tiene registros, multimedia o pilotajes asociados y no puede borrarse.")
     return {"deleted": True}
+
+
+# ── Circuitos espejo ────────────────────────────────────────────────────
+
+@router.post("/ecoe/{ecoe_event_id}/circuits/mirror", response_model=list[StationRead])
+def create_or_sync_mirror_circuit(
+    ecoe_event_id: int,
+    payload: MirrorCircuitRequest,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
+):
+    """Crea el circuito espejo (o lo completa/re-sincroniza si ya existe): una
+    estación espejo por cada estación del circuito original, con el mismo
+    diseño. Es la única forma de crear estaciones espejo."""
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    ensure_structure_editable(db, ecoe_event_id, "crear circuitos espejo")
+    result = sync_mirror_circuit(db, ecoe_event_id, payload.source_circuit, payload.mirror_circuit)
+    audit_change(db, user, "sync_mirror_circuit", "ECOEEvent", ecoe_event_id,
+                 {"ecoe_event_id": ecoe_event_id, "source_circuit": payload.source_circuit, **result})
+    db.commit()
+    return db.scalars(
+        select(Station).where(Station.ecoe_event_id == ecoe_event_id)
+        .order_by(Station.station_number.asc())
+    ).all()
+
+
+@router.delete("/ecoe/{ecoe_event_id}/circuits/mirror")
+def delete_mirror_circuit(
+    ecoe_event_id: int,
+    circuit: str,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
+):
+    """Elimina un circuito espejo completo (todas sus estaciones espejo)."""
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    ensure_structure_editable(db, ecoe_event_id, "eliminar circuitos espejo")
+    stations = [
+        station
+        for station in db.scalars(select(Station).where(Station.ecoe_event_id == ecoe_event_id)).all()
+        if circuit_key(station.circuit_name) == circuit_key(circuit)
+    ]
+    if not stations:
+        raise HTTPException(status_code=404, detail="Ese circuito no tiene estaciones")
+    if any(station.mirror_of_id is None for station in stations):
+        raise HTTPException(
+            status_code=409,
+            detail="Ese circuito es el original, no un espejo; sus estaciones se borran una a una.",
+        )
+    for station in stations:
+        db.delete(station)
+    audit_change(db, user, "delete_mirror_circuit", "ECOEEvent", ecoe_event_id,
+                 {"ecoe_event_id": ecoe_event_id, "circuit": circuit, "stations": len(stations)})
+    commit_or_conflict(
+        db, "El circuito espejo ya tiene registros (ingresos, evaluaciones o equipo) y no puede eliminarse.")
+    return {"deleted": len(stations)}
 
 
 # ── Pilotage ────────────────────────────────────────────────────────────

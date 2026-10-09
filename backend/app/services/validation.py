@@ -18,6 +18,7 @@ from app.models.entities import (
     User,
 )
 from app.models.enums import ECOEStatus, RoleCode, SessionMode, StationStatus
+from app.services.mirrors import mirror_structure_issues
 from app.utils.helpers import normalize_email
 
 # Etiquetas legibles de los estados internos, para textos visibles al usuario.
@@ -113,7 +114,8 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
         warnings: list[str] = []
         assessment_tool = tools_by_id.get(station.assessment_tool_id) if station.assessment_tool_id else None
         question_count = len((station.student_form_definition or {}).get("questions", []))
-        media_count = media_counts.get(station.id, 0)
+        # La multimedia vive en la estación original; sus espejos la comparten.
+        media_count = media_counts.get(station.mirror_of_id or station.id, 0)
 
         if not station.name.strip():
             blockers.append("Falta nombre de la estación.")
@@ -349,7 +351,13 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
             ).all()
             if str(circuit_name or "").strip().lower() not in station_circuits
         )
+    # Circuitos espejo: con más de un circuito, todos deben ser copia exacta
+    # del original (mismas estaciones, mismo diseño).
+    mirror_issues = mirror_structure_issues(db, ecoe_event.id)
+    mirrors_ready = not mirror_issues
+    can_pilot = can_pilot and mirrors_ready
     can_publish = (
+        mirrors_ready and
         students_count > 0 and
         metadata_ready and all_stations_ready and tools_ready and forms_ready
         and multimedia_ready and assignments_ready and deferred_grading_ready
@@ -421,6 +429,7 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
                 None if station_count > 0 else "No hay estaciones creadas.",
                 None if timer_ready else "Los tiempos oficiales del ECOE no son validos.",
                 None if all_stations_ready else "Hay estaciones con faltantes operativos que impiden pilotar o publicar.",
+                *mirror_issues,
                 None if pilot_count > 0 else "Aún no se ha registrado ningún pilotaje.",
                 # La LiveSession solo se crea en la transición a `publicado`,
                 # así que antes de publicar SIEMPRE falta y este bloqueo era
@@ -475,6 +484,8 @@ def compute_ecoe_validation(db: Session, ecoe_event: ECOEEvent) -> dict:
              "detail": f"Grupos configurados: {ecoe_event.total_groups}."},
         ],
         "station_issues": station_issues,
+        "mirrors_ready": mirrors_ready,
+        "mirror_issues": mirror_issues,
         "assignments_ready": assignments_ready,
         "deferred_grading_ready": deferred_grading_ready,
         "deferred_grading_station_count": len(deferred_grading_stations),

@@ -40,6 +40,7 @@ from app.models.entities import (
     StudentResponse,
 )
 from app.models.enums import SessionMode
+from app.services.mirrors import design_station_map
 from app.services.results import (
     compute_equivalent_grade,
     compute_station_results,
@@ -126,8 +127,17 @@ def _gather_station_rows(
     `mode == pilotaje`: **siempre** en vivo (no hay snapshot de pilotaje).
     """
     if mode == SessionMode.pilotaje.value:
-        return compute_station_results(db, ecoe_event_id, mode=mode), False
-    return read_station_results(db, ecoe_event_id)
+        rows, frozen = compute_station_results(db, ecoe_event_id, mode=mode), False
+    else:
+        rows, frozen = read_station_results(db, ecoe_event_id)
+    # Circuitos espejo: 1A y 1B son la misma estación para el análisis. Cada
+    # fila se atribuye a su estación de diseño; así la confiabilidad se
+    # calcula sobre las N estaciones con TODOS los estudiantes.
+    design_of = design_station_map(db, ecoe_event_id)
+    return [
+        {**row, "station_id": design_of.get(row["station_id"], row["station_id"])}
+        for row in rows
+    ], frozen
 
 
 def station_stats(
@@ -415,11 +425,15 @@ def item_analysis(db: Session, ecoe_event_id: int, mode: str) -> list[dict]:
     """
     stations = db.scalars(
         select(Station)
-        .where(Station.ecoe_event_id == ecoe_event_id)
+        .where(Station.ecoe_event_id == ecoe_event_id, Station.mirror_of_id.is_(None))
         .order_by(Station.station_number.asc(), Station.id.asc())
     ).all()
     if not stations:
         return []
+    # Los registros de una estación espejo cuentan para su estación de diseño.
+    family_ids: dict[int, set[int]] = {station.id: {station.id} for station in stations}
+    for physical_id, design_id in design_station_map(db, ecoe_event_id).items():
+        family_ids.setdefault(design_id, {design_id}).add(physical_id)
 
     tool_ids = [s.assessment_tool_id for s in stations if s.assessment_tool_id]
     items_by_tool: dict[int, list[AssessmentItem]] = defaultdict(list)
@@ -443,7 +457,7 @@ def item_analysis(db: Session, ecoe_event_id: int, mode: str) -> list[dict]:
             records = db.scalars(
                 select(EvaluatorRecord).where(
                     EvaluatorRecord.ecoe_event_id == ecoe_event_id,
-                    EvaluatorRecord.station_id == station.id,
+                    EvaluatorRecord.station_id.in_(family_ids[station.id]),
                     EvaluatorRecord.mode == mode,
                     EvaluatorRecord.is_draft.is_(False),
                 )
@@ -464,7 +478,7 @@ def item_analysis(db: Session, ecoe_event_id: int, mode: str) -> list[dict]:
             responses = db.scalars(
                 select(StudentResponse).where(
                     StudentResponse.ecoe_event_id == ecoe_event_id,
-                    StudentResponse.station_id == station.id,
+                    StudentResponse.station_id.in_(family_ids[station.id]),
                     StudentResponse.mode == mode,
                     StudentResponse.score_obtained.is_not(None),
                 )
@@ -525,7 +539,7 @@ def build_psychometrics_block(db: Session, ecoe_event_id: int, mode: str) -> dic
     station_rows, frozen = _gather_station_rows(db, ecoe_event_id, mode)
     stations = db.scalars(
         select(Station)
-        .where(Station.ecoe_event_id == ecoe_event_id)
+        .where(Station.ecoe_event_id == ecoe_event_id, Station.mirror_of_id.is_(None))
         .order_by(Station.station_number.asc(), Station.id.asc())
     ).all()
     students = {

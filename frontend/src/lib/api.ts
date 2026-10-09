@@ -314,6 +314,14 @@ export const api = {
     request<Station>("/stations", { method: "POST", body: JSON.stringify(payload) }),
   updateStation: (stationId: number, payload: Record<string, unknown>) =>
     request<Station>(`/stations/${stationId}`, { method: "PUT", body: JSON.stringify(payload) }),
+  // Circuitos espejo: crea (o completa / re-sincroniza) el circuito espejo.
+  mirrorCircuit: (eventId: number, payload: { source_circuit: string; mirror_circuit: string }) =>
+    request<Station[]>(`/ecoe/${eventId}/circuits/mirror`, { method: "POST", body: JSON.stringify(payload) }),
+  deleteMirrorCircuit: (eventId: number, circuit: string) =>
+    request<{ deleted: number }>(
+      `/ecoe/${eventId}/circuits/mirror?circuit=${encodeURIComponent(circuit)}`,
+      { method: "DELETE" },
+    ),
   deleteStation: (stationId: number) =>
     request<{ deleted: boolean }>(`/stations/${stationId}`, { method: "DELETE" }),
 

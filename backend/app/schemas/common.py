@@ -305,8 +305,17 @@ class StationCreate(BaseModel):
     status: str = "en_diseno"
 
 
+class MirrorCircuitRequest(BaseModel):
+    """Crear o completar un circuito espejo a partir del circuito original."""
+
+    source_circuit: str
+    mirror_circuit: str
+
+
 class StationRead(StationCreate, ORMBase):
     id: int
+    # Circuitos espejo: id de la estación original, o null si lo es ella.
+    mirror_of_id: int | None = None
     # Server-computed from the parent ECOEEvent's timing, not client input
     # (see create_station/update_station) — absent from StationCreate.
     station_time_minutes: float

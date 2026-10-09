@@ -86,6 +86,18 @@ Actualizacion: Fase 0 **mergeada y desplegada** (`bdf3554`, produccion en `w3x4y
 
 Pendiente: F0.5 (minimo privilegio de secretos y proxies) y publicar `demo.ecoe.cl`.
 
+## Sesion 2026-10-09 (e) — Circuitos espejo
+
+Pedido del usuario: en el hospital de simulacion corren el circuito A en un piso y el B en otro, identicos; hasta 16 estudiantes por ciclo. La plataforma no conocia el concepto (cada estacion era independiente y la psicometria no podia calcularse).
+
+Rama `feat/circuitos-espejo` (sin merge ni deploy; migracion `x4y5z6a7b8c9`, aditiva): `services/mirrors.py`, `Station.mirror_of_id`, endpoints de circuito espejo, validacion bloqueante, resultados y psicometria por estacion de diseno, multimedia compartida, duplicar ECOE conserva espejos. Frontend: Estaciones agrupadas por circuito con «Crear circuito espejo», «Sincronizar espejo» y «Eliminar circuito espejo»; aviso en el Constructor; desglose por circuito en Resultados. El seed del demo arma Medicina Interna como espejo real (4 estaciones × 2 circuitos).
+
+Verificado: 545 tests backend en PostgreSQL (eran 528), 143 frontend, e2e 5/5, y recorrido visual sobre el stack desechable con el demo en espejo.
+
+Efecto sobre datos existentes: un evento con mas de un circuito armado a mano queda bloqueado para pilotar/publicar hasta rehacerlo como espejo (el «ECOE Medicina Interna 2026» de produccion esta en ese caso).
+
+Pendiente relacionado: repartir estudiantes entre circuitos automaticamente y generar el plan de rotacion (COORD-3).
+
 ## Sesion 2026-06-03 — Evolucion v1 → v2
 
 Se completaron las 4 fases planificadas en `NEXT_STEPS.md`:

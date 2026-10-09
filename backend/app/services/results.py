@@ -354,13 +354,35 @@ def build_station_score_block(
     inmutabilidad de OPT-1 sin necesidad de almacenarse.
     """
     stations_by_id = {station.id: station for station in stations}
+    # Circuitos espejo: el agregado es por estación de DISEÑO (1A + 1B juntas),
+    # con el desglose por circuito para comparar si uno resultó más fácil.
+    design_of = {
+        station.id: (getattr(station, "mirror_of_id", None) or station.id) for station in stations
+    }
     rows_by_station: dict[int, list[dict]] = {}
     for row in station_rows:
-        rows_by_station.setdefault(row["station_id"], []).append(row)
+        design_id = design_of.get(row["station_id"], row["station_id"])
+        rows_by_station.setdefault(design_id, []).append(row)
 
     stations_block: list[dict] = []
     for station in stations:
+        if design_of[station.id] != station.id:
+            continue
         rows = rows_by_station.get(station.id, [])
+        by_circuit: dict[str, list[float]] = {}
+        for row in rows:
+            physical = stations_by_id.get(row["station_id"])
+            by_circuit.setdefault(physical.circuit_name if physical else "", []).append(
+                row["percent_score"]
+            )
+        circuits_breakdown = [
+            {
+                "circuit_name": circuit_name,
+                "n": len(values),
+                "mean_percent": round(statistics.fmean(values), 2),
+            }
+            for circuit_name, values in sorted(by_circuit.items())
+        ]
         n = len(rows)
         obtained = [row["obtained_score"] for row in rows]
         maxes = [row["max_score"] for row in rows]
@@ -378,20 +400,27 @@ def build_station_score_block(
             "sd_percent": round(statistics.stdev(percents), 2) if n >= 2 else None,
             "min_percent": round(min(percents), 2) if n else None,
             "max_percent": round(max(percents), 2) if n else None,
+            # Vacío o de un solo elemento cuando no hay circuitos espejo.
+            "circuits": circuits_breakdown,
         })
     stations_block.sort(key=lambda item: (item["station_number"], item["station_id"]))
 
     students_block: list[dict] = []
     for row in station_rows:
         student = students.get(row["student_id"])
-        station = stations_by_id.get(row["station_id"])
+        physical_station = stations_by_id.get(row["station_id"])
+        # Se muestra con el número y nombre de la estación de diseño.
+        station = stations_by_id.get(
+            design_of.get(row["station_id"], row["station_id"]), physical_station
+        )
         students_block.append({
             "student_id": row["student_id"],
             "ecoe_number": student.ecoe_number if student else None,
             "student_name": f"{student.name} {student.last_name}" if student else "",
-            "station_id": row["station_id"],
+            "station_id": station.id if station else row["station_id"],
             "station_number": station.station_number if station else None,
             "station_name": station.name if station else "",
+            "circuit_name": physical_station.circuit_name if physical_station else "",
             "obtained_score": row["obtained_score"],
             "max_score": row["max_score"],
             "percent_score": row["percent_score"],
