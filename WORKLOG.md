@@ -43,9 +43,9 @@ Auditoria de navegacion, barra lateral y flujos (`docs/optimizacion/hallazgos/au
 
 Verificacion sobre `ux/07-resultados`: `tsc` limpio, `eslint` sin errores (2 avisos previos en `media-preview.tsx`), 127 tests vitest, `next build`, y flujo dorado Playwright 5/5 contra el stack e2e desechable. Backend sin cambios (no se corrio pytest).
 
-Pendiente del usuario: revisar, mergear a `main` (basta `ux/07-resultados`, contiene todo; las ramas 01–06 por separado fallan el test e2e de kiosco, que se adapta en la 07) y desplegar.
+Mergeado a `main` (`3397cb4`) y desplegado el 2026-10-09 (solo se reconstruyo `ecoe-frontend`; backend y BD sin tocar). La imagen anterior quedo etiquetada `ecoe-frontend:pre-ux-2026-10-09` por si hay que volver atras.
 
-Nota de entorno: este servidor no tiene Node en el host. Lint/tests/build se corrieron con `docker run node:22-alpine` montando `frontend/`, y Playwright con la imagen `mcr.microsoft.com/playwright:v1.61.1-noble` contra `docker-compose.e2e.yml`; `scripts/run_e2e.sh` tal cual requiere `npx` en el host.
+Node en el host (2026-10-09): Node 22 instalado a nivel de usuario con nvm (`~/.nvm`), con enlaces `node`/`npm`/`npx` en `~/.local/bin` para shells no interactivos. `npm run lint`, `npm test` y `npm run build` ya corren directo en `frontend/`. `./scripts/run_e2e.sh` todavia no: Chromium de Playwright esta descargado pero faltan librerias del sistema (`libatk-1.0.so.0` y otras), que requieren `sudo npx playwright install-deps chromium`. Mientras tanto el e2e corre con la imagen `mcr.microsoft.com/playwright:v1.61.1-noble` en modo `--network host` contra `docker-compose.e2e.yml`.
 
 ## Sesion 2026-06-03 — Evolucion v1 → v2
 
