@@ -23,7 +23,7 @@ from app.schemas.common import (
 )
 from app.services.dependencies import get_current_user, require_roles
 from app.services.authorization import ensure_event_access
-from app.services.live_sweep import sweep_expired_phases
+from app.services.live_sweep import finalize_checkin_response, sweep_expired_phases
 from app.services.live_cycle import advance_if_expired
 from app.utils.helpers import (
     ensure_checkin_within_time,
@@ -270,6 +270,10 @@ def confirm_station_checkin(
         )
     ).all()
     for item in existing_station_checkins:
+        # El ingreso anterior se cierra al confirmar al siguiente: antes hay
+        # que dejar su respuesta (borrador o en blanco), o lo que escribió se
+        # pierde si el barrido de fase todavía no pasó.
+        finalize_checkin_response(db, ecoe_event, item, station, session_mode)
         item.status = "cerrado"
         db.add(item)
 

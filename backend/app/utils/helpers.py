@@ -169,6 +169,18 @@ def _live_phase_station_deadline(session, *, far_past):
     return "fallback"
 
 
+def checkin_belongs_to_next_phase(session, checkin: "StationCheckIn") -> bool:
+    """``True`` si el check-in se confirmó durante la transición o la pausa
+    entre rondas en curso: su estudiante espera la PRÓXIMA fase de estación."""
+    return (
+        session is not None
+        and str(session.status) in ("transition", "round_pause")
+        and session.phase_started_at is not None
+        and checkin.confirmed_at is not None
+        and checkin.confirmed_at >= session.phase_started_at
+    )
+
+
 def resolve_submission_deadline(
     db: Session,
     ecoe_event,
@@ -207,6 +219,18 @@ def resolve_submission_deadline(
     if session is None or str(session.status) in LIVE_IDLE_STATUSES:
         return fallback()
 
+    # PROC-1: un check-in confirmado DURANTE la transición (o la pausa entre
+    # rondas) pertenece a la fase de estación que viene, no a la que acaba de
+    # terminar: el estudiante llega a la puerta justo en ese lapso. Su ventana
+    # es el fin de esa próxima fase; sin esto el barrido lo autoenviaba en
+    # blanco a los 30 s de confirmado.
+    if checkin_belongs_to_next_phase(session, checkin):
+        next_station_end = session.phase_started_at + timedelta(
+            seconds=(session.remaining_seconds or 0) + (session.station_time_seconds or 0)
+        )
+        if for_evaluator:
+            return next_station_end + timedelta(seconds=session.transition_time_seconds or 0)
+        return next_station_end
     far_past = utcnow_naive() - timedelta(days=1)
     station_deadline = _live_phase_station_deadline(session, far_past=far_past)
     if station_deadline is None:
@@ -258,6 +282,31 @@ def ensure_checkin_within_time(
             status_code=400,
             detail="El tiempo de la estación ya expiró; el envío no puede aceptarse.",
         )
+
+
+_ANSWER_KEY_FIELDS = ("correct_option", "correct_options")
+
+
+def public_form_definition(form_definition: dict | None) -> dict | None:
+    """Formulario tal como puede verlo el estudiante: sin la clave (PROC-4).
+
+    ``student_form_definition`` guarda ``correct_option`` / ``correct_options``
+    junto a cada pregunta para la autocorrección. Esas claves nunca deben
+    salir hacia el kiosco ni hacia la pantalla del estudiante.
+    """
+    if not isinstance(form_definition, dict):
+        return form_definition
+    questions = form_definition.get("questions")
+    if not isinstance(questions, list):
+        return form_definition
+    return {
+        **form_definition,
+        "questions": [
+            {k: v for k, v in question.items() if k not in _ANSWER_KEY_FIELDS}
+            if isinstance(question, dict) else question
+            for question in questions
+        ],
+    }
 
 
 def resolve_station_max_score(db: Session, station: "Station") -> float:

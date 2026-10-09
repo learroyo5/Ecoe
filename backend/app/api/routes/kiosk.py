@@ -40,6 +40,7 @@ from app.services.kiosk import (
 )
 from app.utils.clock import utcnow_naive
 from app.utils.helpers import (
+    public_form_definition,
     ensure_checkin_within_time,
     ensure_submission_stage,
     isoformat_or_none as _isoformat_or_none,
@@ -185,7 +186,7 @@ def kiosk_context(
             "student_activity": station.student_activity,
             "pre_entry_instruction": station.pre_entry_instruction,
             "student_station_instruction": station.student_station_instruction,
-            "student_form_definition": station.student_form_definition,
+            "student_form_definition": public_form_definition(station.student_form_definition),
             "media_assets": [serialize_media_asset(asset) for asset in media_assets],
             "station_time_minutes": station.station_time_minutes,
             "confirmed_at": checkin.confirmed_at.isoformat(),
