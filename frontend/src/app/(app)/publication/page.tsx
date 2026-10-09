@@ -5,20 +5,23 @@ import { useState } from "react";
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
+import { ecoeStatusLabel } from "@/lib/labels";
+import { useConfirm } from "@/components/confirm-provider";
 import { StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
 
 export default function PublicationPage() {
-  const { authenticated, eventId } = useECOE();
+  const { authenticated, eventId, refreshECOE } = useECOE();
   const { data, setData } = useApi(
     () => api.validation(eventId) as Promise<Record<string, unknown>>,
     [eventId, authenticated],
   );
-  const { data: ecoeEvent } = useApi(
+  const { data: ecoeEvent, setData: setEcoeEvent } = useApi(
     () => api.ecoe(eventId) as Promise<Record<string, unknown>>,
     [eventId, authenticated],
   );
   const blockers = ((data?.blockers as string[] | undefined) ?? []);
+  const confirm = useConfirm();
   const [message, setMessage] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const isPublished = String(ecoeEvent?.status ?? "") === "publicado";
@@ -41,7 +44,7 @@ export default function PublicationPage() {
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Estado actual del ECOE</p>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <span className={`status-badge ${isPublished ? "status-badge-success" : "status-badge-info"}`}>
-            {String(ecoeEvent?.status ?? "sin_estado")}
+            {ecoeEvent?.status ? ecoeStatusLabel(ecoeEvent.status) : "Sin estado"}
           </span>
           <p className="text-sm leading-6 text-slate-600">
             Publicar este ECOE deja creada la sesión en vivo base y marca las estaciones listas como publicadas.
@@ -54,8 +57,9 @@ export default function PublicationPage() {
             if (!ecoeEvent) {
               return;
             }
-            const confirmed = window.confirm(
-              "Vas a publicar este ECOE. La sesión en vivo quedará preparada y el evento pasará a estado publicado. ¿Quieres continuar?",
+            const confirmed = await confirm(
+              "El ECOE quedará visible para evaluadores y estudiantes. Se creará la sesión en vivo.",
+              { title: "¿Publicar ECOE?", confirmLabel: "Publicar ECOE" },
             );
             if (!confirmed) {
               return;
@@ -72,6 +76,8 @@ export default function PublicationPage() {
               );
               const updatedValidation = (await api.validation(eventId)) as Record<string, unknown>;
               setData(updatedValidation);
+              setEcoeEvent({ ...ecoeEvent, status: "publicado" });
+              void refreshECOE();
               setMessage("ECOE publicado correctamente. La base operativa para la ejecución real ya quedó preparada.");
             } catch (publishError) {
               setMessage(

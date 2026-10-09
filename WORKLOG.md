@@ -29,6 +29,24 @@ Guia corta para retomar trabajo sin reconstruir contexto desde cero.
 - Stack: Next.js + FastAPI + PostgreSQL en Docker Compose, 3 servicios healthy.
 - Version actual: `v2` — todas las prioridades altas del plan original completadas.
 
+## Sesion 2026-10-09 — Auditoria UX de la intranet (UX-1..UX-7)
+
+Auditoria de navegacion, barra lateral y flujos (`docs/optimizacion/hallazgos/auditoria-ux-navegacion__2026-10-09.md`) e implementacion completa en 7 ramas apiladas, solo frontend, sin migraciones ni cambios de permisos. Triage y estado en `docs/optimizacion/BACKLOG.md` (Grupo D).
+
+- `ux/01-consistencia`: `useConfirm()` (modal propio en vez de `window.confirm`), etiquetas legibles de estado/tipo, tuteo, tildes.
+- `ux/02-encabezado`: titulo por pantalla; barra "ECOE activo" con estado y fecha; confirmacion al cambiar de ECOE en ejecucion.
+- `ux/03-barra-lateral`: `NAV_ITEMS` con `group`/`icon`/`hidden`; barra agrupada por fase, scroll propio, activo por prefijo. `allowedFor` identico a `main`.
+- `ux/04-inicio`: fases del ciclo + "Siguiente paso" (`lib/ecoe-cycle.ts`).
+- `ux/05-gestion-ecoe`: `/ecoe` con pestanas y dialogo de creacion; `/ecoe/[id]` redirige a `/ecoe`; el shell se refresca tras cada cambio de estado.
+- `ux/06-dia-examen`: pantalla `/kiosks` (todos los enlaces de una vez) y controles del panel en vivo deshabilitados segun estado (`lib/live-controls.ts`).
+- `ux/07-resultados`: Resultados en pestanas; incluye ademas el ajuste del e2e al modal propio y la correccion de contraste del item activo.
+
+Verificacion sobre `ux/07-resultados`: `tsc` limpio, `eslint` sin errores (2 avisos previos en `media-preview.tsx`), 127 tests vitest, `next build`, y flujo dorado Playwright 5/5 contra el stack e2e desechable. Backend sin cambios (no se corrio pytest).
+
+Pendiente del usuario: revisar, mergear a `main` (basta `ux/07-resultados`, contiene todo; las ramas 01–06 por separado fallan el test e2e de kiosco, que se adapta en la 07) y desplegar.
+
+Nota de entorno: este servidor no tiene Node en el host. Lint/tests/build se corrieron con `docker run node:22-alpine` montando `frontend/`, y Playwright con la imagen `mcr.microsoft.com/playwright:v1.61.1-noble` contra `docker-compose.e2e.yml`; `scripts/run_e2e.sh` tal cual requiere `npx` en el host.
+
 ## Sesion 2026-06-03 — Evolucion v1 → v2
 
 Se completaron las 4 fases planificadas en `NEXT_STEPS.md`:

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
+import { useConfirm } from "@/components/confirm-provider";
 import { DataTable } from "@/components/data-table";
 import { FileImport, QuickForm, StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
@@ -16,6 +17,7 @@ export default function StudentsPage() {
     () => api.students(eventId, page),
     [eventId, authenticated, page],
   );
+  const confirm = useConfirm();
   const [message, setMessage] = useState<string | null>(null);
   const [processingAction, setProcessingAction] = useState<string | null>(null);
 
@@ -27,7 +29,7 @@ export default function StudentsPage() {
 
   return (
     <div className="space-y-6">
-      <SectionCard title="Gestion de estudiantes" subtitle="Carga masiva por Excel/CSV y alta manual">
+      <SectionCard title="Gestión de estudiantes" subtitle="Carga masiva por Excel/CSV y alta manual">
         <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
           <FileImport
             label="Importar estudiantes desde archivo"
@@ -148,13 +150,13 @@ export default function StudentsPage() {
         </div>
         <StatusNotice message={message} />
       </SectionCard>
-      <SectionCard title="Nomina actual" subtitle={`${totalStudents} estudiantes cargados en este ECOE.`}>
+      <SectionCard title="Nómina actual" subtitle={`${totalStudents} estudiantes cargados en este ECOE.`}>
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <button
             type="button"
             className="btn-secondary"
             onClick={async () => {
-              const confirmed = window.confirm(
+              const confirmed = await confirm(
                 "Se reasignará el Número ECOE de todos los estudiantes en forma correlativa según el orden de carga. ¿Quieres continuar?",
               );
               if (!confirmed) {
@@ -191,8 +193,8 @@ export default function StudentsPage() {
             type="button"
             className="btn-secondary"
             onClick={async () => {
-              const confirmed = window.confirm(
-                "Se revisaran los estudiantes de este ECOE y se borraran los duplicados por RUT, conservando el primer registro cargado. ¿Quieres continuar?",
+              const confirmed = await confirm(
+                "Se revisarán los estudiantes de este ECOE y se borrarán los duplicados por RUT, conservando el primer registro cargado. ¿Quieres continuar?",
               );
               if (!confirmed) {
                 setMessage("La limpieza de duplicados por RUT fue cancelada.");
@@ -276,10 +278,10 @@ export default function StudentsPage() {
                         type="button"
                         className="btn-secondary"
                         onClick={async () => {
-                          const confirmed = window.confirm(
+                          const confirmed = await confirm(
                             isActive
-                              ? "Este estudiante cambiara de estado a Suspendido y dejara de contarse como activo. ¿Quieres continuar?"
-                              : "Este estudiante volvera a estado Activo. ¿Quieres continuar?",
+                              ? "Este estudiante cambiará de estado a Suspendido y dejará de contarse como activo. ¿Quieres continuar?"
+                              : "Este estudiante volverá a estado Activo. ¿Quieres continuar?",
                           );
                           if (!confirmed) {
                             setMessage("El cambio de estado del estudiante fue cancelado.");
@@ -320,8 +322,9 @@ export default function StudentsPage() {
                         type="button"
                         className="btn-secondary"
                         onClick={async () => {
-                          const confirmed = window.confirm(
-                            "Vas a borrar este estudiante de forma permanente. Esta acción no se puede deshacer. ¿Quieres continuar?",
+                          const confirmed = await confirm(
+                            "Vas a borrar este estudiante de forma permanente. Esta acción no se puede deshacer.",
+                            { title: "Borrar estudiante", confirmLabel: "Borrar", severity: "danger" },
                           );
                           if (!confirmed) {
                             setMessage("El borrado del estudiante fue cancelado.");

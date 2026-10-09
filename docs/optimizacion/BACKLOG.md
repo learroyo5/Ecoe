@@ -52,6 +52,20 @@ Esfuerzo: XS (<½ día) · S (~1 día) · M (2–4 días) · L (1–2 sem) · XL
 
 > **Fase 2 (OPT-16 a OPT-19): `hecho`, desplegado 2026-08-29.** Mergeada a `main` y en producción.
 
+## Grupo D — Navegación y UX de la intranet (auditoría 2026-10-09)
+
+Origen: `hallazgos/auditoria-ux-navegacion__2026-10-09.md`. Aprobado por el usuario el 2026-10-09 para implementar en orden, una rama por paso (`ux/01…ux/07`, apiladas). Solo frontend, sin migraciones ni cambios de permisos. **Merge a `main` y deploy: pendientes del usuario.**
+
+| ID | Título | Origen (hallazgo) | Severidad | Impacto | Factibilidad | Estado | Rama |
+|----|--------|-------------------|-----------|---------|--------------|--------|------|
+| UX-1 | Consistencia: etiquetas de estado, diálogo de confirmación único, tuteo, tildes | H-ux-11 | baja | pulido transversal | S · solo frontend | hecho en rama (tsc, lint, 83 tests y build verdes; sin merge) | `ux/01-consistencia` |
+| UX-2 | Encabezado con título de pantalla y barra de ECOE con estado | H-ux-4, H-ux-5 | media | orientación en toda la intranet | S · solo frontend | hecho en rama (tsc, lint, 89 tests y build verdes; sin merge). El selector duplicado de `/ecoe` se retira en UX-5 | `ux/02-encabezado` |
+| UX-3 | Barra lateral agrupada por fase del ciclo | H-ux-1, H-ux-2, H-ux-3 | alta | navegación | M · toca `NAV_ITEMS` (middleware) | hecho en rama (tsc, lint, 98 tests y build verdes; `allowedFor` por ruta idéntico a `main`, verificado 19/19; sin merge) | `ux/03-barra-lateral` |
+| UX-4 | Inicio como guía del ciclo (progreso + siguiente paso) | H-ux-6 | media | onboarding del coordinador | S–M · solo frontend | hecho en rama (tsc, lint, 107 tests y build verdes; sin merge) | `ux/04-inicio` |
+| UX-5 | Gestión del ECOE unificada | H-ux-7 | media | setup | M · solo frontend | hecho en rama (tsc, lint, 114 tests y build verdes; sin merge). `/ecoe/[id]` redirige a `/ecoe`; Publicación usa la misma confirmación que la barra de estado | `ux/05-gestion-ecoe` |
+| UX-6 | Día del examen: pantalla Kioscos y controles en vivo por estado | H-ux-8, H-ux-9 | media | operación en vivo | M · solo frontend | hecho en rama (tsc, lint, 125 tests y build verdes; sin merge). `/kiosks` usa el endpoint existente; el botón por fila de Estaciones se conserva | `ux/06-dia-examen` |
+| UX-7 | Resultados con pestañas | H-ux-10 | baja | cierre | S · solo frontend | hecho en rama (tsc, lint, 127 tests y build verdes; sin merge) | `ux/07-resultados` |
+
 ---
 
 ## Notas de triage

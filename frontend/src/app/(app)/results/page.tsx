@@ -29,6 +29,16 @@ function formatNumber(value: number | null | undefined) {
   return value === null || value === undefined ? "—" : String(value);
 }
 
+type Tab = "notas" | "estaciones" | "analisis" | "trazabilidad" | "actividad";
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: "notas", label: "Notas" },
+  { key: "estaciones", label: "Por estación" },
+  { key: "analisis", label: "Análisis" },
+  { key: "trazabilidad", label: "Trazabilidad" },
+  { key: "actividad", label: "Actividad" },
+];
+
 export default function ResultsPage() {
   const { authenticated, eventId } = useECOE();
   const { data, loading, error } = useApi<ResultsResponse>(
@@ -43,6 +53,7 @@ export default function ResultsPage() {
   const consolidatedLabel = frozen && data?.consolidated_at ? formatTimestamp(data.consolidated_at) : null;
   const byStation = data?.by_station ?? { stations: [], students: [] };
   const [stationFilter, setStationFilter] = useState<string>("all");
+  const [tab, setTab] = useState<Tab>("notas");
   const filteredStationScores =
     stationFilter === "all"
       ? byStation.students
@@ -50,33 +61,6 @@ export default function ResultsPage() {
 
   return (
     <div className="space-y-6">
-      <SectionCard
-        title="Resumen operativo"
-        subtitle="Trazabilidad mínima para saber cuántas confirmaciones, evaluaciones y respuestas se han registrado realmente."
-      >
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="clinical-panel">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Check-ins confirmados</p>
-            <p className="mt-3 text-3xl font-semibold">{String(summary.confirmed_checkins ?? 0)}</p>
-          </div>
-          <div className="clinical-panel">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Evaluaciones enviadas</p>
-            <p className="mt-3 text-3xl font-semibold">
-              {String(summary.evaluator_submissions ?? 0)} / {String(summary.expected_evaluations ?? 0)}
-            </p>
-          </div>
-          <div className="clinical-panel">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Respuestas estudiantiles</p>
-            <p className="mt-3 text-3xl font-semibold">
-              {String(summary.student_submissions ?? 0)} / {String(summary.expected_student_submissions ?? 0)}
-            </p>
-          </div>
-          <div className="clinical-panel">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Pilotajes acumulados</p>
-            <p className="mt-3 text-3xl font-semibold">{String(summary.pilot_runs ?? 0)}</p>
-          </div>
-        </div>
-      </SectionCard>
       <SectionCard
         title="Resultados y exportación"
         subtitle={
@@ -125,265 +109,328 @@ export default function ResultsPage() {
           materiales y listado de estaciones para operar el examen si se cae la plataforma.
         </p>
       </SectionCard>
-      <SectionCard
-        title="Consolidado por estudiante"
-        subtitle="El porcentaje es el promedio del % de logro de cada estación (cada una normalizada a su propio máximo, todas pesan igual). Puntaje y Máximo son sumas crudas informativas: con estaciones de distinto máximo no cuadran con el porcentaje."
-      >
-        {loading ? (
-          <p>{frozen ? "Cargando resultados consolidados..." : "Calculando resultados..."}</p>
-        ) : error ? (
-          <p>{error}</p>
-        ) : (
-          <DataTable
-            rows={data?.results ?? []}
-            columns={[
-              { key: "ecoe_number", label: "N ECOE" },
-              { key: "student_name", label: "Estudiante" },
-              { key: "total_score", label: "Puntaje" },
-              { key: "max_score", label: "Máximo" },
-              {
-                key: "stations_counted",
-                label: "Estaciones",
-                render: (row) => formatNumber(row.stations_counted),
-              },
-              { key: "percentage", label: "Porcentaje" },
-              { key: "equivalent_grade", label: "Nota equivalente" },
-            ]}
-          />
-        )}
-      </SectionCard>
-      <SectionCard
-        title="Resultados por estación"
-        subtitle="Desempeño desglosado por estación: promedio y dispersión del circuito, y la nota de cada estudiante en cada estación. La DE es muestral y aparece como “—” cuando hay menos de dos notas."
-      >
-        {loading ? (
-          <p>{frozen ? "Cargando resultados por estación..." : "Calculando resultados por estación..."}</p>
-        ) : error ? (
-          <p>{error}</p>
-        ) : (
-          <div className="space-y-6">
+      <div className="flex w-fit flex-wrap gap-1 rounded-2xl bg-slate-100 p-1" role="tablist" aria-label="Secciones de resultados">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.key}
+            onClick={() => setTab(t.key)}
+            className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+              tab === t.key ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === "notas" ? (
+        <>
+        <SectionCard
+          title="Consolidado por estudiante"
+          subtitle="El porcentaje es el promedio del % de logro de cada estación (cada una normalizada a su propio máximo, todas pesan igual). Puntaje y Máximo son sumas crudas informativas: con estaciones de distinto máximo no cuadran con el porcentaje."
+        >
+          {loading ? (
+            <p>{frozen ? "Cargando resultados consolidados..." : "Calculando resultados..."}</p>
+          ) : error ? (
+            <p>{error}</p>
+          ) : (
             <DataTable
-              rows={byStation.stations}
+              rows={data?.results ?? []}
               columns={[
-                { key: "station_number", label: "Estación" },
-                { key: "station_name", label: "Nombre" },
-                { key: "circuit_name", label: "Circuito" },
-                { key: "n", label: "n" },
+                { key: "ecoe_number", label: "N ECOE" },
+                { key: "student_name", label: "Estudiante" },
+                { key: "total_score", label: "Puntaje" },
+                { key: "max_score", label: "Máximo" },
                 {
-                  key: "mean_percent",
-                  label: "Media %",
-                  render: (row) => formatNumber(row.mean_percent),
+                  key: "stations_counted",
+                  label: "Estaciones",
+                  render: (row) => formatNumber(row.stations_counted),
                 },
-                {
-                  key: "sd_percent",
-                  label: "DE %",
-                  render: (row) => formatNumber(row.sd_percent),
-                },
-                {
-                  key: "mean_score",
-                  label: "Media pts",
-                  render: (row) => formatNumber(row.mean_score),
-                },
-                {
-                  key: "mean_max",
-                  label: "Máx.",
-                  render: (row) => formatNumber(row.mean_max),
-                },
+                { key: "percentage", label: "Porcentaje" },
+                { key: "equivalent_grade", label: "Nota equivalente" },
               ]}
             />
-            <div className="space-y-3">
-              <label className="flex flex-wrap items-center gap-2 text-sm text-[var(--color-text-secondary)]">
-                <span className="font-semibold">Filtrar por estación</span>
-                <select
-                  className="max-w-xs"
-                  value={stationFilter}
-                  onChange={(event) => setStationFilter(event.target.value)}
-                >
-                  <option value="all">Todas las estaciones</option>
-                  {byStation.stations.map((station) => (
-                    <option key={station.station_id} value={String(station.station_id)}>
-                      {station.station_number}. {station.station_name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+          )}
+        </SectionCard>
+        </>
+      ) : null}
+      {tab === "estaciones" ? (
+        <>
+        <SectionCard
+          title="Resultados por estación"
+          subtitle="Desempeño desglosado por estación: promedio y dispersión del circuito, y la nota de cada estudiante en cada estación. La DE es muestral y aparece como “—” cuando hay menos de dos notas."
+        >
+          {loading ? (
+            <p>{frozen ? "Cargando resultados por estación..." : "Calculando resultados por estación..."}</p>
+          ) : error ? (
+            <p>{error}</p>
+          ) : (
+            <div className="space-y-6">
               <DataTable
-                rows={filteredStationScores}
-                searchKeys={["student_name", "ecoe_number"]}
-                searchPlaceholder="Buscar estudiante..."
+                rows={byStation.stations}
                 columns={[
-                  { key: "ecoe_number", label: "N ECOE" },
-                  { key: "student_name", label: "Estudiante" },
+                  { key: "station_number", label: "Estación" },
+                  { key: "station_name", label: "Nombre" },
+                  { key: "circuit_name", label: "Circuito" },
+                  { key: "n", label: "n" },
                   {
-                    key: "station_name",
-                    label: "Estación",
-                    render: (row) => `${row.station_number ?? "?"}. ${row.station_name}`,
+                    key: "mean_percent",
+                    label: "Media %",
+                    render: (row) => formatNumber(row.mean_percent),
                   },
-                  { key: "obtained_score", label: "Puntaje" },
-                  { key: "max_score", label: "Máximo" },
                   {
-                    key: "percent_score",
-                    label: "%",
-                    render: (row) => formatNumber(row.percent_score),
+                    key: "sd_percent",
+                    label: "DE %",
+                    render: (row) => formatNumber(row.sd_percent),
+                  },
+                  {
+                    key: "mean_score",
+                    label: "Media pts",
+                    render: (row) => formatNumber(row.mean_score),
+                  },
+                  {
+                    key: "mean_max",
+                    label: "Máx.",
+                    render: (row) => formatNumber(row.mean_max),
                   },
                 ]}
               />
+              <div className="space-y-3">
+                <label className="flex flex-wrap items-center gap-2 text-sm text-[var(--color-text-secondary)]">
+                  <span className="font-semibold">Filtrar por estación</span>
+                  <select
+                    className="max-w-xs"
+                    value={stationFilter}
+                    onChange={(event) => setStationFilter(event.target.value)}
+                  >
+                    <option value="all">Todas las estaciones</option>
+                    {byStation.stations.map((station) => (
+                      <option key={station.station_id} value={String(station.station_id)}>
+                        {station.station_number}. {station.station_name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <DataTable
+                  rows={filteredStationScores}
+                  searchKeys={["student_name", "ecoe_number"]}
+                  searchPlaceholder="Buscar estudiante..."
+                  columns={[
+                    { key: "ecoe_number", label: "N ECOE" },
+                    { key: "student_name", label: "Estudiante" },
+                    {
+                      key: "station_name",
+                      label: "Estación",
+                      render: (row) => `${row.station_number ?? "?"}. ${row.station_name}`,
+                    },
+                    { key: "obtained_score", label: "Puntaje" },
+                    { key: "max_score", label: "Máximo" },
+                    {
+                      key: "percent_score",
+                      label: "%",
+                      render: (row) => formatNumber(row.percent_score),
+                    },
+                  ]}
+                />
+              </div>
+            </div>
+          )}
+        </SectionCard>
+        </>
+      ) : null}
+      {tab === "analisis" ? (
+        <>
+        <PsychometricsSection eventId={eventId} mode="ejecucion" authenticated={authenticated} />
+        </>
+      ) : null}
+      {tab === "trazabilidad" ? (
+        <>
+        <SectionCard
+          title="Resumen operativo"
+          subtitle="Trazabilidad mínima para saber cuántas confirmaciones, evaluaciones y respuestas se han registrado realmente."
+        >
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="clinical-panel">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Check-ins confirmados</p>
+              <p className="mt-3 text-3xl font-semibold">{String(summary.confirmed_checkins ?? 0)}</p>
+            </div>
+            <div className="clinical-panel">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Evaluaciones enviadas</p>
+              <p className="mt-3 text-3xl font-semibold">
+                {String(summary.evaluator_submissions ?? 0)} / {String(summary.expected_evaluations ?? 0)}
+              </p>
+            </div>
+            <div className="clinical-panel">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Respuestas estudiantiles</p>
+              <p className="mt-3 text-3xl font-semibold">
+                {String(summary.student_submissions ?? 0)} / {String(summary.expected_student_submissions ?? 0)}
+              </p>
+            </div>
+            <div className="clinical-panel">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Pilotajes acumulados</p>
+              <p className="mt-3 text-3xl font-semibold">{String(summary.pilot_runs ?? 0)}</p>
             </div>
           </div>
-        )}
-      </SectionCard>
-      <PsychometricsSection eventId={eventId} mode="ejecucion" authenticated={authenticated} />
-      <SectionCard
-        title="Trazabilidad por estudiante"
-        subtitle="Verifica rápidamente quién ya fue confirmado, evaluado y quién ya dejó respuesta dentro del circuito."
-      >
-        {loading ? (
-          <p>Construyendo trazabilidad por estudiante...</p>
-        ) : error ? (
-          <p>{error}</p>
-        ) : (
-          <DataTable
-            rows={studentTraceability}
-            columns={[
-              { key: "ecoe_number", label: "N ECOE" },
-              { key: "student_name", label: "Estudiante" },
-              {
-                key: "completion_status",
-                label: "Estado",
-                render: (row) => {
-                  const status = String(row.completion_status ?? "sin actividad");
-                  const className =
-                    status === "completo"
-                      ? "status-badge status-badge-success"
-                      : status === "parcial"
-                        ? "status-badge status-badge-warning"
-                        : "status-badge status-badge-muted";
-                  return <span className={className}>{status}</span>;
-                },
-              },
-              { key: "checkins_confirmed", label: "Check-ins" },
-              { key: "evaluator_submissions", label: "Evaluaciones" },
-              { key: "student_submissions", label: "Respuestas" },
-              {
-                key: "blank_auto_submissions",
-                label: "Autoenvíos en blanco",
-                render: (row) => {
-                  const n = row.blank_auto_submissions ?? 0;
-                  return n > 0 ? (
-                    <span
-                      className="status-badge status-badge-warning"
-                      title="Respuestas cerradas por el servidor al vencer el cronómetro, sin contenido. Suman 0 al consolidado; no fueron entregas deliberadas."
-                    >
-                      {n}
-                    </span>
-                  ) : (
-                    <span className="text-[var(--color-text-muted)]">—</span>
-                  );
-                },
-              },
-              {
-                key: "last_activity_at",
-                label: "Última actividad",
-                render: (row) => formatTimestamp(row.last_activity_at),
-              },
-            ]}
-          />
-        )}
-      </SectionCard>
-      <SectionCard
-        title="Trazabilidad por estación"
-        subtitle="Ayuda a detectar estaciones sin registros, sin evaluador visible o con flujo parcial durante el pilotaje o la ejecución."
-      >
-        {loading ? (
-          <p>Construyendo trazabilidad por estación...</p>
-        ) : error ? (
-          <p>{error}</p>
-        ) : (
-          <DataTable
-            rows={stationTraceability}
-            columns={[
-              { key: "station_number", label: "Estación" },
-              { key: "station_name", label: "Nombre" },
-              { key: "assigned_evaluator", label: "Evaluador principal" },
-              { key: "checkins_count", label: "Check-ins" },
-              { key: "evaluations_count", label: "Evaluaciones" },
-              { key: "student_submissions_count", label: "Respuestas" },
-              {
-                key: "blank_auto_submissions",
-                label: "Autoenvíos en blanco",
-                render: (row) => {
-                  const n = row.blank_auto_submissions ?? 0;
-                  return n > 0 ? (
-                    <span className="status-badge status-badge-warning">{n}</span>
-                  ) : (
-                    <span className="text-[var(--color-text-muted)]">—</span>
-                  );
-                },
-              },
-              {
-                key: "status",
-                label: "Estado",
-                render: (row) => {
-                  const status = String(row.status ?? "sin registros");
-                  const className =
-                    status === "con evidencia"
-                      ? "status-badge status-badge-success"
-                      : status === "con check-in"
-                        ? "status-badge status-badge-info"
-                        : "status-badge status-badge-muted";
-                  return <span className={className}>{status}</span>;
-                },
-              },
-              {
-                key: "last_activity_at",
-                label: "Última actividad",
-                render: (row) => formatTimestamp(row.last_activity_at),
-              },
-            ]}
-          />
-        )}
-      </SectionCard>
-      <SectionCard
-        title="Actividad reciente"
-        subtitle="Secuencia cronológica breve para reconstruir el flujo real del ECOE y revisar si los pasos se dieron en el orden esperado."
-      >
-        {loading ? (
-          <p>Ordenando actividad reciente...</p>
-        ) : error ? (
-          <p>{error}</p>
-        ) : activityLog.length ? (
-          <div className="space-y-3">
-            {activityLog.map((item, index) => (
-              <div key={`${String(item.timestamp)}-${index}`} className="clinical-panel">
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="status-badge status-badge-info">{String(item.type ?? "actividad")}</span>
-                  <p className="text-sm font-semibold text-[var(--color-text-main)]">{String(item.label ?? "")}</p>
-                  {item.submission_kind && item.submission_kind !== "manual" ? (
-                    <span
-                      className={
-                        item.submission_kind === "auto" && item.answered === false
+        </SectionCard>
+        <SectionCard
+          title="Trazabilidad por estudiante"
+          subtitle="Verifica rápidamente quién ya fue confirmado, evaluado y quién ya dejó respuesta dentro del circuito."
+        >
+          {loading ? (
+            <p>Construyendo trazabilidad por estudiante...</p>
+          ) : error ? (
+            <p>{error}</p>
+          ) : (
+            <DataTable
+              rows={studentTraceability}
+              columns={[
+                { key: "ecoe_number", label: "N ECOE" },
+                { key: "student_name", label: "Estudiante" },
+                {
+                  key: "completion_status",
+                  label: "Estado",
+                  render: (row) => {
+                    const status = String(row.completion_status ?? "sin actividad");
+                    const className =
+                      status === "completo"
+                        ? "status-badge status-badge-success"
+                        : status === "parcial"
                           ? "status-badge status-badge-warning"
-                          : "status-badge status-badge-muted"
-                      }
-                    >
-                      {item.submission_kind === "auto" && item.answered === false
-                        ? "Automática · sin respuesta"
-                        : submissionKindLabel(item.submission_kind)}
-                    </span>
-                  ) : null}
-                  <span className="text-xs text-[var(--color-text-muted)]">{formatTimestamp(item.timestamp)}</span>
+                          : "status-badge status-badge-muted";
+                    return <span className={className}>{status}</span>;
+                  },
+                },
+                { key: "checkins_confirmed", label: "Check-ins" },
+                { key: "evaluator_submissions", label: "Evaluaciones" },
+                { key: "student_submissions", label: "Respuestas" },
+                {
+                  key: "blank_auto_submissions",
+                  label: "Autoenvíos en blanco",
+                  render: (row) => {
+                    const n = row.blank_auto_submissions ?? 0;
+                    return n > 0 ? (
+                      <span
+                        className="status-badge status-badge-warning"
+                        title="Respuestas cerradas por el servidor al vencer el cronómetro, sin contenido. Suman 0 al consolidado; no fueron entregas deliberadas."
+                      >
+                        {n}
+                      </span>
+                    ) : (
+                      <span className="text-[var(--color-text-muted)]">—</span>
+                    );
+                  },
+                },
+                {
+                  key: "last_activity_at",
+                  label: "Última actividad",
+                  render: (row) => formatTimestamp(row.last_activity_at),
+                },
+              ]}
+            />
+          )}
+        </SectionCard>
+        <SectionCard
+          title="Trazabilidad por estación"
+          subtitle="Ayuda a detectar estaciones sin registros, sin evaluador visible o con flujo parcial durante el pilotaje o la ejecución."
+        >
+          {loading ? (
+            <p>Construyendo trazabilidad por estación...</p>
+          ) : error ? (
+            <p>{error}</p>
+          ) : (
+            <DataTable
+              rows={stationTraceability}
+              columns={[
+                { key: "station_number", label: "Estación" },
+                { key: "station_name", label: "Nombre" },
+                { key: "assigned_evaluator", label: "Evaluador principal" },
+                { key: "checkins_count", label: "Check-ins" },
+                { key: "evaluations_count", label: "Evaluaciones" },
+                { key: "student_submissions_count", label: "Respuestas" },
+                {
+                  key: "blank_auto_submissions",
+                  label: "Autoenvíos en blanco",
+                  render: (row) => {
+                    const n = row.blank_auto_submissions ?? 0;
+                    return n > 0 ? (
+                      <span className="status-badge status-badge-warning">{n}</span>
+                    ) : (
+                      <span className="text-[var(--color-text-muted)]">—</span>
+                    );
+                  },
+                },
+                {
+                  key: "status",
+                  label: "Estado",
+                  render: (row) => {
+                    const status = String(row.status ?? "sin registros");
+                    const className =
+                      status === "con evidencia"
+                        ? "status-badge status-badge-success"
+                        : status === "con check-in"
+                          ? "status-badge status-badge-info"
+                          : "status-badge status-badge-muted";
+                    return <span className={className}>{status}</span>;
+                  },
+                },
+                {
+                  key: "last_activity_at",
+                  label: "Última actividad",
+                  render: (row) => formatTimestamp(row.last_activity_at),
+                },
+              ]}
+            />
+          )}
+        </SectionCard>
+        </>
+      ) : null}
+      {tab === "actividad" ? (
+        <>
+        <SectionCard
+          title="Actividad reciente"
+          subtitle="Secuencia cronológica breve para reconstruir el flujo real del ECOE y revisar si los pasos se dieron en el orden esperado."
+        >
+          {loading ? (
+            <p>Ordenando actividad reciente...</p>
+          ) : error ? (
+            <p>{error}</p>
+          ) : activityLog.length ? (
+            <div className="space-y-3">
+              {activityLog.map((item, index) => (
+                <div key={`${String(item.timestamp)}-${index}`} className="clinical-panel">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="status-badge status-badge-info">{String(item.type ?? "actividad")}</span>
+                    <p className="text-sm font-semibold text-[var(--color-text-main)]">{String(item.label ?? "")}</p>
+                    {item.submission_kind && item.submission_kind !== "manual" ? (
+                      <span
+                        className={
+                          item.submission_kind === "auto" && item.answered === false
+                            ? "status-badge status-badge-warning"
+                            : "status-badge status-badge-muted"
+                        }
+                      >
+                        {item.submission_kind === "auto" && item.answered === false
+                          ? "Automática · sin respuesta"
+                          : submissionKindLabel(item.submission_kind)}
+                      </span>
+                    ) : null}
+                    <span className="text-xs text-[var(--color-text-muted)]">{formatTimestamp(item.timestamp)}</span>
+                  </div>
+                  <p className="mt-2 text-sm text-[var(--color-text-secondary)]">{String(item.detail ?? "")}</p>
+                  <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+                    {String(item.actor ?? "Sistema")} · modo {modeLabel(item.mode ?? "ejecucion")}
+                  </p>
                 </div>
-                <p className="mt-2 text-sm text-[var(--color-text-secondary)]">{String(item.detail ?? "")}</p>
-                <p className="mt-1 text-xs text-[var(--color-text-muted)]">
-                  {String(item.actor ?? "Sistema")} · modo {modeLabel(item.mode ?? "ejecucion")}
-                </p>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p>Aún no hay actividad registrada para este ECOE.</p>
-        )}
-      </SectionCard>
+              ))}
+            </div>
+          ) : (
+            <p>Aún no hay actividad registrada para este ECOE.</p>
+          )}
+        </SectionCard>
+        </>
+      ) : null}
     </div>
   );
 }

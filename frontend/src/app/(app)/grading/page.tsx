@@ -208,7 +208,7 @@ export default function GradingPage() {
           if (nextRow) {
             openResponse(nextRow);
             scrollToResponse(nextRow.response_id);
-            setMessage("Corrección guardada. Abrí la siguiente respuesta pendiente.");
+            setMessage("Corrección guardada. Abre la siguiente respuesta pendiente.");
           } else {
             setExpandedId(null);
             setMessage("Corrección guardada; el puntaje ya suma al consolidado.");
@@ -453,7 +453,7 @@ export default function GradingPage() {
           >
             <p className="font-semibold">ECOE cerrado — los resultados están consolidados.</p>
             <p className="mt-1">
-              Para rectificar una nota, reabrí el evento (retroceso de estado) desde la pantalla del
+              Para rectificar una nota, reabre el evento (retroceso de estado) desde la pantalla del
               ECOE. Mientras el evento siga cerrado o archivado el servidor rechaza cualquier
               corrección.
             </p>
@@ -557,8 +557,8 @@ export default function GradingPage() {
         <SectionCard title="Sin estaciones asignadas">
           <EmptyState
             icon="📋"
-            title="No tenés estaciones asignadas para corregir"
-            description="Pedile a un coordinador o al administrador del ECOE que te asigne estaciones de evaluación diferida."
+            title="No tienes estaciones asignadas para corregir"
+            description="Pídele a un coordinador o al administrador del ECOE que te asigne estaciones de evaluación diferida."
           />
         </SectionCard>
       ) : !responses.length ? (

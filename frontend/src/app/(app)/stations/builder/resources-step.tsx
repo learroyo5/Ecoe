@@ -1,6 +1,7 @@
 "use client";
 
 import { api } from "@/lib/api";
+import { useConfirm } from "@/components/confirm-provider";
 import { MediaPreview } from "@/components/media-preview";
 import { BuilderSection, FieldBlock, type StepScaffoldProps } from "./shared";
 
@@ -33,6 +34,7 @@ export function ResourcesStep({
   mediaAssets: Record<string, unknown>[] | null;
   setMediaAssets: React.Dispatch<React.SetStateAction<Record<string, unknown>[] | null>>;
 }) {
+  const confirm = useConfirm();
   return (
     <BuilderSection
       index={4}
@@ -144,8 +146,9 @@ export function ResourcesStep({
                       type="button"
                       className="btn-secondary"
                       onClick={async () => {
-                        const confirmed = window.confirm(
-                          "Vas a borrar este archivo multimedia de la estación. ¿Quieres continuar?",
+                        const confirmed = await confirm(
+                          "Vas a borrar este archivo multimedia de la estación.",
+                          { title: "Borrar archivo", confirmLabel: "Borrar", severity: "danger" },
                         );
                         if (!confirmed) {
                           return;

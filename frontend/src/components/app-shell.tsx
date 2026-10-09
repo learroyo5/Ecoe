@@ -3,10 +3,20 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
+import { useConfirm } from "@/components/confirm-provider";
+import { STATUS_COLORS } from "@/components/ecoe-form";
 import { Sidebar } from "@/components/sidebar";
 import { StatusNotice } from "@/components/forms";
 import { useECOE } from "@/lib/auth";
-import { roleLabel } from "@/lib/labels";
+import { ecoeStatusLabel, roleLabel } from "@/lib/labels";
+import { navItemForPath } from "@/lib/routes";
+
+/** "2026-11-23" → "23-11-2026"; cualquier otro formato se muestra tal cual. */
+function formatEventDate(value: unknown): string | null {
+  if (typeof value !== "string" || !value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  return match ? `${match[3]}-${match[2]}-${match[1]}` : value;
+}
 
 export function AppShell({
   title,
@@ -20,9 +30,42 @@ export function AppShell({
   const { user, eventRoles, authenticated, ready, logout, eventId, setEventId, ecoeList, ecoeEvent, loadError, noAccessibleEvents } = useECOE();
   const router = useRouter();
   const pathname = usePathname();
+  const confirm = useConfirm();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const pageTitle = navItemForPath(pathname)?.label ?? title;
+  const eventStatus = String(ecoeEvent?.status ?? "");
+  const eventDate = formatEventDate(ecoeEvent?.date);
+
+  // Cambiar de ECOE con el evento en ejecución saca al operador del panel en
+  // vivo de un clic: se pide confirmación (el layout de estación lo bloquea).
+  const handleEventChange = async (nextId: number) => {
+    if (nextId === eventId) return;
+    if (eventStatus === "en_ejecucion") {
+      const ok = await confirm(
+        `«${String(ecoeEvent?.name ?? "Este ECOE")}» está en ejecución. Si cambias de ECOE dejarás de ver su panel en vivo y sus datos en esta pestaña.`,
+        { title: "ECOE en ejecución", confirmLabel: "Cambiar de ECOE" },
+      );
+      if (!ok) return;
+    }
+    setEventId(nextId);
+  };
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
+
+  // Menú móvil abierto: Esc lo cierra y el fondo no hace scroll por detrás.
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSidebarOpen(false);
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [sidebarOpen]);
 
   const hasManagerRole = eventRoles.some((role) =>
     ["admin_ecoe", "coeditor_docente", "coordinador_operativo"].includes(role),
@@ -55,10 +98,10 @@ export function AppShell({
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--color-primary)]">
             Sin ECOE asignado
           </p>
-          <h2 className="text-2xl">Todavía no tenés acceso a ningún ECOE</h2>
+          <h2 className="text-2xl">Todavía no tienes acceso a ningún ECOE</h2>
           <p className="text-sm text-slate-600">
             Tu cuenta ({user?.email}) está activa, pero no está asignada a ningún
-            ECOE. Pedile a un coordinador o administrador que te asigne a uno
+            ECOE. Pídele a un coordinador o administrador que te asigne a uno
             para poder trabajar.
           </p>
           <button className="btn-secondary" onClick={logout} aria-label="Cerrar sesión">
@@ -154,7 +197,12 @@ export function AppShell({
             onClick={closeSidebar}
             aria-hidden="true"
           />
-          <div className="absolute inset-y-0 left-0 w-80 max-w-[85vw] animate-slide-in bg-white p-4 shadow-2xl">
+          <div
+            className="absolute inset-y-0 left-0 flex w-80 max-w-[85vw] animate-slide-in flex-col bg-white p-4 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menú de navegación"
+          >
             <div className="mb-3 flex items-center justify-between">
               <span className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--color-primary)]">
                 Menú
@@ -169,7 +217,9 @@ export function AppShell({
                 </svg>
               </button>
             </div>
-            <Sidebar onNavigate={closeSidebar} />
+            <div className="min-h-0 flex-1">
+              <Sidebar onNavigate={closeSidebar} />
+            </div>
           </div>
         </div>
       )}
@@ -189,9 +239,9 @@ export function AppShell({
             </button>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--color-primary)]">
-                Plataforma operativa
+                Plataforma ECOE
               </p>
-              <h2 className="mt-1 text-2xl">{title}</h2>
+              <h2 className="mt-1 text-2xl">{pageTitle}</h2>
             </div>
           </div>
           <div className="flex items-center gap-4 text-sm">
@@ -209,11 +259,24 @@ export function AppShell({
         <div className="clinical-panel p-4">
           <div className="flex flex-wrap items-end gap-4">
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">ECOE en edición</p>
-              <p className="mt-1 text-lg font-semibold text-slate-900 truncate">
-                {String(ecoeEvent?.name ?? "ECOE sin nombre visible")}
-              </p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">ECOE activo</p>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <p className="min-w-0 truncate text-lg font-semibold text-slate-900">
+                  {String(ecoeEvent?.name ?? "ECOE sin nombre visible")}
+                </p>
+                {eventStatus ? (
+                  <span
+                    data-testid="active-ecoe-status"
+                    className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                      STATUS_COLORS[eventStatus] ?? "bg-slate-100 text-slate-700"
+                    }`}
+                  >
+                    {ecoeStatusLabel(eventStatus)}
+                  </span>
+                ) : null}
+              </div>
               <p className="text-sm text-slate-600">
+                {eventDate ? `${eventDate} · ` : ""}
                 {String(ecoeEvent?.course_name ?? "Curso sin definir")} ·{" "}
                 {String(ecoeEvent?.school_name ?? "Unidad académica sin definir")}
               </p>
@@ -222,12 +285,12 @@ export function AppShell({
               <span className="font-semibold">Cambiar de ECOE</span>
               <select
                 value={String(eventId)}
-                onChange={(event) => setEventId(Number(event.target.value))}
+                onChange={(event) => void handleEventChange(Number(event.target.value))}
                 aria-label="Seleccionar ECOE activo"
               >
                 {(ecoeList ?? []).map((ecoe) => (
                   <option key={String(ecoe.id)} value={String(ecoe.id)}>
-                    {String(ecoe.name)} · {String(ecoe.course_name ?? "")}
+                    {String(ecoe.name)} · {ecoeStatusLabel(ecoe.status)}
                   </option>
                 ))}
               </select>

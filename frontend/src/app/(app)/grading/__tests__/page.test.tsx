@@ -131,7 +131,7 @@ describe("GradingPage — OPT-15 cola del corrector", () => {
     render(<GradingPage />);
 
     expect(
-      await screen.findByText("No tenés estaciones asignadas para corregir"),
+      await screen.findByText("No tienes estaciones asignadas para corregir"),
     ).toBeInTheDocument();
   });
 

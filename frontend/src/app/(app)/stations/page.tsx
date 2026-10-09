@@ -7,8 +7,10 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
 import { canAccessStationArea } from "@/lib/permissions";
+import { stationStatusLabel, stationTypeLabel } from "@/lib/labels";
 import { defaultRouteForRole } from "@/lib/routes";
 import { useApi } from "@/hooks/use-api";
+import { useConfirm } from "@/components/confirm-provider";
 import { SectionCard } from "@/components/section-card";
 import { StatusNotice } from "@/components/forms";
 
@@ -24,7 +26,7 @@ function StatusBadge({ status }: { status: string }) {
   const color = STATUS_COLORS[status] ?? "bg-slate-100 text-slate-700";
   return (
     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${color}`}>
-      {status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+      {stationStatusLabel(status)}
     </span>
   );
 }
@@ -41,14 +43,16 @@ export default function StationsPage() {
     () => api.stations(eventId) as Promise<Record<string, unknown>[]>,
     [eventId, authenticated],
   );
+  const confirm = useConfirm();
   const [message, setMessage] = useState<string | null>(null);
   const [kioskLink, setKioskLink] = useState<{ stationId: number; url: string; expiresAt: string } | null>(null);
   const [issuingKioskFor, setIssuingKioskFor] = useState<number | null>(null);
 
   const handleIssueKiosk = async (stationId: number) => {
-    if (!window.confirm(
-      "Se generará un nuevo enlace de kiosco para esta estación y se invalidará el anterior (si existía). ¿Continuar?",
-    )) return;
+    if (!(await confirm(
+      "Se generará un nuevo enlace de kiosco para esta estación y se invalidará el anterior (si existía).",
+      { title: "Generar enlace de kiosco", confirmLabel: "Generar enlace" },
+    ))) return;
     setMessage(null);
     setIssuingKioskFor(stationId);
     try {
@@ -66,7 +70,10 @@ export default function StationsPage() {
   };
 
   const handleDelete = async (stationId: number) => {
-    if (!window.confirm("Vas a eliminar esta estación permanentemente. Esta acción no se puede deshacer. ¿Continuar?")) return;
+    if (!(await confirm(
+      "Vas a eliminar esta estación permanentemente. Esta acción no se puede deshacer.",
+      { title: "Eliminar estación", confirmLabel: "Eliminar", severity: "danger" },
+    ))) return;
     setMessage(null);
     try {
       await api.deleteStation(stationId);
@@ -145,7 +152,7 @@ export default function StationsPage() {
                     <p className="truncate text-sm font-semibold text-slate-900">{String(station.name ?? "Sin nombre")}</p>
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                    <span>{String(station.station_type ?? "")}</span>
+                    <span>{stationTypeLabel(station.station_type)}</span>
                     <span>·</span>
                     <span>{String(station.circuit_name ?? "")}</span>
                     <span>·</span>

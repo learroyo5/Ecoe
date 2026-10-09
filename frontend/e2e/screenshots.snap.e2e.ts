@@ -10,6 +10,8 @@ const OUT = process.env.SNAP_DIR ?? "/tmp/ecoe-snaps";
 
 const PAGES = [
   "/dashboard",
+  "/ecoe",
+  "/kiosks",
   "/stations/builder",
   "/stations/builder?stationId=2",
   "/stations/builder?stationId=4",
