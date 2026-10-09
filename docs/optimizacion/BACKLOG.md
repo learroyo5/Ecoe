@@ -101,6 +101,20 @@ Origen: `hallazgos/auditoria-proceso-ecoe__2026-10-09.md` (incluye la propuesta 
 | COORD-3 | Plan de rotación generado por la plataforma | — | propuesta B.3 | M–L | pendiente |
 | COORD-4 | Respaldo automático frecuente durante la ejecución | — | propuesta B.6 | S · infraestructura | pendiente |
 
+## Grupo F — Multiinstitucional / SaaS (auditoría de Codex, 2026-10-09)
+
+Origen: `docs/AUDITORIA_SAAS_MULTIINSTITUCIONAL_ECOE.md` (H01–H18), contrastada con `main` en `PLANES/SAAS__multiinstitucional.md`. **Plan propuesto, pendiente de aprobación; nada implementado.** Arquitectura recomendada: aplicación compartida + una base PostgreSQL por institución.
+
+| ID | Título | Hallazgos | Esfuerzo | Estado |
+|----|--------|-----------|----------|--------|
+| SAAS-F0 | Integridad con una sola institución (check-in concurrente, envíos idempotentes, acta versionada, sockets, mínimo privilegio, uploads, recuperación ensayada, e2e en CI) | H03, H04 (resto), H05, H08, H09, H14, H16, H17 | M–L · migraciones | propuesto |
+| SAAS-F1 | Institución y plano de control mínimo | H01, H06, H12 | L · requiere decisiones D1, D2, D5 | propuesto |
+| SAAS-F2 | Aislamiento efectivo: sesiones, JWT, WebSocket, archivos, navegador, migrador, suite A/B | H01, H02, H07, H10, H15 | XL | propuesto |
+| SAAS-F3 | Alta de institución sin tocar código | H12 | L | propuesto |
+| SAAS-F4 | Operación de la flota (migración canaria, respaldo por institución, observabilidad, staging) | H09, H10, H11, H13, H17 | L–XL · requiere D3 | propuesto |
+| SAAS-F5 | Dos instituciones ficticias bajo carga | H17 | M–L | propuesto |
+| SAAS-F6 | Piloto real y preparación comercial | — | revisión jurídica y contratos | propuesto |
+
 ---
 
 ## Notas de triage
