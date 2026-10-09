@@ -21,7 +21,7 @@ from app.models.entities import (
     StudentResponse,
 )
 from app.models.enums import ECOEStatus, RoleCode
-from conftest import ADMIN, TestingSessionLocal, login
+from conftest import ADMIN, TestingSessionLocal, activate_checkin, login
 from test_deferred_grading import _account, _assign_corrector
 
 
@@ -117,7 +117,7 @@ def _make_multi_station_event(*, tool_on_first: bool = False, students_per_stati
                     student_id=student.id,
                     evaluator_email="coord@ecoe.cl",
                     evaluator_name="Coordinación",
-                    status="confirmado",
+                    status="cerrado",  # se activa al operar (F0.1)
                     confirmed_at=_utcnow_naive(),
                 )
                 db.add(checkin)
@@ -128,6 +128,7 @@ def _make_multi_station_event(*, tool_on_first: bool = False, students_per_stati
 
 
 def _submit(auth_client, event_id, station_id, student_id, checkin_id, answer="Ritmo sinusal"):
+    activate_checkin(checkin_id)
     response = auth_client.post("/api/student/submit", json={
         "checkin_id": checkin_id,
         "ecoe_event_id": event_id,

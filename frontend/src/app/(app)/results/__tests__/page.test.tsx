@@ -13,6 +13,7 @@ vi.mock("@/lib/api", () => ({
   api: {
     results: vi.fn(),
     psychometrics: vi.fn(),
+    resultVersions: vi.fn(),
   },
 }));
 
@@ -58,6 +59,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockedUseECOE.mockReturnValue({ authenticated: true, eventId: 1 } as never);
   mockedApi.psychometrics.mockResolvedValue(EMPTY_PSYCHOMETRICS as never);
+  mockedApi.resultVersions.mockResolvedValue({ versions: [] } as never);
 });
 
 // Las secciones viven en pestañas (UX-7); Notas es la inicial.
@@ -331,3 +333,26 @@ describe("ResultsPage — pestañas UX-7", () => {
     expect(screen.getByRole("link", { name: "Exportar Excel de resultados" })).toBeInTheDocument();
   });
 });
+
+describe("ResultsPage — actas anteriores F0.3", () => {
+  it("lista las actas reemplazadas con su motivo y no muestra la sección si no hay", async () => {
+    mockedApi.results.mockResolvedValue({
+      results: [], frozen: false, consolidated_at: null, ...baseTraceability,
+    } as never);
+    const first = render(<ResultsPage />);
+    await waitFor(() => expect(mockedApi.resultVersions).toHaveBeenCalled());
+    expect(screen.queryByText("Actas anteriores")).not.toBeInTheDocument();
+    first.unmount();
+
+    mockedApi.resultVersions.mockResolvedValue({
+      versions: [{
+        version: 1, consolidated_at: "2026-11-23T15:00:00", superseded_at: "2026-11-23T16:00:00",
+        superseded_by_email: "admin@ecoe.cl", reason: "Faltó transcribir una pauta",
+      }],
+    } as never);
+    render(<ResultsPage />);
+    expect(await screen.findByText("Actas anteriores")).toBeInTheDocument();
+    expect(screen.getByText("Motivo: Faltó transcribir una pauta")).toBeInTheDocument();
+  });
+});
+

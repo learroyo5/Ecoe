@@ -18,6 +18,7 @@ Guía operativa para correr un ECOE real con esta plataforma servida desde
 
 - [ ] `docker compose ps` en el servidor: todo `healthy`.
 - [ ] Backup manual además del automático (la carpeta `backups/` es de root, por eso se escribe a través del contenedor de respaldos): `docker exec ecoe-db pg_dump -U ecoe ecoe | gzip | docker exec -i ecoe-db-backup sh -c "cat > /backups/pre-examen-$(date +%Y%m%d).sql.gz"`
+- [ ] Ensayar la restauración del respaldo más reciente sin tocar producción: `./scripts/verify_backup.sh` (debe listar eventos, estudiantes y la versión de migración).
 - [ ] PDF de contingencia impreso por estación (Resultados → Export PDF por estación): pautas en papel por si todo falla.
 - [ ] Tablets de estación cargadas, con el navegador probado y bloqueo de pantalla desactivado.
 - [ ] Definir quién es el **coordinador de contingencia** del día (usuario con rol coordinador): es la única persona que puede registrar envíos fuera de ventana.
@@ -44,6 +45,7 @@ Guía operativa para correr un ECOE real con esta plataforma servida desde
 - **Buzzer / cortar una fase antes de tiempo**: la acción `expire_phase` del panel en vivo cierra las ventanas de esa fase y dispara el autoenvío **sin** avanzar el número de estación. Útil cuando una fase debe cerrarse ya pero la rotación aún no avanza.
 - Incidencia que detiene el circuito: **Pausar** en el panel en vivo + registrar la incidencia. La pausa ya congela las ventanas (ver arriba); solo quedan para contingencia los casos de papel (caída de red) o un envío que se venció **antes** de alcanzar a pausar.
 - Caída de red en una estación: seguir en papel (PDF de contingencia); transcribir después en la pantalla **Contingencia**, ANTES de cerrar el ECOE. Contingencia reemplaza la respuesta que el servidor autoenvió en blanco y permite **rectificar** una evaluación mal enviada (exige motivo; queda auditado).
+- **Respaldo durante el examen**: mientras el ECOE está en ejecución el servidor guarda un volcado cada 5 minutos en `backups/live/` (se conservan los 36 más recientes). Ante una falla grave se restaura el último con `scripts/restore_db.sh`.
 - Si el panel en vivo muestra "Reconectando" en rojo por más de un minuto: revisar red del puesto de coordinación; el cronómetro del servidor sigue corriendo y se resincroniza solo al volver.
 
 ## Cierre

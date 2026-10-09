@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api, isAlreadySubmittedError } from "@/lib/api";
+import { nextDraftSeq } from "@/lib/draft-seq";
 import { armAudio, chime } from "@/lib/chime";
 import { clockOffsetMs, parseServerUtc } from "@/lib/time";
 import { useLiveTimer } from "@/lib/ws";
@@ -235,7 +236,7 @@ export default function KioskPage() {
     const checkinId = current.checkin_id;
     const timeoutId = window.setTimeout(() => {
       api
-        .kioskDraft(token, { checkin_id: checkinId, answers: answersRef.current })
+        .kioskDraft(token, { checkin_id: checkinId, answers: answersRef.current, client_seq: nextDraftSeq() })
         .catch(() => {
           /* mejor esfuerzo: el localStorage cubre el respaldo local */
         });
@@ -250,7 +251,7 @@ export default function KioskPage() {
     const checkinId = current.checkin_id;
     const intervalId = window.setInterval(() => {
       api
-        .kioskDraft(token, { checkin_id: checkinId, answers: answersRef.current })
+        .kioskDraft(token, { checkin_id: checkinId, answers: answersRef.current, client_seq: nextDraftSeq() })
         .catch(() => {});
     }, DRAFT_HEARTBEAT_MS);
     return () => window.clearInterval(intervalId);

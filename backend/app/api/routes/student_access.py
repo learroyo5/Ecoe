@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -36,6 +37,18 @@ from app.utils.helpers import (
 from app.utils.serializers import serialize_media_asset
 
 router = APIRouter()
+
+def _replay_or_reject(existing: StudentResponse, answers: dict) -> dict:
+    """F0.2 (H05): un reintento de la MISMA entrega (se perdió la respuesta
+    HTTP, doble toque) es éxito y devuelve el registro ya guardado. Una
+    entrega distinta sigue rechazándose: la respuesta no se reemplaza."""
+    if (existing.answers or {}) == (answers or {}):
+        return {"saved": True, "response_id": existing.id, "already_saved": True}
+    raise HTTPException(
+        status_code=400,
+        detail="La respuesta de esta estación ya fue enviada y no puede reemplazarse",
+    )
+
 
 
 @router.post("/student/access")
@@ -161,7 +174,6 @@ def submit_student_response(
     station = db.get(Station, payload.station_id)
     if not station or station.ecoe_event_id != payload.ecoe_event_id:
         raise HTTPException(status_code=400, detail="La estación no pertenece al ECOE indicado")
-    ensure_checkin_within_time(db, ecoe_event, checkin, station)
     # Duplicates are scoped by mode: a pilotaje response must not block the
     # same student/station during the real execution.
     existing_response = db.scalar(
@@ -173,8 +185,8 @@ def submit_student_response(
         )
     )
     if existing_response:
-        raise HTTPException(status_code=400,
-                            detail="La respuesta de esta estación ya fue enviada y no puede reemplazarse")
+        return _replay_or_reject(existing_response, payload.answers)
+    ensure_checkin_within_time(db, ecoe_event, checkin, station)
     response = StudentResponse(
         **payload.model_dump(exclude={"checkin_id", "mode", "by_contingency"}),
         mode=session_mode,
@@ -182,8 +194,24 @@ def submit_student_response(
         submission_kind="manual",
     )
     apply_auto_grading(response, station.student_form_definition)
-    db.add(response)
-    db.flush()
+    try:
+        with db.begin_nested():
+            db.add(response)
+            db.flush()
+    except IntegrityError:
+        # Otra entrega de este estudiante ganó la carrera (doble envío, o el
+        # barrido de fase): se responde según lo que quedó guardado.
+        winner = db.scalar(
+            select(StudentResponse).where(
+                StudentResponse.ecoe_event_id == payload.ecoe_event_id,
+                StudentResponse.station_id == payload.station_id,
+                StudentResponse.student_id == payload.student_id,
+                StudentResponse.mode == session_mode,
+            )
+        )
+        if winner is None:  # pragma: no cover
+            raise
+        return _replay_or_reject(winner, payload.answers)
     discard_checkin_draft(db, checkin.id)
     db.add(
         AuditLog(
@@ -230,7 +258,9 @@ def upsert_student_draft(
             status_code=400,
             detail="El borrador solo puede guardarse después de que el evaluador confirme tu ingreso a la estación",
         )
-    draft = upsert_checkin_draft(db, checkin, payload.answers)
+    draft, applied = upsert_checkin_draft(
+        db, checkin, payload.answers, client_seq=payload.client_seq
+    )
     db.commit()
     db.refresh(draft)
-    return {"saved": True, "updated_at": isoformat_or_none(draft.updated_at)}
+    return {"saved": True, "applied": applied, "updated_at": isoformat_or_none(draft.updated_at)}

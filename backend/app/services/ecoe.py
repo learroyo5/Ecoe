@@ -12,7 +12,6 @@ from app.services.results import (
     persist_results,
     read_results,
     read_station_results,
-    store_contingency_export,
 )
 
 __all__ = [
@@ -27,6 +26,5 @@ __all__ = [
     "persist_results",
     "read_results",
     "read_station_results",
-    "store_contingency_export",
     "update_ecoe_status",
 ]

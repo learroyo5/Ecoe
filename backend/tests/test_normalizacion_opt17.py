@@ -42,7 +42,7 @@ from app.services.results import (
     read_results,
 )
 from app.services.validation import update_ecoe_status
-from conftest import TestingSessionLocal
+from conftest import TestingSessionLocal, activate_checkin
 
 
 def _utcnow_naive() -> datetime:
@@ -138,7 +138,7 @@ def _build_event(
                     student_id=student.id,
                     evaluator_email="eval1@ecoe.cl",
                     evaluator_name="Evaluadora",
-                    status="confirmado",
+                    status="cerrado",  # se activa al operar (F0.1)
                     confirmed_at=_utcnow_naive(),
                 )
                 db.add(checkin)
@@ -150,6 +150,7 @@ def _build_event(
 
 
 def _submit(client, event_id, station_id, student_id, checkin_id, answer):
+    activate_checkin(checkin_id)
     response = client.post("/api/student/submit", json={
         "checkin_id": checkin_id,
         "ecoe_event_id": event_id,

@@ -109,6 +109,45 @@ def login(client: TestClient, credentials: tuple[str, str]) -> None:
     assert response.status_code == 200, f"login failed for {email}: {response.text}"
 
 
+@pytest.fixture(autouse=True)
+def _close_leftover_checkins():
+    """La base comparte estado entre tests y muchos dejan un ingreso
+    `confirmado` en el evento demo. Desde F0.1 la base admite un solo ingreso
+    activo por estación y por estudiante, así que cada test parte sin ninguno
+    heredado. No toca lo que el propio test cree."""
+    with TestingSessionLocal() as db:
+        db.execute(text("UPDATE station_checkins SET status = 'cerrado' WHERE status = 'confirmado'"))
+        db.commit()
+    yield
+
+
+def activate_checkin(checkin_id: int) -> None:
+    """Deja `checkin_id` como EL ingreso activo de su estudiante y estación.
+
+    Los fixtures que arman a un estudiante con ingresos en varias estaciones
+    los crean `cerrado` (un estudiante sólo puede estar confirmado en una
+    estación a la vez, F0.1) y activan el que corresponde justo antes de
+    operar sobre él, igual que ocurre en una rotación real.
+    """
+    from app.models.entities import StationCheckIn
+
+    with TestingSessionLocal() as db:
+        target = db.get(StationCheckIn, checkin_id)
+        db.execute(
+            text(
+                "UPDATE station_checkins SET status = 'cerrado' "
+                "WHERE status = 'confirmado' AND id != :id "
+                "AND (station_id = :station OR (ecoe_event_id = :event AND student_id = :student))"
+            ),
+            {"id": checkin_id, "station": target.station_id,
+             "event": target.ecoe_event_id, "student": target.student_id},
+        )
+        db.flush()
+        target.status = "confirmado"
+        db.add(target)
+        db.commit()
+
+
 @pytest.fixture
 def db_factory():
     """Session factory for tests that need direct DB access."""

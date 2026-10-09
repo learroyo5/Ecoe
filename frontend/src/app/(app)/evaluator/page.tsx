@@ -295,8 +295,10 @@ export default function EvaluatorPage() {
           evaluator_deadline: checkin.evaluator_deadline,
           // Al forzar el check-in de un estudiante ya evaluado, el backend
           // conserva el registro: el form debe quedar bloqueado, no editable.
-          evaluator_submission_exists: Boolean(force),
-          student_response_exists: Boolean(force),
+          // También lo informa el servidor: un reintento devuelve el ingreso
+          // que ya existía, con lo que tenga registrado.
+          evaluator_submission_exists: Boolean(force) || Boolean(checkin.evaluator_submission_exists),
+          student_response_exists: Boolean(force) || Boolean(checkin.student_response_exists),
           status: "confirmado",
         },
       }));

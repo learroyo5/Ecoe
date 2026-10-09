@@ -36,28 +36,13 @@ services:
         condition: service_healthy
     volumes:
       - ./backups:/backups
-    # Daily pg_dump with 14-day rotation. Restore procedure: scripts/restore_db.sh
-    entrypoint: /bin/sh
-    command: >-
-      -c 'set -o pipefail;
-      while true; do
-        ts=$$(date +%Y%m%d-%H%M%S);
-        ok=0;
-        for attempt in 1 2 3; do
-          if pg_dump -h db -U ecoe ecoe | gzip > /backups/ecoe-$$ts.sql.gz; then
-            ok=1; break;
-          fi;
-          rm -f /backups/ecoe-$$ts.sql.gz;
-          sleep 30;
-        done;
-        if [ "$$ok" = "1" ]; then
-          echo "backup ok: ecoe-$$ts.sql.gz";
-        else
-          echo "backup FAILED after 3 attempts: $$ts" >&2;
-        fi;
-        find /backups -name "ecoe-*.sql.gz" -mtime +14 -delete;
-        sleep 86400;
-      done'
+      - ./scripts/backup_loop.sh:/backup_loop.sh:ro
+      # Sólo lectura: el respaldo diario incluye los archivos subidos.
+      - backend_storage:/storage:ro
+    # Respaldo diario (base + archivos, rotación 14 días) y, mientras haya un
+    # ECOE en ejecución, un volcado cada 5 minutos en backups/live/.
+    # Restauración: scripts/restore_db.sh · ensayo: scripts/verify_backup.sh
+    entrypoint: ["/bin/sh", "/backup_loop.sh"]
     mem_limit: 256m
     logging: *default-logging
 

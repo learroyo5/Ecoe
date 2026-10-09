@@ -1,6 +1,7 @@
 from datetime import date, datetime
 
 from sqlalchemy import (
+    BigInteger,
     Index,
     JSON,
     Boolean,
@@ -13,6 +14,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     false,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -534,6 +536,20 @@ class StationCheckIn(Base, TimestampMixin):
     __table_args__ = (
         Index("ix_station_checkins_event_station_status", "ecoe_event_id", "station_id", "status"),
         Index("ix_station_checkins_event_student_status", "ecoe_event_id", "student_id", "status"),
+        # F0.1 (H03): invariantes del ingreso activo respaldadas por la base —
+        # una estación tiene a lo más un estudiante confirmado y un estudiante
+        # está confirmado a lo más en una estación. Dos confirmaciones
+        # simultáneas ya no pueden dejar dos ingresos activos.
+        Index(
+            "uq_station_checkins_active_station", "station_id", unique=True,
+            postgresql_where=text("status = 'confirmado'"),
+            sqlite_where=text("status = 'confirmado'"),
+        ),
+        Index(
+            "uq_station_checkins_active_student", "ecoe_event_id", "student_id", unique=True,
+            postgresql_where=text("status = 'confirmado'"),
+            sqlite_where=text("status = 'confirmado'"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -574,6 +590,9 @@ class StationResponseDraft(Base, TimestampMixin):
     station_id: Mapped[int] = mapped_column(ForeignKey("stations.id"), nullable=False)
     student_id: Mapped[int] = mapped_column(ForeignKey("students.id"), nullable=False)
     answers: Mapped[dict] = mapped_column(JSON, default=dict)
+    # F0.2 (H05): orden que declara el dispositivo para cada autoguardado. Un
+    # borrador que llega tarde (red lenta, reintento) no pisa a uno más nuevo.
+    client_seq: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class EvaluatorRecord(Base, TimestampMixin):
@@ -691,6 +710,29 @@ class ECOEResult(Base, TimestampMixin):
     ecoe_number: Mapped[str | None] = mapped_column(String(32))
     stations_counted: Mapped[int | None] = mapped_column(Integer)
     stations_expected: Mapped[int | None] = mapped_column(Integer)
+
+
+class ECOEResultVersion(Base, TimestampMixin):
+    """Acta consolidada que fue reemplazada (F0.3).
+
+    Al reabrir un ECOE cerrado el snapshot vigente deja de valer, pero no se
+    pierde: se archiva completo aquí (notas por estudiante y por estación tal
+    como estaban), con quién lo reabrió y por qué. Sólo se inserta; nunca se
+    edita ni se sirve como resultado vigente.
+    """
+
+    __tablename__ = "ecoe_result_versions"
+    __table_args__ = (
+        UniqueConstraint("ecoe_event_id", "version", name="uq_ecoe_result_version_event_version"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ecoe_event_id: Mapped[int] = mapped_column(ForeignKey("ecoe_events.id"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    consolidated_at: Mapped[datetime | None] = mapped_column(DateTime)
+    superseded_by_email: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 class Incident(Base, TimestampMixin):

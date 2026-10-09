@@ -4,7 +4,7 @@ freeze-on-close behavior."""
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import text, select
 
 from app.models.entities import (
     ECOEEvent,
@@ -36,6 +36,16 @@ def _event_status(event_id: int) -> str:
 
 def _create_checkin(station_id: int, student_id: int, *, minutes_ago: float = 0) -> int:
     with TestingSessionLocal() as db:
+        if True:
+            # Como en una rotación real: confirmar a alguien cierra el ingreso
+            # activo de esa estación y el de ese estudiante en otra (F0.1).
+            db.execute(
+                text(
+                    "UPDATE station_checkins SET status = 'cerrado' WHERE status = 'confirmado' "
+                    "AND (station_id = :station OR (ecoe_event_id = :event AND student_id = :student))"
+                ),
+                {"station": station_id, "event": 1, "student": student_id},
+            )
         checkin = StationCheckIn(
             ecoe_event_id=1,
             station_id=station_id,
