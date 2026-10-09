@@ -345,6 +345,13 @@ class Station(Base, TimestampMixin):
     simulated_patient_id: Mapped[int | None] = mapped_column(
         ForeignKey("simulated_patients.id", ondelete="SET NULL")
     )
+    # Circuitos espejo: una estación espejo es la MISMA estación de diseño
+    # instanciada en otro circuito (otro piso, otro evaluador, otra tablet).
+    # Apunta a la estación original; su diseño (pauta, formulario, puntaje,
+    # instrucciones) se copia de ella y no se edita por separado.
+    mirror_of_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stations.id", ondelete="CASCADE"), index=True
+    )
     station_number: Mapped[int] = mapped_column(Integer, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     station_type: Mapped[str] = mapped_column(String(64), nullable=False)

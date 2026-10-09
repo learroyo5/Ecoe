@@ -6,8 +6,9 @@ Uso, dentro del contenedor backend de la instancia demo:
 
 Deja dos ECOE para mostrar el proceso completo:
 
-- **«ECOE Medicina Interna 2026»** (el del seed base), EN EJECUCIÓN: circuitos
-  espejo A/B, equipo asignado, primera rotación ya registrada. Sirve para
+- **«ECOE Medicina Interna 2026»** (el del seed base), EN EJECUCIÓN y en
+  ESPEJO: circuito A de 4 estaciones y su circuito B idéntico (8 estaciones
+  físicas), equipo asignado y la primera ronda ya registrada en ambos. Sirve para
   mostrar el panel en vivo, el tablero de estaciones, el kiosco y la
   contingencia.
 - **«ECOE Cirugía 2026»**, CERRADO: 12 estudiantes × 5 estaciones evaluadas,
@@ -46,6 +47,7 @@ from app.models.entities import (
 )
 from app.models.enums import ECOEStatus, InstrumentType, RoleCode, SessionMode, StationStatus
 from app.services.grading import apply_auto_grading
+from app.services.mirrors import sync_mirror_circuit
 from app.services.validation import update_ecoe_status
 from app.utils.clock import utcnow_naive
 
@@ -149,6 +151,11 @@ def _record_station(
         for index, question in enumerate(questions, start=1):
             options = question.get("options") or []
             if not options:
+                # Pregunta abierta: queda pendiente de corrección diferida.
+                answers[f"question_{index}"] = (
+                    "Hemograma con leucocitosis y PCR elevada; se sospecha cuadro infeccioso. "
+                    "Indico hidratación, cultivos y antibiótico empírico."
+                )
                 continue
             correct = question.get("correct_option")
             answers[f"question_{index}"] = (
@@ -163,33 +170,34 @@ def _record_station(
         db.add(response)
 
 
-def _polish_live_event(db: Session, password: str) -> None:
-    """El evento del seed base queda presentable: formularios con puntaje,
-    todas las estaciones con evaluador con cuenta, y una rotación registrada."""
-    event = db.scalar(select(ECOEEvent).where(ECOEEvent.name == LIVE_EVENT_NAME))
+def _polish_live_event(db: Session, password: str, event_name: str = LIVE_EVENT_NAME) -> None:
+    """El evento del seed base se rehace como un ESPEJO real: un circuito A de
+    4 estaciones y su circuito B creado con el mismo mecanismo que usa la
+    aplicación; todas las estaciones con evaluador con cuenta y una ronda ya
+    registrada en cada circuito."""
+    event = db.scalar(select(ECOEEvent).where(ECOEEvent.name == event_name))
     if event is None:
         return
-    stations = db.scalars(
-        select(Station).where(Station.ecoe_event_id == event.id).order_by(Station.station_number)
-    ).all()
-    already = db.scalar(
-        select(StudentResponse).where(StudentResponse.ecoe_event_id == event.id).limit(1)
-    )
-    if already is not None:
-        return
+    if db.scalar(
+        select(Station).where(Station.ecoe_event_id == event.id, Station.mirror_of_id.is_not(None)).limit(1)
+    ) is not None:
+        return  # ya está armado
     event.date = date.today()
-    extra_evaluators = [
-        ("eval2@ecoe.cl", "Rene", "Torres"),
-        ("eval3@ecoe.cl", "Marcela", "Díaz"),
-        ("eval4@ecoe.cl", "Ignacio", "Vera"),
-    ]
-    for email, name, last_name in extra_evaluators:
-        _ensure_user(db, email, f"{name} {last_name}", RoleCode.evaluador.value, password)
-    needing = [s for s in stations if s.requires_evaluator]
-    pool = [("eval1@ecoe.cl", "Camila", "Soto")] + extra_evaluators
-    for station, (email, name, last_name) in zip(needing, pool):
-        _ensure_evaluator(db, event.id, station, email, name, last_name)
-    for station in stations:
+    stations = {
+        s.station_number: s
+        for s in db.scalars(select(Station).where(Station.ecoe_event_id == event.id))
+    }
+    # Circuito A = Anamnesis, ECG, Examen cardiovascular e Informe de
+    # laboratorio (corrección diferida). Las otras dos del seed base sobran.
+    for number in [n for n in stations if n not in (1, 2, 3, 6)]:
+        db.delete(stations.pop(number))
+    db.flush()
+    lab = stations.get(6)
+    if lab is not None:
+        lab.station_number = 4
+    circuit_a = [stations[n] for n in (1, 2, 3)] + ([lab] if lab is not None else [])
+    for station in circuit_a:
+        station.circuit_name = "Circuito A"
         station.uses_multimedia = False
         station.multimedia_notes = ""
         if station.requires_student_form and not station.requires_deferred_grading:
@@ -197,16 +205,39 @@ def _polish_live_event(db: Session, password: str) -> None:
         station.status = StationStatus.publicada.value
         db.add(station)
     db.flush()
+    sync_mirror_circuit(db, event.id, "Circuito A", "Circuito B")
+    all_stations = db.scalars(
+        select(Station).where(Station.ecoe_event_id == event.id).order_by(Station.station_number)
+    ).all()
+
+    evaluators = [
+        ("eval1@ecoe.cl", "Camila", "Soto"), ("eval2@ecoe.cl", "Rene", "Torres"),
+        ("eval3@ecoe.cl", "Marcela", "Díaz"), ("eval4@ecoe.cl", "Ignacio", "Vera"),
+        ("eval5@ecoe.cl", "Valentina", "Paz"), ("eval6@ecoe.cl", "Tomás", "Leiva"),
+    ]
+    for email, name, last_name in evaluators:
+        _ensure_user(db, email, f"{name} {last_name}", RoleCode.evaluador.value, password)
+    for station, (email, name, last_name) in zip(
+        [s for s in all_stations if s.requires_evaluator], evaluators
+    ):
+        _ensure_evaluator(db, event.id, station, email, name, last_name)
+    corrector = db.scalar(
+        select(StaffAssignment).where(
+            StaffAssignment.ecoe_event_id == event.id,
+            StaffAssignment.role_code == RoleCode.corrector.value,
+        )
+    )
+    if corrector is not None:
+        corrector.station_ids = [s.id for s in all_stations if s.requires_deferred_grading]
+        db.add(corrector)
+    db.flush()
 
     rng = random.Random(2026)
     students = db.scalars(
         select(Student).where(Student.ecoe_event_id == event.id).order_by(Student.id)
     ).all()
-    by_circuit: dict[str, list[Station]] = {}
-    for station in stations:
-        by_circuit.setdefault(station.circuit_name, []).append(station)
     tools: dict[int, list[AssessmentItem]] = {}
-    for station in stations:
+    for station in all_stations:
         if station.assessment_tool_id and station.assessment_tool_id not in tools:
             tools[station.assessment_tool_id] = list(db.scalars(
                 select(AssessmentItem).where(AssessmentItem.tool_id == station.assessment_tool_id)
@@ -218,12 +249,11 @@ def _polish_live_event(db: Session, password: str) -> None:
             select(EvaluatorRecord).where(EvaluatorRecord.ecoe_event_id == event.id)
         )
     }
-    # Primera ronda completa: los tres primeros estudiantes de cada circuito ya
-    # pasaron por todas sus estaciones (salvo la de corrección diferida, que
-    # queda con respuestas pendientes de corregir para mostrar esa pantalla).
-    for circuit, circuit_stations in by_circuit.items():
-        circuit_students = [s for s in students if s.circuit_name == circuit][:3]
-        for student in circuit_students:
+    # Primera ronda completa en cada piso: 4 estudiantes por circuito pasaron
+    # por sus 4 estaciones. El quinto de cada circuito espera la segunda ronda.
+    for circuit in ("Circuito A", "Circuito B"):
+        circuit_stations = [s for s in all_stations if s.circuit_name == circuit]
+        for student in [s for s in students if s.circuit_name == circuit][:4]:
             skill = rng.uniform(0.45, 0.95)
             for station in circuit_stations:
                 if (station.id, student.id) in existing_pairs:

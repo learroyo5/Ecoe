@@ -500,6 +500,12 @@ def duplicate_ecoe(
         db.add(new_station)
         db.flush()
         station_id_map[st.id] = new_station.id
+    # Los espejos del clon apuntan a las originales del clon.
+    for st in original_stations:
+        if st.mirror_of_id and st.mirror_of_id in station_id_map:
+            clone_station = db.get(Station, station_id_map[st.id])
+            clone_station.mirror_of_id = station_id_map[st.mirror_of_id]
+            db.add(clone_station)
 
     # Optionally copy evaluators with re-mapped station IDs
     if payload.copy_evaluators:

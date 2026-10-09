@@ -21,6 +21,7 @@ from app.services.dependencies import get_current_user, require_roles
 from app.services.authorization import ensure_event_access
 from app.services.drafts import discard_checkin_draft, upsert_checkin_draft
 from app.services.grading import apply_auto_grading
+from app.services.mirrors import design_station_id
 from app.utils.helpers import (
     public_form_definition,
     ensure_checkin_within_time,
@@ -98,7 +99,7 @@ def student_access_context(
     student_media_assets = db.scalars(
         select(MediaAsset)
         .where(
-            MediaAsset.station_id == station.id,
+            MediaAsset.station_id == design_station_id(station),
             MediaAsset.target_viewer.in_(["estudiante", "ambos"]),
         )
         .order_by(MediaAsset.created_at.asc(), MediaAsset.id.asc())

@@ -67,6 +67,8 @@ export type StaffAssignment = {
 export type Station = {
   id: number;
   ecoe_event_id: number;
+  /** Circuitos espejo: id de la estación original, o null si lo es ella. */
+  mirror_of_id?: number | null;
   template_id: number | null;
   assessment_tool_id: number | null;
   simulated_patient_id: number | null;
@@ -518,6 +520,8 @@ export type StationScoreAggregate = {
   sd_percent: number | null;
   min_percent: number | null;
   max_percent: number | null;
+  /** Circuitos espejo: la misma estación en cada circuito (1A, 1B…). */
+  circuits?: Array<{ circuit_name: string; n: number; mean_percent: number }>;
 };
 
 /** OPT-16: nota de un estudiante en una estación (formato largo). */
@@ -525,6 +529,8 @@ export type StudentStationScore = {
   student_id: number;
   ecoe_number: string | null;
   student_name: string;
+  /** Circuito en que el estudiante rindió la estación. */
+  circuit_name?: string;
   station_id: number;
   station_number: number | null;
   station_name: string;

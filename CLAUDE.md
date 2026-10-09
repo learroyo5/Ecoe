@@ -97,6 +97,16 @@ El ciclo de vida del ECOE (`borrador → en_configuracion → listo_para_pilotaj
 
 **Desde la auditoría de proceso 2026-10-09 (PROC):** `cerrado` admite además volver a `en_ejecucion` (reapertura: sólo `admin_ecoe`/global, `transition_reason` ≥ 10 caracteres, borra el snapshot y queda auditada) y `archivado` es terminal. La transición a `cerrado` falla con `IncompleteClosureError` (409 `incomplete_students`) si hay estudiantes activos con estaciones esperadas de su circuito sin nota, salvo `force_close_incomplete`, que las consolida en 0 (`StationResult.is_missing`). `publicado → en_ejecucion` reinicia la `LiveSession`.
 
+### Circuitos espejo
+
+`backend/app/services/mirrors.py`. Un ECOE en espejo corre el mismo circuito en paralelo (circuito A en un piso, B en otro). Se diseña **un** circuito; `POST /ecoe/{id}/circuits/mirror` crea (o completa / re-sincroniza) el espejo: una fila `Station` por estación original con `mirror_of_id` apuntando a ella y el mismo diseño (`SHARED_DESIGN_FIELDS`). Reglas:
+
+- Una estación espejo **no se diseña por separado**: `PUT /stations/{id}` rechaza cambios de diseño (409), no se borra sola ni recibe multimedia propia. Editar la original propaga el diseño a sus espejos en la misma transacción.
+- Lo propio de cada estación física: circuito, número, evaluador, tablet/kiosco, paciente simulado.
+- La **estación de diseño** (`mirror_of_id or id`) es la unidad de análisis: `build_station_score_block` y la psicometría agregan 1A + 1B (con desglose por circuito); la multimedia vive en la original y la leen sus espejos.
+- `compute_ecoe_validation` bloquea pilotaje y publicación (`mirror_issues`) si hay más de un circuito y no son espejo exacto: dos circuitos armados a mano, espejo incompleto o con diseño distinto.
+- Rondas y estaciones esperadas ya eran por circuito (PROC-11); el check-in avisa si el estudiante es de otro circuito.
+
 ### Candados por estado (PROC-5)
 
 `backend/app/services/event_lock.py`: la **estructura** (estaciones, formularios, multimedia, tiempos/circuito del evento, borrar/depurar/renumerar estudiantes) queda bloqueada desde `publicado` (`ensure_structure_editable`); con el evento `cerrado`/`archivado` no cambia nada, tampoco equipo ni nómina (`ensure_event_not_frozen`). En `en_ejecucion` sí se puede agregar un estudiante rezagado y reasignar equipo. Los cambios de estructura escriben `AuditLog` (`audit_change`). Espejo en frontend: `components/structure-lock-notice.tsx`.

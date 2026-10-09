@@ -209,7 +209,18 @@ export default function ResultsPage() {
                 columns={[
                   { key: "station_number", label: "Estación" },
                   { key: "station_name", label: "Nombre" },
-                  { key: "circuit_name", label: "Circuito" },
+                  {
+                    key: "circuit_name",
+                    label: "Circuito",
+                    // En espejo la estación existe en cada circuito: se
+                    // muestra el promedio de cada uno para compararlos.
+                    render: (row) =>
+                      (row.circuits ?? []).length > 1
+                        ? (row.circuits ?? [])
+                            .map((circuit) => `${circuit.circuit_name}: ${circuit.mean_percent} % (n ${circuit.n})`)
+                            .join(" · ")
+                        : row.circuit_name,
+                  },
                   { key: "n", label: "n" },
                   {
                     key: "mean_percent",
@@ -260,6 +271,11 @@ export default function ResultsPage() {
                       key: "station_name",
                       label: "Estación",
                       render: (row) => `${row.station_number ?? "?"}. ${row.station_name}`,
+                    },
+                    {
+                      key: "circuit_name",
+                      label: "Circuito",
+                      render: (row) => row.circuit_name ?? "—",
                     },
                     { key: "obtained_score", label: "Puntaje" },
                     { key: "max_score", label: "Máximo" },

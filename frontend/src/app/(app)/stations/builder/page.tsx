@@ -844,8 +844,35 @@ export default function StationBuilderPage() {
       ? `Estación ${isEditing ? form.station_number : nextStationNumber} · ${form.name.trim() || "sin nombre aún"}`
       : form.name.trim() || "Estación del banco sin nombre aún";
 
+  // Circuitos espejo: una estación espejo no se diseña aquí; se edita su original.
+  const editingStation =
+    isEditing && builderScope === "ecoe"
+      ? (stations ?? []).find((item) => Number(item.id) === editingStationId) ?? null
+      : null;
+  const mirrorOriginal = editingStation?.mirror_of_id
+    ? (stations ?? []).find((item) => Number(item.id) === Number(editingStation.mirror_of_id)) ?? null
+    : null;
+  const mirrorCount = editingStation
+    ? (stations ?? []).filter((item) => Number(item.mirror_of_id) === Number(editingStation.id)).length
+    : 0;
+
   return (
     <SectionCard>
+      {mirrorOriginal ? (
+        <div role="alert" className="mb-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          Esta es una <strong>estación espejo</strong> de «{String(mirrorOriginal.name)}» (
+          {String(mirrorOriginal.circuit_name)}). Su diseño no se edita aquí: cambia la original y el
+          espejo se actualiza solo.{" "}
+          <Link href={`/stations/builder?stationId=${Number(mirrorOriginal.id)}`} className="font-semibold underline">
+            Ir a la estación original
+          </Link>
+        </div>
+      ) : mirrorCount > 0 ? (
+        <div role="status" className="mb-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          Esta estación tiene {mirrorCount === 1 ? "un espejo" : `${mirrorCount} espejos`} en otro circuito: lo
+          que guardes aquí se copia automáticamente.
+        </div>
+      ) : null}
       {/* Barra fija de contexto: siempre se ve qué estación se edita,
           el avance y el estado de guardado, sin importar el scroll. */}
       <div className="sticky top-2 z-30 mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl border border-slate-200 bg-white/95 px-4 py-2.5 shadow-sm backdrop-blur">

@@ -34,6 +34,7 @@ from app.services.drafts import discard_checkin_draft, upsert_checkin_draft
 from app.services.grading import apply_auto_grading
 from app.services.live_sweep import sweep_expired_phases
 from app.services.presence import touch_last_seen
+from app.services.mirrors import design_station_id
 from app.services.live_cycle import advance_if_expired
 from app.services.kiosk import (
     authenticate_kiosk_token,
@@ -178,7 +179,7 @@ def kiosk_context(
     media_assets = db.scalars(
         select(MediaAsset)
         .where(
-            MediaAsset.station_id == station.id,
+            MediaAsset.station_id == design_station_id(station),
             MediaAsset.target_viewer.in_(["estudiante", "ambos"]),
         )
         .order_by(MediaAsset.created_at.asc(), MediaAsset.id.asc())
@@ -345,7 +346,7 @@ def kiosk_media_file(
     asset = db.get(MediaAsset, asset_id)
     if (
         not asset
-        or asset.station_id != kiosk.station_id
+        or asset.station_id != design_station_id(db.get(Station, kiosk.station_id))
         or asset.target_viewer not in {"estudiante", "ambos"}
     ):
         raise HTTPException(status_code=404, detail="Archivo no encontrado")

@@ -78,6 +78,7 @@ logger = logging.getLogger("ecoe.operational")
 
 from app.services.event_lock import ensure_structure_editable
 from app.services.presence import build_station_board
+from app.services.mirrors import design_station_id
 
 from app.services.results import list_acta_versions
 
@@ -392,6 +393,13 @@ async def upload_media(
     user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
     ensure_structure_editable(db, ecoe_event_id, "cargar multimedia")
+    if station_id:
+        upload_station = db.get(Station, station_id)
+        if upload_station is not None and upload_station.mirror_of_id:
+            raise HTTPException(
+                status_code=409,
+                detail="Es una estación espejo: sube el archivo en la estación original y lo verán ambas.",
+            )
     if target_viewer not in ALLOWED_VIEWERS:
         raise HTTPException(
             status_code=400,
@@ -455,7 +463,10 @@ def list_media(station_id: int, db: Session = Depends(get_db), user=Depends(get_
         RoleCode.evaluador.value,
         RoleCode.estudiante.value,
     )
-    assets = db.scalars(select(MediaAsset).where(MediaAsset.station_id == station_id)).all()
+    # Una estación espejo usa la multimedia de su original.
+    assets = db.scalars(
+        select(MediaAsset).where(MediaAsset.station_id == design_station_id(station))
+    ).all()
     return filter_media_for_user(db, user, station, assets)
 
 

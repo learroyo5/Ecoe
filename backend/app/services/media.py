@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.models.entities import MediaAsset, StaffAssignment, Station, Student, User
 from app.models.enums import RoleCode
 from app.services.authorization import ensure_event_access
+from app.services.mirrors import station_family_ids
 from app.utils.helpers import (
     ensure_primary_station_assignment,
     get_active_checkin,
@@ -120,7 +121,9 @@ def can_user_access_station_media(
             db, user, station.ecoe_event_id, RoleCode.evaluador.value
         )
         assigned_station_ids, _ = ensure_primary_station_assignment(assignment)
-        return station.id in assigned_station_ids
+        # La multimedia de una estación la ven también los evaluadores de sus
+        # espejos (y viceversa): es la misma estación de diseño.
+        return bool(station_family_ids(db, station) & set(assigned_station_ids))
 
     if RoleCode.estudiante.value in event_roles:
         if target_viewer not in {"estudiante", "ambos"}:
@@ -134,13 +137,10 @@ def can_user_access_station_media(
         )
         if not student:
             return False
-        active_checkin = get_active_checkin(
-            db,
-            station.ecoe_event_id,
-            station.id,
-            student.id,
+        return any(
+            get_active_checkin(db, station.ecoe_event_id, family_station_id, student.id) is not None
+            for family_station_id in station_family_ids(db, station)
         )
-        return active_checkin is not None
 
     return False
 
