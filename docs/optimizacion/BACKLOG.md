@@ -107,7 +107,7 @@ Origen: `docs/AUDITORIA_SAAS_MULTIINSTITUCIONAL_ECOE.md` (H01–H18), contrastad
 
 | ID | Título | Hallazgos | Esfuerzo | Estado |
 |----|--------|-----------|----------|--------|
-| SAAS-F0 | Integridad con una sola institución (check-in concurrente, envíos idempotentes, acta versionada, sockets, mínimo privilegio, uploads, recuperación ensayada, e2e en CI) | H03, H04 (resto), H05, H08, H09, H14, H16, H17 | M–L · migraciones | hecho en ramas `saas/f0-01…04` (sin merge; falta F0.5 mínimo privilegio) |
+| SAAS-F0 | Integridad con una sola institución (check-in concurrente, envíos idempotentes, acta versionada, sockets, mínimo privilegio, uploads, recuperación ensayada, e2e en CI) | H03, H04 (resto), H05, H08, H09, H14, H16, H17 | M–L · migraciones | hecho y desplegado 2026-10-09 (`bdf3554`); falta F0.5 mínimo privilegio |
 | SAAS-F1 | Institución y plano de control mínimo | H01, H06, H12 | L · requiere decisiones D1, D2, D5 | propuesto |
 | SAAS-F2 | Aislamiento efectivo: sesiones, JWT, WebSocket, archivos, navegador, migrador, suite A/B | H01, H02, H07, H10, H15 | XL | propuesto |
 | SAAS-F3 | Alta de institución sin tocar código | H12 | L | propuesto |

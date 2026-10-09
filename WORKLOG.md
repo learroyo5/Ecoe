@@ -82,7 +82,9 @@ Importante: la rama corrige una regresion de PROC-22 que **esta en produccion** 
 
 Nuevos scripts: `scripts/backup_loop.sh` (lo usa `db-backup`: diario con archivos + cada 5 min con un ECOE en ejecucion) y `scripts/verify_backup.sh` (ensayo de restauracion en un PostgreSQL desechable, sin tocar produccion).
 
-Pendiente: F0.5 (minimo privilegio de secretos y proxies) y crear `demo.ecoe.cl`.
+Actualizacion: Fase 0 **mergeada y desplegada** (`bdf3554`, produccion en `w3x4y5z6a7b8`, respaldo previo `ecoe-pre-f0-20261009-163539.sql.gz`). Instancia demo creada y corriendo en loopback (3100/8100) con sus dos ECOE; falta publicarla: reglas en `/etc/cloudflared/config.yml` + CNAME `demo` (pasos en `datos_proyecto/operacion_despliegue.md`). Desde ahora el despliegue es `./scripts/deploy.sh` (produccion + demo).
+
+Pendiente: F0.5 (minimo privilegio de secretos y proxies) y publicar `demo.ecoe.cl`.
 
 ## Sesion 2026-06-03 — Evolucion v1 → v2
 

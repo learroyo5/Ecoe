@@ -141,7 +141,7 @@ Requiere revisión jurídica (Ley 21.719 entra en vigencia el 2026-12-01), contr
 
 ### Estado de la Fase 0 (2026-10-09)
 
-Implementada en cuatro ramas apiladas, **sin merge ni deploy** (incluyen 3 migraciones: `u1v2w3x4y5z6`, `v2w3x4y5z6a7`, `w3x4y5z6a7b8`). Verificación sobre la rama final: backend 527 tests en PostgreSQL con migraciones (eran 503), frontend 139 (eran 136), flujo dorado e2e 4/4.
+Implementada en cuatro ramas apiladas, **mergeadas (`bdf3554`) y desplegadas el 2026-10-09** tras respaldo manual; producción quedó en la revisión `w3x4y5z6a7b8`. Incluyen 3 migraciones: `u1v2w3x4y5z6`, `v2w3x4y5z6a7`, `w3x4y5z6a7b8`). Verificación sobre la rama final: backend 527 tests en PostgreSQL con migraciones (eran 503), frontend 139 (eran 136), flujo dorado e2e 4/4.
 
 | Tarea | Estado | Rama |
 |---|---|---|
@@ -156,6 +156,15 @@ Implementada en cuatro ramas apiladas, **sin merge ni deploy** (incluyen 3 migra
 | F0.5 Mínimo privilegio | **No hecho.** Quitarle al frontend el `.env` completo y acotar los proxies de confianza requiere conocer las variables de `backend/.env` y la red real del proxy; hacerlo a ciegas puede romper el login en producción. Pendiente de hacerlo con el usuario. | — |
 
 **Regresión corregida en F0.1.** Desde PROC-22 (desplegado el 2026-10-09), confirmar por segunda vez al mismo estudiante en su propia estación cerraba su ingreso y le autoenviaba la respuesta en blanco. El botón se deshabilita mientras confirma, así que un doble clic no lo dispara; sí lo hace volver a tipear el número de quien ya está confirmado. Está en producción hasta que se despliegue esta fase.
+
+### Camino elegido por el usuario (2026-10-09): mismo núcleo, bases independientes
+
+El usuario prefiere un mismo núcleo con una base independiente por institución, y que los cambios del núcleo lleguen solos a todas. Se implementó el primer peldaño con `demo.ecoe.cl`:
+
+- **Hoy — una instancia por institución, misma imagen.** Cada institución es un stack propio (`docker-compose.demo.yml` es el molde): su PostgreSQL, sus archivos, sus secretos y su subdominio, corriendo **las mismas imágenes** que producción. `scripts/deploy.sh` construye una vez y actualiza todas. El aislamiento es real (procesos y bases distintas) y no exige tocar el código. Costo: ~1,3 GB de memoria reservada por instancia.
+- **Después — un solo proceso para todas (Fases 1–2 de este plan).** Sólo cuando el número de instituciones haga caro el punto anterior. El esquema, las migraciones y el respaldo por base ya quedan resueltos por el peldaño de hoy.
+
+Pendiente para pasar de "demo" a "molde de institución": parametrizar nombre del proyecto, puertos y dominio (hoy fijos a demo), respaldo automático por instancia, y la marca (nombre/logo) por variable.
 
 ### D4 explicada
 
