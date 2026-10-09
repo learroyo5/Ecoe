@@ -48,13 +48,8 @@ export function defaultRouteForRole(role: string): string {
   }
 }
 
-/**
- * Devuelve si la ruta está permitida para el rol, usando el item de
- * navegación más específico que cubra el pathname (p.ej. /ecoe/123 → /ecoe,
- * /stations/builder gana sobre /stations). Rutas sin item asociado se
- * permiten: el backend sigue siendo la autoridad final.
- */
-export function isRouteAllowedForRole(pathname: string, role: string | string[]): boolean {
+/** Item de navegación más específico que cubre el pathname, o null. */
+export function navItemForPath(pathname: string): (typeof NAV_ITEMS)[number] | null {
   let match: (typeof NAV_ITEMS)[number] | null = null;
   for (const item of NAV_ITEMS) {
     if (pathname === item.href || pathname.startsWith(`${item.href}/`)) {
@@ -63,6 +58,17 @@ export function isRouteAllowedForRole(pathname: string, role: string | string[])
       }
     }
   }
+  return match;
+}
+
+/**
+ * Devuelve si la ruta está permitida para el rol, usando el item de
+ * navegación más específico que cubra el pathname (p.ej. /ecoe/123 → /ecoe,
+ * /stations/builder gana sobre /stations). Rutas sin item asociado se
+ * permiten: el backend sigue siendo la autoridad final.
+ */
+export function isRouteAllowedForRole(pathname: string, role: string | string[]): boolean {
+  const match = navItemForPath(pathname);
   if (!match) return true;
   const roles = Array.isArray(role) ? role : [role];
   return roles.some((item) => match?.allowedFor.includes(item as RoleCode));
