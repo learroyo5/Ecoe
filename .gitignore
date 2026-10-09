@@ -20,3 +20,6 @@ frontend/playwright-report/
 
 # SQLite test DB (backend/pytest.ini genera test.db en tests locales)
 backend/test.db
+
+# Secretos de la instancia demo (docker-compose.demo.yml)
+/demo.env
