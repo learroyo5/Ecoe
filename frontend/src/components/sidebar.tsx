@@ -40,6 +40,8 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
   const renderItem = ({ label, href, icon }: NavItem) => {
     const active = href === activeHref;
+    // `!text-white`: globals.css fija `a { color: inherit }` fuera de capas y
+    // le gana a la utilidad normal, dejando el texto oscuro sobre el fondo activo.
     return (
       <Link
         key={href}
@@ -48,7 +50,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         aria-current={active ? "page" : undefined}
         className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition ${
           active
-            ? "bg-[linear-gradient(135deg,var(--color-primary),var(--color-primary-dark))] font-semibold text-white shadow-sm"
+            ? "bg-[linear-gradient(135deg,var(--color-primary),var(--color-primary-dark))] font-semibold !text-white shadow-sm"
             : "text-slate-700 hover:bg-[var(--color-bg-soft)]"
         }`}
       >

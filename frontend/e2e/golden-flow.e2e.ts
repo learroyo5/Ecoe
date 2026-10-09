@@ -110,8 +110,9 @@ test.describe.serial("flujo dorado", () => {
 
     // Emitir token de kiosco para la estación sin evaluador (Plan diagnostico).
     const stationRow = page.locator("div.rounded-2xl", { hasText: "Plan diagnóstico" }).first();
-    page.once("dialog", (dialog) => dialog.accept());
     await stationRow.getByRole("button", { name: "Modo kiosco" }).click();
+    // Confirmación en el modal propio (UX-1), ya no en un confirm nativo.
+    await page.getByRole("dialog").getByRole("button", { name: "Generar enlace" }).click();
     const kioskUrl = (await page.locator("p.font-mono").textContent())?.trim();
     expect(kioskUrl).toBeTruthy();
 

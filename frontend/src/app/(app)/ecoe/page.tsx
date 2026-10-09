@@ -182,7 +182,7 @@ export default function ECOEPage() {
       <StatusNotice message={message} />
 
       {tab === "general" ? (
-        <SectionCard title="Datos generales" subtitle="Configuración académica base del ECOE activo.">
+        <SectionCard>
           {listLoading && <p className="text-sm text-slate-500">Cargando...</p>}
           {listError && <p className="text-sm text-red-600">{listError}</p>}
           {activeValues && (
