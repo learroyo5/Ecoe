@@ -49,6 +49,8 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Pilotaje", href: "/pilotage", group: "preparacion", allowedFor: ["admin_global", "admin_ecoe", "coeditor_docente", "coordinador_operativo"], icon: "M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3M7.5 15h9" },
   { label: "Publicación", href: "/publication", group: "preparacion", allowedFor: ["admin_global", "admin_ecoe", "coeditor_docente"], icon: "M12 16V4M7 9l5-5 5 5M4 20h16" },
   { label: "Panel en vivo", href: "/live", group: "examen", allowedFor: ["admin_global", "admin_ecoe", "coeditor_docente", "coordinador_operativo", "cronometrador"], icon: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2" },
+  // Mismos roles que emiten tokens en el backend (KIOSK_MANAGER_ROLES).
+  { label: "Kioscos", href: "/kiosks", group: "examen", allowedFor: ["admin_global", "admin_ecoe", "coordinador_operativo"], icon: "M6 3h12v18H6zM11 18h2" },
   { label: "Vista de evaluador", href: "/evaluator", group: "examen", allowedFor: ["evaluador", "admin_ecoe", "coordinador_operativo"], icon: "M9 4h6v3H9zM9 5H6v16h12V5h-3M9 12l2 2 4-4" },
   { label: "Estudiante", href: "/student", group: "examen", allowedFor: ["estudiante"], icon: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0" },
   { label: "Corrección", href: "/grading", group: "cierre", allowedFor: ["admin_global", "admin_ecoe", "coeditor_docente", "corrector"], icon: "M4 20h4L19 9l-4-4L4 16zM13 7l4 4" },

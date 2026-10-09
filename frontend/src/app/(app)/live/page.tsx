@@ -8,6 +8,7 @@ import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
 import { useLiveTimer } from "@/lib/ws";
 import { SectionCard } from "@/components/section-card";
+import { liveActionBlockedReason } from "@/lib/live-controls";
 import { StatusNotice } from "@/components/forms";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { EvaluatorDraftsPanel } from "@/components/evaluator-drafts-panel";
@@ -420,10 +421,14 @@ export default function LivePage() {
               {(timerState.auto_mode
                 ? (["start", "pause", "resume", "reset", "skip_phase"] as const)
                 : (["start", "pause", "resume", "reset", "next_transition"] as const)
-              ).map((action) => (
+              ).map((action) => {
+                const blockedReason = liveActionBlockedReason(action, timerState.status);
+                return (
                 <button
                   key={action}
-                  className={action === "start" ? "btn-primary" : "btn-secondary"}
+                  className={`${action === "start" ? "btn-primary" : "btn-secondary"} disabled:cursor-not-allowed disabled:opacity-40`}
+                  disabled={blockedReason !== null}
+                  title={blockedReason ?? undefined}
                   onClick={() =>
                     action === "reset"
                       ? setShowResetConfirm(true)
@@ -439,7 +444,8 @@ export default function LivePage() {
                    action === "skip_phase" ? "Adelantar fase" :
                    "Sig. estación"}
                 </button>
-              ))}
+                );
+              })}
               <button
                 className="rounded-full border border-white/40 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
                 onClick={() => setProjectorMode(true)}

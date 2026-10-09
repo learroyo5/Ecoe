@@ -64,6 +64,22 @@ describe("isRouteAllowedForRole", () => {
   });
 });
 
+describe("/kiosks", () => {
+  it("sólo lo abren los roles que el backend deja emitir tokens de kiosco", () => {
+    expect(isRouteAllowedForRole("/kiosks", "admin_ecoe")).toBe(true);
+    expect(isRouteAllowedForRole("/kiosks", "coordinador_operativo")).toBe(true);
+    expect(isRouteAllowedForRole("/kiosks", "admin_global")).toBe(true);
+    expect(isRouteAllowedForRole("/kiosks", "coeditor_docente")).toBe(false);
+    expect(isRouteAllowedForRole("/kiosks", "cronometrador")).toBe(false);
+    expect(isRouteAllowedForRole("/kiosks", "evaluador")).toBe(false);
+    expect(isRouteAllowedForRole("/kiosks", "estudiante")).toBe(false);
+  });
+
+  it("no captura la ruta pública /kiosk de las tablets", () => {
+    expect(isRouteAllowedForRole("/kiosk", "estudiante")).toBe(true);
+  });
+});
+
 describe("NAV_ITEMS (presentación)", () => {
   it("el Constructor sigue con gating propio aunque no tenga entrada en la barra lateral", () => {
     const builder = NAV_ITEMS.find((item) => item.href === "/stations/builder");
