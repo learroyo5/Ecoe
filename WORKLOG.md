@@ -47,6 +47,12 @@ Mergeado a `main` (`3397cb4`) y desplegado el 2026-10-09 (solo se reconstruyo `e
 
 Node en el host (2026-10-09): Node 22 instalado a nivel de usuario con nvm (`~/.nvm`), con enlaces `node`/`npm`/`npx` en `~/.local/bin` para shells no interactivos. `npm run lint`, `npm test` y `npm run build` ya corren directo en `frontend/`. `./scripts/run_e2e.sh` tambien corre nativo (4/4 del flujo dorado) tras instalar las librerias del sistema de Chromium con `sudo env "PATH=$HOME/.local/bin:$PATH" npx playwright install-deps chromium` (`sudo` no ve el `npx` del usuario sin pasarle el PATH).
 
+## Sesion 2026-10-09 (b) — Auditoria del proceso ECOE
+
+Ramas `ux/01…07` borradas (local y remoto) tras el merge. Auditoria de coherencia, flujos, perdida de informacion, zonas sin cubrir y seguridad sobre backend + BD + frontend: `docs/optimizacion/hallazgos/auditoria-proceso-ecoe__2026-10-09.md`, 21 hallazgos (PROC-1…21) en el Grupo E de `docs/optimizacion/BACKLOG.md`, todos en estado `nuevo`. Incluye una propuesta de coordinacion de personas y dispositivos para el dia del examen. Nada implementado: espera triage del usuario.
+
+Lo mas urgente antes de cualquier prueba con personas: PROC-1 (confirmar al estudiante durante la transicion le autoenvia la estacion en blanco) y PROC-4 (la clave de respuestas viaja al dispositivo del estudiante).
+
 ## Sesion 2026-06-03 — Evolucion v1 → v2
 
 Se completaron las 4 fases planificadas en `NEXT_STEPS.md`:

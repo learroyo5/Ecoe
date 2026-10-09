@@ -66,6 +66,34 @@ Origen: `hallazgos/auditoria-ux-navegacion__2026-10-09.md`. Aprobado por el usua
 | UX-6 | Día del examen: pantalla Kioscos y controles en vivo por estado | H-ux-8, H-ux-9 | media | operación en vivo | M · solo frontend | hecho (desplegado 2026-10-09; tsc, lint, 125 tests y build verdes). `/kiosks` usa el endpoint existente; el botón por fila de Estaciones se conserva | `ux/06-dia-examen` |
 | UX-7 | Resultados con pestañas | H-ux-10 | baja | cierre | S · solo frontend | hecho (desplegado 2026-10-09; tsc, lint, 127 tests y build verdes) | `ux/07-resultados` |
 
+## Grupo E — Proceso ECOE: coherencia, pérdida de información y seguridad (auditoría 2026-10-09)
+
+Origen: `hallazgos/auditoria-proceso-ecoe__2026-10-09.md` (incluye la propuesta de coordinación de personas y dispositivos). Reproducido por API contra el stack e2e (PostgreSQL real). **Pendiente de triage y aprobación del usuario; nada implementado.**
+
+| ID | Título | Severidad | Evidencia | Factibilidad | Estado |
+|----|--------|-----------|-----------|--------------|--------|
+| PROC-1 | Check-in durante transición/pausa entre rondas → autoenvío en blanco | bloqueante | verificado | S · solo backend | nuevo |
+| PROC-2 | Contingencia no puede sustituir un autoenvío en blanco ni rectificar una evaluación | alta | verificado | M · backend + UI | nuevo |
+| PROC-3 | Check-in equivocado sin anulación; estudiante confirmado en dos estaciones | alta | verificado | M · backend + UI | nuevo |
+| PROC-4 | Clave de respuestas enviada al kiosco/estudiante | alta (seguridad) | verificado | XS · solo backend | nuevo |
+| PROC-5 | Sin candado por estado sobre estaciones, nómina, equipo, tiempos | alta | verificado | M · backend + UI | nuevo |
+| PROC-6 | Estación sin registro no baja la nota; el cierre no advierte incompletos | alta | verificado | S–M · decisión del usuario | nuevo |
+| PROC-7 | Cierre irreversible; «Reactivar» mezcla corridas | alta | verificado | M · decisión del usuario | nuevo |
+| PROC-8 | El acta congelada no guarda identidad ni protege la estructura | alta | verificado | M · migración | nuevo |
+| PROC-9 | La sesión en vivo no parte limpia (herencia del pilotaje, Iniciar, Reanudar) | media | verificado en parte | S · solo backend | nuevo |
+| PROC-10 | Puntaje del evaluador calculado por el navegador | media | verificado | S · solo backend | nuevo |
+| PROC-11 | Circuitos espejo, grupos y modo de circuito no gobiernan cronómetro ni check-in | media | por lectura | M–L · decisión de diseño | nuevo |
+| PROC-12 | Estaciones sin evaluador dependen de check-in manual por rotación | media | por lectura | M | nuevo |
+| PROC-13 | Borrar con registros responde 500 | media | verificado | XS | nuevo |
+| PROC-14 | Ediciones y borrados de estructura sin AuditLog | media | por lectura | S | nuevo |
+| PROC-15 | «+ Nuevo ECOE» visible para quien no puede crearlo | baja | por lectura | XS · solo frontend | nuevo |
+| PROC-16 | Vacíos de la validación previa a publicar/ejecutar | media | por lectura | S–M | nuevo |
+| PROC-17 | El pilotaje sin panel en vivo no ensaya el reloj central | baja | por lectura | doc | nuevo |
+| PROC-18 | Token de kiosco en la URL, 24 h | baja | por lectura | S | nuevo |
+| PROC-19 | Medios «ambos» no visibles en modo estudiante | baja | por lectura | XS | nuevo |
+| PROC-20 | Duplicar ECOE comparte pautas y no copia correctores | baja | por lectura | S | nuevo |
+| PROC-21 | Punto único de falla e intervalo de respaldo el día del examen | alta (operación) | por documentación | infra + doc | nuevo |
+
 ---
 
 ## Notas de triage
