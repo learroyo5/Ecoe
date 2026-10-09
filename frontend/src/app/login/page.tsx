@@ -16,7 +16,7 @@ const STAGES: { name: string; description: string; path: string }[] = [
   },
   {
     name: "Pilotar",
-    description: "Ensaya el circuito completo en un entorno aislado, sin tocar los datos reales.",
+    description: "Ensaya el circuito completo con tu equipo antes del día del examen.",
     path:
       "M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0 1 12 15a9.065 9.065 0 0 0-6.23-.693L5 14.5m14.8.8 1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0 1 12 21a48.25 48.25 0 0 1-8.135-.687c-1.718-.293-2.3-2.379-1.067-3.61L5 14.5",
   },
@@ -81,11 +81,11 @@ export default function LoginPage() {
             DRNOTUS · Red académica clínica
           </p>
           <h1 className="mt-4 text-4xl leading-tight lg:text-5xl">
-            Gestión integral para ECOE y OSCE
+            Gestión de ECOE de principio a fin
           </h1>
           <p className="mt-4 max-w-xl text-lg leading-relaxed text-slate-600">
-            La plataforma académica para conducir el examen clínico estructurado de principio a
-            fin, en escuelas de medicina y ciencias de la salud.
+            Planifica, pilotea, ejecuta y cierra tu examen clínico objetivo estructurado en
+            carreras de la salud.
           </p>
 
           <div className="mt-8 grid gap-3 sm:grid-cols-2">
@@ -107,33 +107,13 @@ export default function LoginPage() {
               </div>
             ))}
           </div>
-
-          <div className="mt-6 flex items-start gap-3 rounded-2xl border border-slate-200 bg-[var(--color-bg-soft)] px-4 py-3">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.6}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="mt-0.5 size-5 shrink-0 text-[var(--color-primary)]"
-              aria-hidden="true"
-            >
-              <path d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-            </svg>
-            <p className="text-sm leading-6 text-slate-600">
-              Pilotaje y ejecución real quedan estrictamente separados: los ensayos nunca alteran
-              las notas oficiales.
-            </p>
-          </div>
         </section>
 
         {/* Ingreso */}
         <section className="order-1 panel-card flex flex-col justify-center p-8 lg:order-2 lg:p-10">
-          <p className="pill pill-ok w-fit">Acceso protegido</p>
-          <h2 className="mt-4 text-3xl">Ingresar</h2>
+          <h2 className="text-3xl">Ingresar</h2>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Usa tu correo institucional y tu contraseña para entrar al entorno operativo del ECOE.
+            Usa tu correo institucional y tu contraseña.
           </p>
           <form
             className="mt-6 space-y-4"
