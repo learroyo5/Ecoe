@@ -403,6 +403,8 @@ def build_traceability_report(
         select(StationCheckIn).where(
             StationCheckIn.ecoe_event_id == ecoe_event_id,
             StationCheckIn.mode == SessionMode.ejecucion.value,
+            # PROC-3: un ingreso anulado nunca ocurrió para la trazabilidad.
+            StationCheckIn.status != "anulado",
         )
         .order_by(StationCheckIn.confirmed_at.desc(), StationCheckIn.id.desc())
     ).all()
@@ -710,6 +712,7 @@ _SUBMISSION_KIND_LABELS = {
     "manual": "Manual",
     "auto": "Automático",
     "contingency": "Contingencia",
+    "rectified": "Rectificada",
     "draft_finalized": "Borrador finalizado",
 }
 

@@ -194,7 +194,9 @@ export const api = {
     request<EvaluatorContext>(
       `/evaluator/context/${eventId}${stationId ? `?station_id=${stationId}` : ""}`,
     ),
-  confirmStationCheckin: (payload: { ecoe_event_id: number; station_id: number; ecoe_number: string; force?: boolean }) =>
+  annulStationCheckin: (checkinId: number) =>
+    request<{ annulled: boolean; checkin_id: number }>(`/station-checkins/${checkinId}/annul`, { method: "POST" }),
+  confirmStationCheckin: (payload: { ecoe_event_id: number; station_id: number; ecoe_number: string; force?: boolean; move_from_other_station?: boolean }) =>
     request<ConfirmCheckinResult>("/station-checkins/confirm", { method: "POST", body: JSON.stringify(payload) }),
   submitEvaluator: (payload: Record<string, unknown>) =>
     request<MutationResult>("/evaluator/submit", { method: "POST", body: JSON.stringify(payload) }),
@@ -222,6 +224,17 @@ export const api = {
   finalizeEvaluatorRecord: (payload: Record<string, unknown>) =>
     request<MutationResult & { by_contingency?: boolean; finalized_draft?: boolean }>(
       "/contingency/evaluator-record",
+      { method: "POST", body: JSON.stringify(payload) },
+    ),
+
+  contingencyStudentResponse: (payload: { ecoe_event_id: number; station_id: number; student_id: number; answers: Record<string, unknown> }) =>
+    request<MutationResult & { replaced_auto?: boolean }>(
+      "/contingency/student-response",
+      { method: "POST", body: JSON.stringify(payload) },
+    ),
+  rectifyEvaluatorRecord: (payload: Record<string, unknown>) =>
+    request<MutationResult & { rectified?: boolean }>(
+      "/contingency/evaluator-record/rectify",
       { method: "POST", body: JSON.stringify(payload) },
     ),
 

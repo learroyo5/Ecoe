@@ -442,9 +442,34 @@ def get_latest_checkin_any_status(
             StationCheckIn.ecoe_event_id == ecoe_event_id,
             StationCheckIn.station_id == station_id,
             StationCheckIn.student_id == student_id,
+            StationCheckIn.status != "anulado",
         )
         .order_by(StationCheckIn.confirmed_at.desc(), StationCheckIn.id.desc())
     )
+
+
+def current_rotation_started_at(db: Session, ecoe_event_id: int):
+    """Inicio de la rotación en curso según el reloj central, o ``None``.
+
+    Una rotación = la transición previa + la fase de estación. Dos check-ins
+    `confirmado` del mismo estudiante dentro de la misma rotación son
+    físicamente imposibles: uno de los dos es un número mal tipeado (PROC-3).
+    """
+    from app.models.entities import LiveSession
+
+    session = db.scalar(
+        select(LiveSession).where(LiveSession.ecoe_event_id == ecoe_event_id).limit(1)
+    )
+    if session is None or session.phase_started_at is None:
+        return None
+    status = str(session.status)
+    if status in ("transition", "round_pause"):
+        return session.phase_started_at
+    if status == "running":
+        return session.phase_started_at - timedelta(
+            seconds=session.transition_time_seconds or 0
+        )
+    return None
 
 
 def find_student_by_ecoe_number(

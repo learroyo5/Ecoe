@@ -23,7 +23,7 @@ from app.models.entities import (
     StudentResponse,
 )
 from app.models.enums import RoleCode, SessionMode
-from app.schemas.common import EvaluatorSubmission, StudentResponseCreate
+from app.schemas.common import EvaluatorRectification, EvaluatorSubmission, StudentResponseCreate
 from app.services.dependencies import require_roles
 from app.services.authorization import ensure_event_access
 from app.services.grading import apply_auto_grading
@@ -207,27 +207,120 @@ def submit_student_response_by_contingency(
             StudentResponse.mode == session_mode,
         )
     )
+    replaced_auto = False
     if existing_response:
-        raise HTTPException(
-            status_code=400,
-            detail="Ya existe una respuesta registrada para este estudiante en esta estación",
+        # PROC-2: el servidor autoenvía (en blanco o con el borrador) al vencer
+        # la fase aunque la tablet esté caída. Esa respuesta `auto` NO es una
+        # entrega del estudiante: la transcripción del papel debe poder
+        # sustituirla. Una entrega deliberada (manual) sigue siendo intocable.
+        if existing_response.submission_kind != "auto":
+            raise HTTPException(
+                status_code=400,
+                detail="Ya existe una respuesta registrada para este estudiante en esta estación",
+            )
+        previous = {
+            "answers": existing_response.answers,
+            "score_obtained": existing_response.score_obtained,
+            "max_score": existing_response.max_score,
+            "submission_kind": existing_response.submission_kind,
+        }
+        response = existing_response
+        response.answers = payload.answers
+        response.locked = True
+        response.by_contingency = True
+        response.submission_kind = "contingency"
+        response.graded_by_email = None
+        response.graded_at = None
+        replaced_auto = True
+    else:
+        previous = None
+        response = StudentResponse(
+            **payload.model_dump(exclude={"checkin_id", "mode", "by_contingency"}),
+            mode=session_mode,
+            by_contingency=True,
+            submission_kind="contingency",
         )
-    response = StudentResponse(
-        **payload.model_dump(exclude={"checkin_id", "mode", "by_contingency"}),
-        mode=session_mode,
-        by_contingency=True,
-        submission_kind="contingency",
-    )
     apply_auto_grading(response, station.student_form_definition)
     db.add(response)
     db.flush()
     db.add(AuditLog(
         user_email=user.email,
-        action="submit_student_response_contingency",
+        action=(
+            "replace_auto_student_response_contingency"
+            if replaced_auto else "submit_student_response_contingency"
+        ),
         target_type="StudentResponse",
         target_id=str(response.id),
-        payload=payload.model_dump(),
+        payload={**payload.model_dump(), "previous": previous},
     ))
     db.commit()
     db.refresh(response)
-    return {"saved": True, "response_id": response.id, "by_contingency": True}
+    return {
+        "saved": True,
+        "response_id": response.id,
+        "by_contingency": True,
+        "replaced_auto": replaced_auto,
+    }
+
+
+@router.post("/contingency/evaluator-record/rectify")
+def rectify_evaluator_record(
+    payload: EvaluatorRectification,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles(*CONTINGENCY_ROLES)),
+):
+    """Corrige una evaluación YA enviada (PROC-2): puntaje mal digitado,
+    estudiante equivocado detectado tarde, etc. Exige motivo y deja el valor
+    anterior en la auditoría. Sólo durante pilotaje/ejecución (gate de etapa):
+    tras el cierre el acta está congelada."""
+    ensure_event_access(db, user, payload.ecoe_event_id, *CONTINGENCY_ROLES)
+    session_mode, station = _validated_contingency_target(
+        db, payload.ecoe_event_id, payload.station_id, payload.student_id
+    )
+    record = db.scalar(
+        select(EvaluatorRecord).where(
+            EvaluatorRecord.ecoe_event_id == payload.ecoe_event_id,
+            EvaluatorRecord.station_id == payload.station_id,
+            EvaluatorRecord.student_id == payload.student_id,
+            EvaluatorRecord.mode == session_mode,
+        )
+    )
+    if record is None or record.is_draft:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "No hay una evaluación enviada que rectificar; "
+                "regístrala por contingencia en su lugar"
+            ),
+        )
+    authoritative_max = resolve_station_max_score(db, station)
+    if payload.score_obtained < 0 or payload.score_obtained > authoritative_max:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El puntaje obtenido debe estar entre 0 y {authoritative_max}",
+        )
+    previous = {
+        "score_obtained": record.score_obtained,
+        "max_score": record.max_score,
+        "observation": record.observation,
+        "answers": record.answers,
+        "evaluator_name": record.evaluator_name,
+        "submission_kind": record.submission_kind,
+    }
+    record.evaluator_name = payload.evaluator_name
+    record.score_obtained = payload.score_obtained
+    record.max_score = authoritative_max
+    record.observation = payload.observation
+    record.answers = payload.answers
+    record.by_contingency = True
+    record.submission_kind = "rectified"
+    db.add(record)
+    db.add(AuditLog(
+        user_email=user.email,
+        action="rectify_evaluation_contingency",
+        target_type="EvaluatorRecord",
+        target_id=str(record.id),
+        payload={**payload.model_dump(), "previous": previous},
+    ))
+    db.commit()
+    return {"saved": True, "record_id": record.id, "rectified": True}
