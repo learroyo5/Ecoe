@@ -1,0 +1,95 @@
+# Instancia de demostración (demo.ecoe.cl).
+#
+# Mismo núcleo, base independiente: usa las MISMAS imágenes que producción
+# (ecoe-backend / ecoe-frontend, construidas por docker-compose.yml) con su
+# propio PostgreSQL, su propio volumen de archivos y sus propios secretos
+# (demo.env, fuera de git). Nada de aquí toca la base ni los archivos de
+# producción.
+#
+#   Levantar / actualizar:  docker compose -p ecoe-demo -f docker-compose.demo.yml up -d
+#   Cargar los ECOE demo:   ./scripts/demo_reset.sh
+#   Publicar cambios del núcleo en producción y demo a la vez: ./scripts/deploy.sh
+#
+# Puertos sólo en loopback: 3100 (web) y 8100 (API). El túnel de Cloudflare
+# enruta demo.ecoe.cl hacia ellos.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ecoe-demo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ecoe
+      POSTGRES_DB: ecoe
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en demo.env}
+    volumes:
+      - demo_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecoe -d ecoe"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    mem_limit: 384m
+    logging: *default-logging
+
+  backend:
+    image: ecoe-backend:latest
+    container_name: ecoe-demo-backend
+    restart: unless-stopped
+    env_file:
+      - ./demo.env
+    environment:
+      ENVIRONMENT: production
+      AUTO_SEED_DEMO: "false"
+      DATABASE_URL: postgresql+psycopg://ecoe:${POSTGRES_PASSWORD}@db:5432/ecoe
+      CORS_ORIGINS: https://demo.ecoe.cl
+      PUBLIC_APP_URL: https://demo.ecoe.cl
+      STORAGE_PATH: /app/storage
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - demo_backend_storage:/app/storage
+    ports:
+      - "127.0.0.1:8100:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    mem_limit: 768m
+    logging: *default-logging
+    networks:
+      default:
+        # El frontend trae horneada la ruta interna http://backend:8000.
+        aliases: [backend]
+
+  frontend:
+    image: ecoe-frontend:latest
+    container_name: ecoe-demo-frontend
+    restart: unless-stopped
+    env_file:
+      - ./demo.env
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3100:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    mem_limit: 512m
+    logging: *default-logging
+
+volumes:
+  demo_postgres_data:
+  demo_backend_storage:

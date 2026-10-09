@@ -10,6 +10,39 @@ Referencia rapida para recuperar el entorno del proyecto en este servidor.
 - Dominio ECOE de staging/dev (no se comparte con prospectos): `ecoe.drnotus.cl`
 - Dominios propios de producto, en produccion desde 2026-08-25: `ecoe.cl` (landing), `app.ecoe.cl` (plataforma), `plataformaecoe.cl` (solo redirect 301 a `ecoe.cl`) — ver detalle abajo y en `despliegue_dominios_ecoe.md`
 
+## Entrada desde internet (vigente desde 2026-09)
+
+**Las secciones de más abajo sobre router, NAT e IP pública describen la topología anterior y están obsoletas.** Hoy el servidor (`core01`) recibe todo por un **túnel de Cloudflare** (`cloudflared`, configuración local en `/etc/cloudflared/config.yml`):
+
+- `app.ecoe.cl` y `ecoe.drnotus.cl`: el túnel envía `^/api/` a `http://127.0.0.1:8000` y el resto a `http://127.0.0.1:3000`. No pasan por nginx.
+- `ecoe.cl` / `www.ecoe.cl` (landing estática): túnel → nginx local (`https://127.0.0.1:443`) con el certificado Origin CA comodín `*.ecoe.cl`.
+- No hay puertos abiertos en el router ni dependencia de la IP pública.
+
+Agregar un hostname nuevo = dos reglas en `ingress` (antes de la final `http_status:404`), reiniciar `cloudflared` y crear el CNAME al túnel.
+
+## Instancia demo (`demo.ecoe.cl`)
+
+Mismo núcleo, base independiente: `docker-compose.demo.yml` (proyecto `ecoe-demo`) usa las **mismas imágenes** que producción con su propio PostgreSQL, volumen de archivos y secretos (`demo.env`, fuera de git). Puertos en loopback: `3100` (web) y `8100` (API).
+
+- Levantar o actualizar: `docker compose -p ecoe-demo -f docker-compose.demo.yml --env-file demo.env up -d`
+- Recargar los dos ECOE de muestra (borra sólo la base demo): `./scripts/demo_reset.sh`
+- Publicar el núcleo en producción **y** demo a la vez: `./scripts/deploy.sh`
+- Cuentas: `admin@ecoe.cl`, `coord@ecoe.cl`, `eval1…4@ecoe.cl`, `corrector@ecoe.cl`, `timer@ecoe.cl`, `student1@ecoe.cl`; todas con la contraseña `ADMIN_PASSWORD` de `demo.env`.
+- Contenido (`backend/app/db/seed_demo.py`): «ECOE Medicina Interna 2026» en ejecución (circuitos espejo, una rotación registrada) y «ECOE Cirugía 2026» cerrado (12 estudiantes × 5 estaciones, acta consolidada).
+
+Publicación (requiere `sudo` y el panel de Cloudflare):
+
+1. En `/etc/cloudflared/config.yml`, antes de `- service: http_status:404`:
+   ```yaml
+     - hostname: demo.ecoe.cl
+       path: ^/api/
+       service: http://127.0.0.1:8100
+     - hostname: demo.ecoe.cl
+       service: http://127.0.0.1:3100
+   ```
+2. `sudo cloudflared tunnel --config /etc/cloudflared/config.yml ingress validate && sudo systemctl restart cloudflared`
+3. DNS de la zona `ecoe.cl`: CNAME `demo` → `<ID-del-túnel>.cfargotunnel.com`, proxied (naranja). El ID es el campo `tunnel:` del mismo archivo.
+
 ## Stack actual
 
 - `ecoe-db`
