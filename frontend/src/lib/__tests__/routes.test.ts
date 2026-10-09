@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultRouteForRole, isRouteAllowedForRole } from "@/lib/routes";
+import { NAV_GROUPS, NAV_ITEMS, defaultRouteForRole, isRouteAllowedForRole, navItemForPath } from "@/lib/routes";
 
 describe("defaultRouteForRole", () => {
   it("sends evaluadores to /evaluator", () => {
@@ -61,5 +61,29 @@ describe("isRouteAllowedForRole", () => {
   it("uses effective ECOE roles when a user has different duties per event", () => {
     expect(isRouteAllowedForRole("/stations/builder", ["coeditor_docente"])).toBe(true);
     expect(isRouteAllowedForRole("/live", ["evaluador"])).toBe(false);
+  });
+});
+
+describe("NAV_ITEMS (presentación)", () => {
+  it("el Constructor sigue con gating propio aunque no tenga entrada en la barra lateral", () => {
+    const builder = NAV_ITEMS.find((item) => item.href === "/stations/builder");
+    expect(builder?.hidden).toBe(true);
+    // Más estricto que /stations: el coordinador operativo no edita estaciones.
+    expect(isRouteAllowedForRole("/stations/builder", "coordinador_operativo")).toBe(false);
+    expect(isRouteAllowedForRole("/stations", "coordinador_operativo")).toBe(true);
+  });
+
+  it("todo item agrupado apunta a un grupo declarado", () => {
+    const keys = new Set(NAV_GROUPS.map((group) => group.key));
+    for (const item of NAV_ITEMS) {
+      if (item.group) expect(keys.has(item.group)).toBe(true);
+    }
+  });
+
+  it("navItemForPath acepta un subconjunto y devuelve el prefijo más largo", () => {
+    const visible = NAV_ITEMS.filter((item) => !item.hidden);
+    expect(navItemForPath("/stations/builder", visible)?.href).toBe("/stations");
+    expect(navItemForPath("/stations/builder")?.href).toBe("/stations/builder");
+    expect(navItemForPath("/no-existe")).toBeNull();
   });
 });

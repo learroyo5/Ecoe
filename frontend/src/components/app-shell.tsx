@@ -52,6 +52,21 @@ export function AppShell({
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
+  // Menú móvil abierto: Esc lo cierra y el fondo no hace scroll por detrás.
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSidebarOpen(false);
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [sidebarOpen]);
+
   const hasManagerRole = eventRoles.some((role) =>
     ["admin_ecoe", "coeditor_docente", "coordinador_operativo"].includes(role),
   );
@@ -182,7 +197,12 @@ export function AppShell({
             onClick={closeSidebar}
             aria-hidden="true"
           />
-          <div className="absolute inset-y-0 left-0 w-80 max-w-[85vw] animate-slide-in bg-white p-4 shadow-2xl">
+          <div
+            className="absolute inset-y-0 left-0 flex w-80 max-w-[85vw] animate-slide-in flex-col bg-white p-4 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menú de navegación"
+          >
             <div className="mb-3 flex items-center justify-between">
               <span className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--color-primary)]">
                 Menú
@@ -197,7 +217,9 @@ export function AppShell({
                 </svg>
               </button>
             </div>
-            <Sidebar onNavigate={closeSidebar} />
+            <div className="min-h-0 flex-1">
+              <Sidebar onNavigate={closeSidebar} />
+            </div>
           </div>
         </div>
       )}
