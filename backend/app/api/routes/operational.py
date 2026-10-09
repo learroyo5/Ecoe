@@ -74,6 +74,8 @@ _SWEEP_TIMER_ACTIONS = {"start", "reset", "next_transition", "expire_phase"}
 
 logger = logging.getLogger("ecoe.operational")
 
+from app.services.event_lock import ensure_structure_editable
+
 router = APIRouter()
 
 # ── WebSocket: Live Timer ──────────────────────────────────────────────
@@ -336,6 +338,7 @@ async def upload_media(
     db: Session = Depends(get_db),
     user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
+    ensure_structure_editable(db, ecoe_event_id, "cargar multimedia")
     if target_viewer not in ALLOWED_VIEWERS:
         raise HTTPException(
             status_code=400,
@@ -416,6 +419,10 @@ def delete_media(
         asset_id,
         writable=True,
     )
+    if asset.station_id:
+        media_station = db.get(Station, asset.station_id)
+        if media_station is not None:
+            ensure_structure_editable(db, media_station.ecoe_event_id, "borrar multimedia")
     file_path = Path(asset.file_path)
     # Commit the DB deletion first: if it fails, the file on disk is still
     # referenced by a valid row. Deleting the file afterwards is best-effort

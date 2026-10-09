@@ -196,6 +196,8 @@ class TestStations:
         assert isinstance(data, list)
         assert len(data) >= 1
 
+    @pytest.mark.usefixtures("demo_event_in_setup")
+
     def test_create_station(self, auth_client):
         response = auth_client.post("/api/stations", json={
             "ecoe_event_id": 1,
@@ -222,6 +224,8 @@ class TestStations:
         })
         assert response.status_code == 200
         assert response.json()["name"] == "Estación Test"
+
+    @pytest.mark.usefixtures("demo_event_in_setup")
 
     def test_update_published_station_keeps_status(self, auth_client, db_factory):
         from app.models.entities import Station
@@ -360,12 +364,15 @@ class TestPagination:
 
 
 class TestMediaSecurity:
+    @pytest.mark.usefixtures("demo_event_in_setup")
     def test_upload_invalid_extension(self, auth_client):
         response = auth_client.post(
             "/api/media/upload?ecoe_event_id=1",
             files={"file": ("test.exe", b"malicious", "application/octet-stream")},
         )
         assert response.status_code == 400
+
+    @pytest.mark.usefixtures("demo_event_in_setup")
 
     def test_upload_oversized(self, auth_client):
         big_content = b"x" * (51 * 1024 * 1024)

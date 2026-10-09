@@ -9,6 +9,7 @@ import { ecoeStatusLabel } from "@/lib/labels";
 import { canDuplicateEcoe } from "@/lib/permissions";
 import { useApi } from "@/hooks/use-api";
 import { StatusNotice } from "@/components/forms";
+import { StructureLockNotice } from "@/components/structure-lock-notice";
 import { SectionCard } from "@/components/section-card";
 import { ECOEFormFields, buildECOEPayload, toEditableValues, validateECOEPayload, StatusTransitionBar } from "@/components/ecoe-form";
 import type { ECOEEvent, PsychometricsResponse } from "@/lib/types";
@@ -159,13 +160,16 @@ export default function ECOEPage() {
           <button type="button" className="btn-secondary" disabled={!ecoeEvent || !canDuplicate} onClick={openDuplicate}>
             Duplicar ECOE
           </button>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => { setCreateMessage(null); setCreateErrors({}); setCreateModal(true); }}
-          >
-            + Nuevo ECOE
-          </button>
+          {/* Crear eventos es institucional: el backend sólo lo permite al admin global. */}
+          {user?.role === "admin_global" ? (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => { setCreateMessage(null); setCreateErrors({}); setCreateModal(true); }}
+            >
+              + Nuevo ECOE
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -183,6 +187,7 @@ export default function ECOEPage() {
 
       {tab === "general" ? (
         <SectionCard>
+          <StructureLockNotice what="Tiempos y circuito" />
           {listLoading && <p className="text-sm text-slate-500">Cargando...</p>}
           {listError && <p className="text-sm text-red-600">{listError}</p>}
           {activeValues && (

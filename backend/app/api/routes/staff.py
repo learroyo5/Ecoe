@@ -27,6 +27,8 @@ from app.utils.helpers import (
 )
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginate_query
 
+from app.services.event_lock import audit_change, ensure_event_not_frozen
+
 router = APIRouter()
 
 # Roles que exigen al menos una estación asignada para tener sentido operativo.
@@ -108,6 +110,7 @@ def create_staff(
                         RoleCode.admin_ecoe.value,
                         RoleCode.coeditor_docente.value,
                         RoleCode.coordinador_operativo.value)
+    ensure_event_not_frozen(db, payload.ecoe_event_id, "modificar el equipo")
     email = normalize_email(payload.email)
     normalized_role_code = validate_staff_role_code(payload.role_code)
     ensure_staff_role_can_be_delegated(actor_roles, normalized_role_code)
@@ -154,6 +157,11 @@ def update_staff(
                         RoleCode.admin_ecoe.value,
                         RoleCode.coeditor_docente.value,
                         RoleCode.coordinador_operativo.value)
+    ensure_event_not_frozen(db, staff.ecoe_event_id, "modificar el equipo")
+    audit_change(db, user, "update_staff", "StaffAssignment", staff.id,
+                 {"ecoe_event_id": staff.ecoe_event_id, "email": staff.email,
+                  "from": {"role_code": staff.role_code, "station_ids": list(staff.station_ids or [])},
+                  "to": {"role_code": payload.role_code, "station_ids": list(payload.station_ids or [])}})
     ensure_staff_assignment_can_be_managed(actor_roles, staff.role_code)
     normalized_role_code = validate_staff_role_code(payload.role_code)
     ensure_staff_role_can_be_delegated(actor_roles, normalized_role_code)
@@ -183,7 +191,11 @@ def delete_staff(
         raise HTTPException(status_code=404, detail="Evaluador o colaborador no encontrado")
     actor_roles = ensure_event_access(db, user, staff.ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    ensure_event_not_frozen(db, staff.ecoe_event_id, "modificar el equipo")
     ensure_staff_assignment_can_be_managed(actor_roles, staff.role_code)
+    audit_change(db, user, "delete_staff", "StaffAssignment", staff.id,
+                 {"ecoe_event_id": staff.ecoe_event_id, "email": staff.email,
+                  "role_code": staff.role_code, "station_ids": list(staff.station_ids or [])})
     db.delete(staff)
     db.commit()
     return {"deleted": True}
@@ -196,6 +208,7 @@ def deduplicate_staff_by_email(
     user=Depends(require_roles("admin_ecoe")),
 ):
     ensure_event_access(db, user, ecoe_event_id, RoleCode.admin_ecoe.value)
+    ensure_event_not_frozen(db, ecoe_event_id, "modificar el equipo")
     staff_rows = db.scalars(
         select(StaffAssignment)
         .where(StaffAssignment.ecoe_event_id == ecoe_event_id)
@@ -225,6 +238,7 @@ async def import_staff(
 ):
     actor_roles = ensure_event_access(db, user, ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    ensure_event_not_frozen(db, ecoe_event_id, "modificar el equipo")
     rows = await parse_tabular_file(file)
     # Minting institutional identities stays an admin_ecoe power: a coeditor may
     # only import people who already have an account.

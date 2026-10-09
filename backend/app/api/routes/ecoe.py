@@ -36,6 +36,13 @@ from app.services.authorization import (
     list_accessible_ecoe_events,
 )
 
+from app.services.event_lock import (
+    EVENT_STRUCTURE_FIELDS,
+    FROZEN_STATUSES,
+    STRUCTURE_LOCKED_STATUSES,
+    ensure_structure_editable,
+)
+
 router = APIRouter()
 
 
@@ -301,6 +308,29 @@ def update_ecoe(
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     ecoe_event = db.get(ECOEEvent, ecoe_event_id)
     previous_status = ecoe_event.status
+    # PROC-5/8: con el acta congelada no cambia ningún dato del evento; desde
+    # la publicación no cambian los tiempos ni el circuito. El formulario
+    # reenvía todos los campos en cada transición: sólo cuentan los que difieren.
+    changed_fields = {
+        field
+        for field, value in payload.model_dump(exclude={"status"}).items()
+        if getattr(ecoe_event, field) != value
+    }
+    current = str(previous_status)
+    if changed_fields and current in FROZEN_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail="El ECOE está cerrado o archivado: sus datos ya no se pueden modificar.",
+        )
+    locked_changes = changed_fields & EVENT_STRUCTURE_FIELDS
+    if locked_changes and current in STRUCTURE_LOCKED_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Los tiempos y el circuito quedan bloqueados desde la publicación; "
+                "despublica el ECOE para modificarlos."
+            ),
+        )
     for field, value in payload.model_dump(exclude={"status"}).items():
         setattr(ecoe_event, field, value)
     db.add(ecoe_event)
@@ -345,6 +375,7 @@ def update_ecoe_timing(
 ):
     ensure_event_access(db, user, ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    ensure_structure_editable(db, ecoe_event_id, "cambiar los tiempos")
     ecoe_event = db.get(ECOEEvent, ecoe_event_id)
     ecoe_event.station_time_minutes = payload.station_time_minutes
     ecoe_event.transition_time_minutes = payload.transition_time_minutes

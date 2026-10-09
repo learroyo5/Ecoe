@@ -8,6 +8,7 @@ import { useApi } from "@/hooks/use-api";
 import { useConfirm } from "@/components/confirm-provider";
 import { DataTable } from "@/components/data-table";
 import { FileImport, QuickForm, StatusNotice } from "@/components/forms";
+import { StructureLockNotice } from "@/components/structure-lock-notice";
 import { SectionCard } from "@/components/section-card";
 
 export default function StudentsPage() {
@@ -150,6 +151,7 @@ export default function StudentsPage() {
         </div>
         <StatusNotice message={message} />
       </SectionCard>
+      <StructureLockNotice what="Borrar, depurar y renumerar estudiantes" />
       <SectionCard title="Nómina actual" subtitle={`${totalStudents} estudiantes cargados en este ECOE.`}>
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <button

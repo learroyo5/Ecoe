@@ -54,6 +54,8 @@ from app.services.instruments import (
     tool_reference_summary,
 )
 
+from app.services.event_lock import audit_change, commit_or_conflict, ensure_structure_editable
+
 router = APIRouter()
 
 # Roles that may read exam design content (templates, instruments,
@@ -742,6 +744,7 @@ def create_station(
     ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
     if not ecoe_event:
         raise HTTPException(status_code=404, detail="ECOE no encontrado")
+    ensure_structure_editable(db, payload.ecoe_event_id, "crear estaciones")
     _reject_archived_tool(db, payload.assessment_tool_id)
     _reject_archived_template(db, payload.template_id)
     _reject_archived_patient(db, payload.simulated_patient_id)
@@ -757,6 +760,10 @@ def create_station(
         transition_time_minutes=ecoe_event.transition_time_minutes,
     )
     db.add(station)
+    db.flush()
+    audit_change(db, user, "create_station", "Station", station.id,
+                 {"ecoe_event_id": station.ecoe_event_id, "station_number": station.station_number,
+                  "name": station.name})
     db.commit()
     db.refresh(station)
     return station
@@ -782,6 +789,7 @@ def update_station(
     ecoe_event = db.get(ECOEEvent, payload.ecoe_event_id)
     if not ecoe_event:
         raise HTTPException(status_code=404, detail="ECOE no encontrado")
+    ensure_structure_editable(db, station.ecoe_event_id, "editar estaciones")
     if (payload.assessment_tool_id is not None
             and payload.assessment_tool_id != station.assessment_tool_id):
         _reject_archived_tool(db, payload.assessment_tool_id)
@@ -791,8 +799,16 @@ def update_station(
     if (payload.simulated_patient_id is not None
             and payload.simulated_patient_id != station.simulated_patient_id):
         _reject_archived_patient(db, payload.simulated_patient_id)
+    changed_fields = sorted(
+        field
+        for field, value in payload.model_dump(exclude={"ecoe_event_id"}).items()
+        if getattr(station, field) != value
+    )
     for field, value in payload.model_dump(exclude={"ecoe_event_id"}).items():
         setattr(station, field, value)
+    if changed_fields:
+        audit_change(db, user, "update_station", "Station", station.id,
+                     {"ecoe_event_id": station.ecoe_event_id, "changed_fields": changed_fields})
     station.station_time_minutes = ecoe_event.station_time_minutes
     station.transition_time_minutes = ecoe_event.transition_time_minutes
     # Solo recalcular el estado estructural (incompleta/lista_para_pilotaje) mientras
@@ -826,8 +842,13 @@ def delete_station(
         raise HTTPException(status_code=404, detail="Estación no encontrada")
     ensure_event_access(db, user, station.ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    ensure_structure_editable(db, station.ecoe_event_id, "borrar estaciones")
+    audit_change(db, user, "delete_station", "Station", station.id,
+                 {"ecoe_event_id": station.ecoe_event_id, "station_number": station.station_number,
+                  "name": station.name})
     db.delete(station)
-    db.commit()
+    commit_or_conflict(
+        db, "La estación tiene registros, multimedia o pilotajes asociados y no puede borrarse.")
     return {"deleted": True}
 
 

@@ -1,5 +1,6 @@
 """Server-authoritative live timer (A2)."""
 
+import pytest
 import time
 
 
@@ -71,6 +72,8 @@ class TestLiveTimer:
         assert reset["remaining_seconds"] == reset["station_time_seconds"]
         assert reset["phase_started_at"] is None
         assert reset["current_station_index"] == 1
+
+    @pytest.mark.usefixtures("demo_event_in_setup")
 
     def test_timing_update_resyncs_existing_live_session(self, auth_client):
         """Regression: editing ECOE timing must not leave the running-session

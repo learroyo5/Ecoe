@@ -5,10 +5,12 @@ A response_model that omits a field the frontend relies on fails silently
 still present in the JSON payload.
 """
 
+import pytest
 from conftest import ADMIN, login
 
 
 class TestStationResponseShape:
+    @pytest.mark.usefixtures("demo_event_in_setup")
     def test_station_response_includes_server_computed_timing(self, auth_client):
         """station_time_minutes/transition_time_minutes are set server-side
         from the ECOEEvent, not part of StationCreate — a schema without
@@ -73,6 +75,7 @@ class TestInstrumentResponseShape:
 
 
 class TestMediaResponseShape:
+    @pytest.mark.usefixtures("demo_event_in_setup")
     def test_media_upload_response_excludes_file_path(self, auth_client):
         """file_path (server disk path) must not leak in API responses."""
         response = auth_client.post(

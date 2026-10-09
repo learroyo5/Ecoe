@@ -11,6 +11,7 @@ const refreshECOE = vi.fn().mockResolvedValue(undefined);
 const replace = vi.fn();
 let routeId = "7";
 let eventRoles: string[] = ["admin_ecoe"];
+let userRole = "admin_global";
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
@@ -25,7 +26,8 @@ vi.mock("@/lib/auth", () => ({
     eventId: 1,
     setEventId,
     refreshECOE,
-    user: { role: "miembro" },
+    user: { role: userRole },
+    ecoeEvent: { status: "en_configuracion" },
     eventRoles,
   }),
 }));
@@ -69,6 +71,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   routeId = "7";
   eventRoles = ["admin_ecoe"];
+  userRole = "admin_global";
   mockedApi.listECOE.mockResolvedValue([EVENT] as never);
   mockedApi.ecoe.mockResolvedValue(EVENT as never);
   mockedApi.validation.mockResolvedValue({} as never);
@@ -124,8 +127,16 @@ describe("Datos del ECOE", () => {
     expect(await screen.findByText("ECOE ahora en estado: Listo para pilotaje")).toBeInTheDocument();
   });
 
+  it("no ofrece crear un ECOE a quien no es admin global", async () => {
+    userRole = "miembro";
+    render(<ECOEPage />);
+    await screen.findByRole("button", { name: "Guardar ECOE" });
+    expect(screen.queryByRole("button", { name: "+ Nuevo ECOE" })).toBeNull();
+  });
+
   it("no permite duplicar a quien no tiene el permiso", async () => {
     eventRoles = ["coordinador_operativo"];
+    userRole = "miembro";
     render(<ECOEPage />);
     await screen.findByRole("button", { name: "Guardar ECOE" });
     expect(screen.getByRole("button", { name: "Duplicar ECOE" })).toBeDisabled();
