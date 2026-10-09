@@ -15,6 +15,7 @@ from datetime import datetime
 
 from app.core.config import get_settings
 from app.models.entities import (
+    ECOEResultVersion,
     AuditLog,
     ContingencyExport,
     ECOEEvent,
@@ -543,6 +544,93 @@ def persist_results(
     if commit:
         db.commit()
     return results
+
+
+def archive_current_acta(
+    db: Session, ecoe_event_id: int, *, actor_email: str, reason: str
+) -> ECOEResultVersion | None:
+    """Archiva el acta vigente como una versión reemplazada (F0.3).
+
+    Se llama justo antes de invalidarla (reapertura). Devuelve ``None`` si el
+    evento no tenía snapshot. No hace commit.
+    """
+    results = db.scalars(
+        select(ECOEResult)
+        .where(ECOEResult.ecoe_event_id == ecoe_event_id)
+        .order_by(ECOEResult.student_id.asc())
+    ).all()
+    stations = db.scalars(
+        select(StationResult)
+        .where(StationResult.ecoe_event_id == ecoe_event_id)
+        .order_by(StationResult.student_id.asc(), StationResult.station_id.asc())
+    ).all()
+    if not results and not stations:
+        return None
+    last_version = db.scalar(
+        select(func.max(ECOEResultVersion.version)).where(
+            ECOEResultVersion.ecoe_event_id == ecoe_event_id
+        )
+    ) or 0
+    consolidated_at = max(
+        (row.updated_at for row in results if row.updated_at is not None), default=None
+    )
+    version = ECOEResultVersion(
+        ecoe_event_id=ecoe_event_id,
+        version=last_version + 1,
+        consolidated_at=consolidated_at,
+        superseded_by_email=actor_email,
+        reason=reason,
+        payload={
+            "results": [
+                {
+                    "student_id": row.student_id,
+                    "ecoe_number": row.ecoe_number,
+                    "student_name": row.student_name,
+                    "total_score": row.total_score,
+                    "max_score": row.max_score,
+                    "percentage": row.percentage,
+                    "equivalent_grade": row.equivalent_grade,
+                    "stations_counted": row.stations_counted,
+                    "stations_expected": row.stations_expected,
+                }
+                for row in results
+            ],
+            "station_results": [
+                {
+                    "student_id": row.student_id,
+                    "station_id": row.station_id,
+                    "obtained_score": row.obtained_score,
+                    "max_score": row.max_score,
+                    "percent_score": row.percent_score,
+                    "is_missing": bool(row.is_missing),
+                }
+                for row in stations
+            ],
+        },
+    )
+    db.add(version)
+    return version
+
+
+def list_acta_versions(db: Session, ecoe_event_id: int) -> list[dict]:
+    """Actas reemplazadas de un evento, de la más reciente a la más antigua."""
+    rows = db.scalars(
+        select(ECOEResultVersion)
+        .where(ECOEResultVersion.ecoe_event_id == ecoe_event_id)
+        .order_by(ECOEResultVersion.version.desc())
+    ).all()
+    return [
+        {
+            "version": row.version,
+            "consolidated_at": row.consolidated_at.isoformat() if row.consolidated_at else None,
+            "superseded_at": row.created_at.isoformat() if row.created_at else None,
+            "superseded_by_email": row.superseded_by_email,
+            "reason": row.reason,
+            "results": (row.payload or {}).get("results", []),
+            "station_results": (row.payload or {}).get("station_results", []),
+        }
+        for row in rows
+    ]
 
 
 def build_traceability_report(

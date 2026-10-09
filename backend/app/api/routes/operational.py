@@ -1,11 +1,13 @@
 """Live panel, timer control, media, validation, results, and incidents routes."""
 
+import asyncio
 import logging
 from datetime import timedelta
 from http.cookies import SimpleCookie
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, Response as FastAPIResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -77,7 +79,12 @@ logger = logging.getLogger("ecoe.operational")
 from app.services.event_lock import ensure_structure_editable
 from app.services.presence import build_station_board
 
+from app.services.results import list_acta_versions
+
 router = APIRouter()
+
+# Cada cuánto un WebSocket abierto vuelve a validar sesión y permisos (F0.4).
+WS_REVALIDATE_SECONDS = 30
 
 # ── WebSocket: Live Timer ──────────────────────────────────────────────
 
@@ -103,8 +110,10 @@ async def websocket_live_timer(
     # central clock and freeze on pause. This handler never mutates state:
     # inbound frames are keep-alive only and are ignored. Timer control stays
     # exclusively on the authenticated POST /live/control.
-    with SessionLocal() as db:
-        try:
+    def authorize() -> None:
+        """Autentica y autoriza la conexión; lanza HTTPException si no procede.
+        Se usa en el handshake y luego periódicamente (F0.4)."""
+        with SessionLocal() as db:
             if kiosk_token is not None:
                 # A browser cannot attach custom headers to a WebSocket, so the
                 # station-scoped kiosk token travels as a query param. Risk: it
@@ -113,40 +122,55 @@ async def websocket_live_timer(
                 kiosk = authenticate_kiosk_token(db, kiosk_token)
                 if kiosk.ecoe_event_id != ecoe_event_id:
                     raise HTTPException(status_code=403, detail="Token de otro evento")
-            else:
-                token = None
-                authorization = websocket.headers.get("authorization", "")
-                if authorization.lower().startswith("bearer "):
-                    token = authorization.split(" ", 1)[1].strip()
-                if not token:
-                    token = websocket.cookies.get(settings.auth_cookie_name)
-                if not token:
-                    cookie_header = websocket.headers.get("cookie", "")
-                    parsed_cookie = SimpleCookie()
-                    parsed_cookie.load(cookie_header)
-                    morsel = parsed_cookie.get(settings.auth_cookie_name)
-                    token = morsel.value if morsel else None
-                user = authenticate_session_token(db, token)
-                ensure_event_access(
-                    db,
-                    user,
-                    ecoe_event_id,
-                    RoleCode.admin_ecoe.value,
-                    RoleCode.coeditor_docente.value,
-                    RoleCode.coordinador_operativo.value,
-                    RoleCode.cronometrador.value,
-                    RoleCode.evaluador.value,
-                    RoleCode.estudiante.value,
-                )
-        except HTTPException:
-            await websocket.close(code=1008)
-            return
+                return
+            token = None
+            authorization = websocket.headers.get("authorization", "")
+            if authorization.lower().startswith("bearer "):
+                token = authorization.split(" ", 1)[1].strip()
+            if not token:
+                token = websocket.cookies.get(settings.auth_cookie_name)
+            if not token:
+                cookie_header = websocket.headers.get("cookie", "")
+                parsed_cookie = SimpleCookie()
+                parsed_cookie.load(cookie_header)
+                morsel = parsed_cookie.get(settings.auth_cookie_name)
+                token = morsel.value if morsel else None
+            user = authenticate_session_token(db, token)
+            ensure_event_access(
+                db,
+                user,
+                ecoe_event_id,
+                RoleCode.admin_ecoe.value,
+                RoleCode.coeditor_docente.value,
+                RoleCode.coordinador_operativo.value,
+                RoleCode.cronometrador.value,
+                RoleCode.evaluador.value,
+                RoleCode.estudiante.value,
+            )
+
+    try:
+        authorize()
+    except HTTPException:
+        await websocket.close(code=1008)
+        return
 
     await live_timer.connect(ecoe_event_id, websocket)
     try:
         while True:
             # Keep connection alive; any received frame is ignored (read-only).
-            await websocket.receive_text()
+            # F0.4 (H08): cada WS_REVALIDATE_SECONDS sin tráfico se vuelve a
+            # comprobar la sesión. Una cuenta suspendida, un token vencido o un
+            # kiosco revocado pierden el canal en vez de seguir leyéndolo.
+            try:
+                await asyncio.wait_for(websocket.receive_text(), timeout=WS_REVALIDATE_SECONDS)
+            except asyncio.TimeoutError:
+                pass
+            try:
+                await run_in_threadpool(authorize)
+            except HTTPException:
+                live_timer.disconnect(ecoe_event_id, websocket)
+                await websocket.close(code=1008)
+                return
     except WebSocketDisconnect:
         live_timer.disconnect(ecoe_event_id, websocket)
     except Exception:
@@ -516,6 +540,13 @@ def get_results(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(
         "by_station": _by_station_block(db, ecoe_event_id),
         **build_traceability_report(db, ecoe_event_id, consolidated_results=results),
     }
+
+
+@router.get("/results/{ecoe_event_id}/versions")
+def get_result_versions(ecoe_event_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Actas que estuvieron vigentes y fueron reemplazadas al reabrir (F0.3)."""
+    ensure_event_access(db, user, ecoe_event_id, *ADMIN_EVENT_ROLE_CODES)
+    return {"versions": list_acta_versions(db, ecoe_event_id)}
 
 
 @router.post("/results/{ecoe_event_id}/consolidate")

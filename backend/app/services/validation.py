@@ -595,6 +595,10 @@ def update_ecoe_status(
             # El acta congelada deja de valer: se borra el snapshot y Resultados
             # vuelve al cálculo en vivo hasta el próximo cierre.
             from app.models.entities import AuditLog, ECOEResult, StationResult
+            from app.services.results import archive_current_acta
+            archive_current_acta(
+                db, ecoe_event.id, actor_email=actor_email or "", reason=transition_reason.strip()
+            )
             db.query(ECOEResult).filter(ECOEResult.ecoe_event_id == ecoe_event.id).delete()
             db.query(StationResult).filter(StationResult.ecoe_event_id == ecoe_event.id).delete()
             db.add(AuditLog(

@@ -45,6 +45,12 @@ export default function ResultsPage() {
     () => api.results(eventId),
     [eventId, authenticated],
   );
+  // F0.3: actas que estuvieron vigentes y se reemplazaron al reabrir el ECOE.
+  const { data: versionsData } = useApi(
+    () => api.resultVersions(eventId).catch(() => ({ versions: [] })),
+    [eventId, authenticated],
+  );
+  const actaVersions = versionsData?.versions ?? [];
   const summary: Partial<ResultsResponse["summary"]> = data?.summary ?? {};
   const studentTraceability = data?.student_traceability ?? [];
   const stationTraceability = data?.station_traceability ?? [];
@@ -109,6 +115,23 @@ export default function ResultsPage() {
           materiales y listado de estaciones para operar el examen si se cae la plataforma.
         </p>
       </SectionCard>
+      {actaVersions.length > 0 ? (
+        <SectionCard
+          title="Actas anteriores"
+          subtitle="Este ECOE se reabrió después de cerrarse. Cada acta reemplazada quedó archivada con quién la reabrió y por qué."
+        >
+          <ul className="space-y-2 text-sm">
+            {actaVersions.map((version) => (
+              <li key={version.version} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                <span className="font-semibold text-slate-900">Versión {version.version}</span>
+                {" · "}consolidada el {formatTimestamp(version.consolidated_at)}
+                {" · "}reemplazada el {formatTimestamp(version.superseded_at)} por {version.superseded_by_email}
+                <span className="mt-1 block text-slate-600">Motivo: {version.reason}</span>
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      ) : null}
       <div className="flex w-fit flex-wrap gap-1 rounded-2xl bg-slate-100 p-1" role="tablist" aria-label="Secciones de resultados">
         {TABS.map((t) => (
           <button

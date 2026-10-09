@@ -246,6 +246,10 @@ export const api = {
       { method: "POST", body: JSON.stringify(payload) },
     ),
 
+  resultVersions: (eventId: number) =>
+    request<{ versions: Array<{ version: number; consolidated_at: string | null; superseded_at: string | null; superseded_by_email: string; reason: string }> }>(
+      `/results/${eventId}/versions`,
+    ),
   liveBoard: (eventId: number) =>
     request<import("@/components/station-board").StationBoard>(`/live/${eventId}/board`),
 

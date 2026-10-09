@@ -712,6 +712,29 @@ class ECOEResult(Base, TimestampMixin):
     stations_expected: Mapped[int | None] = mapped_column(Integer)
 
 
+class ECOEResultVersion(Base, TimestampMixin):
+    """Acta consolidada que fue reemplazada (F0.3).
+
+    Al reabrir un ECOE cerrado el snapshot vigente deja de valer, pero no se
+    pierde: se archiva completo aquí (notas por estudiante y por estación tal
+    como estaban), con quién lo reabrió y por qué. Sólo se inserta; nunca se
+    edita ni se sirve como resultado vigente.
+    """
+
+    __tablename__ = "ecoe_result_versions"
+    __table_args__ = (
+        UniqueConstraint("ecoe_event_id", "version", name="uq_ecoe_result_version_event_version"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ecoe_event_id: Mapped[int] = mapped_column(ForeignKey("ecoe_events.id"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    consolidated_at: Mapped[datetime | None] = mapped_column(DateTime)
+    superseded_by_email: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 class Incident(Base, TimestampMixin):
     __tablename__ = "incidents"
     __table_args__ = (

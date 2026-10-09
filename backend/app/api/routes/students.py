@@ -148,8 +148,9 @@ def delete_student(
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     ensure_structure_editable(db, student.ecoe_event_id, "borrar estudiantes (suspéndelo en su lugar)")
     audit_change(db, user, "delete_student", "Student", student.id,
-                 {"ecoe_event_id": student.ecoe_event_id, "ecoe_number": student.ecoe_number,
-                  "rut": student.rut, "name": f"{student.name} {student.last_name}"})
+                 # Sólo identificadores internos y el número ECOE: el rastro no
+                 # debe duplicar datos personales (RUT, nombre) — H13.
+                 {"ecoe_event_id": student.ecoe_event_id, "ecoe_number": student.ecoe_number})
     db.delete(student)
     commit_or_conflict(
         db, "El estudiante tiene registros asociados y no puede borrarse; suspéndelo en su lugar.")
