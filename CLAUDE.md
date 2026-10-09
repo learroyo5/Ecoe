@@ -95,6 +95,12 @@ Alembic (`backend/alembic/`) es la única forma soportada de crear/actualizar el
 
 El ciclo de vida del ECOE (`borrador → en_configuracion → listo_para_pilotaje → en_pilotaje → pilotaje_validado → publicado → en_ejecucion → cerrado → archivado`, con retrocesos permitidos en varios tramos) vive como grafo en `backend/app/services/validation.py::ALLOWED_STATUS_TRANSITIONS`, consumido por `update_ecoe_status`. Este grafo **debe reflejar** el que ofrece la UI en `frontend/src/components/ecoe-form.tsx` — el backend es la autoridad real: cualquier salto fuera del grafo se rechaza aunque el cliente arme la request a mano. Cambiar uno sin el otro rompe la UX (botones que la UI ofrece pero el backend rechaza) o la seguridad (grafo laxo en backend). Transiciones específicas disparan efectos colaterales dentro de la misma transacción: publicar crea la `LiveSession` inicial y pasa estaciones a `publicada`; entrar a `en_ejecucion` cierra todos los check-ins `confirmado` residuales (son del pilotaje: el gate de envíos no permite check-ins reales antes) para que el panel del evaluador/kiosco no muestre un estudiante viejo como activo ni cuente en la trazabilidad real; cerrar consolida resultados (`persist_results`) y fuerza el cierre de todos los check-ins abiertos, congelando la operación.
 
+**Desde la auditoría de proceso 2026-10-09 (PROC):** `cerrado` admite además volver a `en_ejecucion` (reapertura: sólo `admin_ecoe`/global, `transition_reason` ≥ 10 caracteres, borra el snapshot y queda auditada) y `archivado` es terminal. La transición a `cerrado` falla con `IncompleteClosureError` (409 `incomplete_students`) si hay estudiantes activos con estaciones esperadas de su circuito sin nota, salvo `force_close_incomplete`, que las consolida en 0 (`StationResult.is_missing`). `publicado → en_ejecucion` reinicia la `LiveSession`.
+
+### Candados por estado (PROC-5)
+
+`backend/app/services/event_lock.py`: la **estructura** (estaciones, formularios, multimedia, tiempos/circuito del evento, borrar/depurar/renumerar estudiantes) queda bloqueada desde `publicado` (`ensure_structure_editable`); con el evento `cerrado`/`archivado` no cambia nada, tampoco equipo ni nómina (`ensure_event_not_frozen`). En `en_ejecucion` sí se puede agregar un estudiante rezagado y reasignar equipo. Los cambios de estructura escriben `AuditLog` (`audit_change`). Espejo en frontend: `components/structure-lock-notice.tsx`.
+
 ### Separación pilotaje/ejecución y gate de envíos
 
 `backend/app/utils/helpers.py` tiene dos funciones clave que no deben confundirse:

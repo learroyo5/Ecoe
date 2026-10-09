@@ -188,3 +188,16 @@ La plataforma hoy asume que la coordinación ocurre fuera de ella. Propuesta en 
 4. PROC-6 y PROC-7: requieren decisión del usuario sobre la regla de nota y la reapertura.
 5. PROC-9, PROC-10, PROC-13, PROC-14: endurecimiento.
 6. Coordinación B.1 y B.2 (pre-vuelo y tablero), luego B.3.
+
+---
+
+## Seguimiento (2026-10-09, misma jornada)
+
+El usuario aprobó implementar todo. Estado por hallazgo en `BACKLOG.md` (Grupo E). Durante la implementación aparecieron tres defectos más, ya corregidos con test:
+
+- **PROC-22**: confirmar al siguiente estudiante cerraba el ingreso del anterior sin guardar su borrador (se perdía lo escrito si el barrido de fase aún no pasaba).
+- **PROC-23**: `POST /results/{id}/consolidate` no miraba el estado y podía reescribir un acta ya cerrada.
+- **PROC-24**: pausar durante una transición y reanudar dejaba la sesión en `running` con los segundos que quedaban de transición; con circuito automático, esa estación se daba por rendida sin haber empezado.
+
+Residual conocido de PROC-10: si la request no trae desglose por criterio (`item_scores`), el total informado se sigue aceptando acotado al máximo — es lo que permite transcribir un total en papel por contingencia.
+

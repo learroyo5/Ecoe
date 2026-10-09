@@ -123,13 +123,13 @@ test.describe.serial("flujo dorado", () => {
     await kiosk.waitForLoadState("networkidle");
     await expect(kiosk.getByText("Esperando al siguiente estudiante")).toBeVisible();
 
-    // Coordinación confirma a E002 en esa estación (id 4).
+    // Coordinación confirma a E006 en esa estación (id 4): es del Circuito B, como la estación (PROC-11).
     const api = await coordinatorApi();
-    await confirmCheckinViaApi(api, 4, "E002");
+    await confirmCheckinViaApi(api, 4, "E006");
     await api.dispose();
 
     // El kiosco detecta el check-in por polling y muestra la identidad.
-    await expect(kiosk.getByText("E002 · Estudiante2 Demo").first()).toBeVisible({ timeout: 15_000 });
+    await expect(kiosk.getByText("E006 · Estudiante6 Demo").first()).toBeVisible({ timeout: 15_000 });
 
     // OPT-20 F1: una pausa del cronómetro central congela el kiosco (overlay
     // de PAUSA, sin autoenvío); al reanudar, el formulario vuelve.
@@ -151,7 +151,7 @@ test.describe.serial("flujo dorado", () => {
     // Tras enviar, el kiosco reemplaza la identidad/respuestas por una pantalla
     // neutra (ver commit "ocultar identidad y respuestas del kiosco tras enviar").
     await expect(kiosk.getByRole("heading", { name: "Respuesta enviada ✓" })).toBeVisible();
-    await expect(kiosk.getByText("E002 · Estudiante2 Demo")).toHaveCount(0);
+    await expect(kiosk.getByText("E006 · Estudiante6 Demo")).toHaveCount(0);
 
     await kioskContext.close();
   });
