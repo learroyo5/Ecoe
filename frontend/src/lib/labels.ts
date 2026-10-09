@@ -13,10 +13,13 @@ const ECOE_STATUS_LABELS: Record<string, string> = {
 };
 
 const SESSION_STATUS_LABELS: Record<string, string> = {
+  idle: "Sin iniciar",
   ready: "Lista para iniciar",
   running: "En curso",
   paused: "En pausa",
   transition: "En transición",
+  round_pause: "Cambio de estudiantes",
+  circuit_complete: "Circuito completo",
   finished: "Finalizada",
   sin_sesion: "Sin sesión",
 };
@@ -41,8 +44,25 @@ const ROLE_LABELS: Record<string, string> = {
   coeditor_docente: "Coeditor docente",
   coordinador_operativo: "Coordinación operativa",
   evaluador: "Evaluador",
+  corrector: "Corrector",
+  miembro: "Miembro institucional",
   estudiante: "Estudiante",
   cronometrador: "Cronometrador",
+};
+
+const STATION_TYPE_LABELS: Record<string, string> = {
+  procedimental: "Procedimental",
+  paciente_simulado: "Paciente simulado",
+  formulario_estudiante: "Formulario estudiante",
+  multimedia: "Multimedia",
+  hibrida: "Híbrida",
+};
+
+const CIRCUIT_MODE_LABELS: Record<string, string> = {
+  paralelo_espejo: "Paralelo en espejo",
+  secuencial: "Secuencial",
+  estaciones_independientes: "Estaciones independientes",
+  mixto: "Mixto",
 };
 
 const MODE_LABELS: Record<string, string> = {
@@ -76,6 +96,16 @@ export function sessionStatusLabel(status: unknown): string {
 export function stationStatusLabel(status: unknown): string {
   const key = String(status ?? "");
   return STATION_STATUS_LABELS[key] ?? humanize(key);
+}
+
+export function stationTypeLabel(type: unknown): string {
+  const key = String(type ?? "");
+  return STATION_TYPE_LABELS[key] ?? humanize(key);
+}
+
+export function circuitModeLabel(mode: unknown): string {
+  const key = String(mode ?? "");
+  return CIRCUIT_MODE_LABELS[key] ?? humanize(key);
 }
 
 export function roleLabel(role: unknown): string {

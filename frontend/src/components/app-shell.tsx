@@ -55,10 +55,10 @@ export function AppShell({
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--color-primary)]">
             Sin ECOE asignado
           </p>
-          <h2 className="text-2xl">Todavía no tenés acceso a ningún ECOE</h2>
+          <h2 className="text-2xl">Todavía no tienes acceso a ningún ECOE</h2>
           <p className="text-sm text-slate-600">
             Tu cuenta ({user?.email}) está activa, pero no está asignada a ningún
-            ECOE. Pedile a un coordinador o administrador que te asigne a uno
+            ECOE. Pídele a un coordinador o administrador que te asigne a uno
             para poder trabajar.
           </p>
           <button className="btn-secondary" onClick={logout} aria-label="Cerrar sesión">

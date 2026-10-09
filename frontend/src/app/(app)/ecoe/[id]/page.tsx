@@ -6,6 +6,7 @@ import Link from "next/link";
 
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
+import { circuitModeLabel, ecoeStatusLabel, stationStatusLabel, stationTypeLabel } from "@/lib/labels";
 import { SectionCard } from "@/components/section-card";
 import { StatusTransitionBar, STATUS_LABELS, STATUS_COLORS } from "@/components/ecoe-form";
 import type { ECOEEvent, Station, Student, StaffAssignment, PilotRun } from "@/lib/types";
@@ -86,7 +87,7 @@ export default function ECOEDetailPage() {
         },
       ) as ECOEEvent;
       setEcoe(updated);
-      setMessage(`Estado actualizado a: ${targetStatus.replace(/_/g, " ")}`);
+      setMessage(`Estado actualizado a: ${ecoeStatusLabel(targetStatus)}`);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Error al cambiar estado.");
     } finally {
@@ -193,7 +194,7 @@ export default function ECOEDetailPage() {
             <DetailItem label="Escuela" value={ecoe.school_name} />
             <DetailItem label="Docente responsable" value={ecoe.responsible_teacher} />
             <DetailItem label="Contacto" value={ecoe.contact_email} />
-            <DetailItem label="Modo de circuito" value={ecoe.circuit_mode?.replace(/_/g, " ")} />
+            <DetailItem label="Modo de circuito" value={ecoe.circuit_mode ? circuitModeLabel(ecoe.circuit_mode) : undefined} />
             <DetailItem label="Estado" value={
               <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusColor}`}>
                 {statusLabel}
@@ -234,7 +235,7 @@ export default function ECOEDetailPage() {
                     <tr key={st.id} className="hover:bg-slate-50/50">
                       <td className="py-2 pr-4 font-medium">{st.station_number}</td>
                       <td className="py-2 pr-4 font-medium text-slate-900">{st.name}</td>
-                      <td className="py-2 pr-4 text-slate-600">{st.station_type}</td>
+                      <td className="py-2 pr-4 text-slate-600">{stationTypeLabel(st.station_type)}</td>
                       <td className="py-2 pr-4 text-slate-600">{st.circuit_name}</td>
                       <td className="py-2 pr-4">{st.max_score}</td>
                       <td className="py-2 pr-4">
@@ -243,7 +244,7 @@ export default function ECOEDetailPage() {
                           st.status === "publicada" ? "bg-blue-100 text-blue-700" :
                           "bg-slate-100 text-slate-600"
                         }`}>
-                          {st.status}
+                          {stationStatusLabel(st.status)}
                         </span>
                       </td>
                     </tr>

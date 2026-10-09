@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
+import { ecoeStatusLabel } from "@/lib/labels";
 import { canDuplicateEcoe } from "@/lib/permissions";
 import { useApi } from "@/hooks/use-api";
 import { StatusNotice } from "@/components/forms";
@@ -104,7 +105,7 @@ export default function ECOEPage() {
       setData(updated);
       setFormValues(toEditableValues(updated as unknown as Record<string, unknown>));
       await refreshList(updated.id);
-      setMessage(`ECOE ahora en estado: ${targetStatus.replace(/_/g, " ")}`);
+      setMessage(`ECOE ahora en estado: ${ecoeStatusLabel(targetStatus)}`);
       setErrors({});
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Error al cambiar estado.");
@@ -130,7 +131,7 @@ export default function ECOEPage() {
           </div>
           <div className="clinical-panel">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Estado</p>
-            <p className="mt-3 text-2xl font-semibold">{ecoeEvent?.status ?? "—"}</p>
+            <p className="mt-3 text-2xl font-semibold">{ecoeEvent?.status ? ecoeStatusLabel(ecoeEvent.status) : "—"}</p>
             <p className="mt-2 text-sm text-slate-600">{ecoeEvent?.date ?? "—"}</p>
           </div>
           <div className="clinical-panel">

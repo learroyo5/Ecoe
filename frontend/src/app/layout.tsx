@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Bitter, Source_Sans_3 } from "next/font/google";
 
 import "./globals.css";
+import { ConfirmProvider } from "@/components/confirm-provider";
 import { ECOEProvider } from "@/lib/auth";
 
 const display = Bitter({
@@ -27,7 +28,9 @@ export default function RootLayout({
   return (
     <html lang="es" className={`${display.variable} ${body.variable}`} data-system="ecoe">
       <body>
-        <ECOEProvider>{children}</ECOEProvider>
+        <ECOEProvider>
+          <ConfirmProvider>{children}</ConfirmProvider>
+        </ECOEProvider>
       </body>
     </html>
   );

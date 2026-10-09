@@ -379,7 +379,7 @@ export function StatusTransitionBar({ currentStatus, onTransition, disabled = fa
                   ))}
                 </ul>
                 <p className="mt-2 text-xs">
-                  Son señales de calidad, no bloqueos: podés validar igual.
+                  Son señales de calidad, no bloqueos: puedes validar igual.
                 </p>
               </div>
             ) : null}

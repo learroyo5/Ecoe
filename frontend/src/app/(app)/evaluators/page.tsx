@@ -5,6 +5,7 @@ import { useState } from "react";
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
+import { useConfirm } from "@/components/confirm-provider";
 import { DataTable } from "@/components/data-table";
 import { FileImport, StatusNotice } from "@/components/forms";
 import { SectionCard } from "@/components/section-card";
@@ -49,6 +50,7 @@ export default function EvaluatorsPage() {
   const [assignmentDrafts, setAssignmentDrafts] = useState<Record<string, string>>({});
   // El corrector es multi-estación: su draft de reasignación es una lista.
   const [correctorDrafts, setCorrectorDrafts] = useState<Record<string, string[]>>({});
+  const confirm = useConfirm();
   const [message, setMessage] = useState<string | null>(null);
   const [lookupMessage, setLookupMessage] = useState<string | null>(null);
   const [knownFullName, setKnownFullName] = useState<string | null>(null);
@@ -110,7 +112,7 @@ export default function EvaluatorsPage() {
         </div>
         <p className="mt-3 text-xs text-slate-500">
           El rol Admin se asigna automáticamente al crear el ECOE y no aparece en esta lista.
-          Evaluadores: {roleCounts["evaluador"] ?? 0} asignados. Sin limite maximo.
+          Evaluadores: {roleCounts["evaluador"] ?? 0} asignados. Sin límite máximo.
         </p>
       </SectionCard>
 
@@ -216,7 +218,7 @@ export default function EvaluatorsPage() {
               // Warn if adding a duplicate single-role staff member
               const warning = SINGLE_ROLE_WARNINGS[form.role_code];
               if (warning && (roleCounts[form.role_code] ?? 0) > 0) {
-                if (!window.confirm(warning)) return;
+                if (!(await confirm(warning))) return;
               }
 
               setSavingForm(true);
@@ -462,7 +464,7 @@ export default function EvaluatorsPage() {
             className="btn-secondary mt-4"
             onClick={() => setInvitedLinks([])}
           >
-            Ya los repartí, ocultar
+            Ya los reparte, ocultar
           </button>
         </SectionCard>
       ) : null}
@@ -473,7 +475,7 @@ export default function EvaluatorsPage() {
             type="button"
             className="btn-secondary"
             onClick={async () => {
-              const confirmed = window.confirm(
+              const confirmed = await confirm(
                 "Se revisará el equipo operativo de este ECOE y se borrarán los duplicados por correo, conservando el primer registro cargado. ¿Quieres continuar?",
               );
               if (!confirmed) {
@@ -720,8 +722,9 @@ export default function EvaluatorsPage() {
                         type="button"
                         className="btn-secondary"
                         onClick={async () => {
-                          const confirmed = window.confirm(
-                            "Vas a borrar este evaluador o colaborador de forma permanente. Esta acción no se puede deshacer. ¿Quieres continuar?",
+                          const confirmed = await confirm(
+                            "Vas a borrar este evaluador o colaborador de forma permanente. Esta acción no se puede deshacer.",
+                            { title: "Borrar del equipo", confirmLabel: "Borrar", severity: "danger" },
                           );
                           if (!confirmed) {
                             setMessage("El borrado del evaluador o colaborador fue cancelado.");

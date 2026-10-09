@@ -538,7 +538,7 @@ export default function LivePage() {
         <ConfirmDialog
           open={showStartConfirm}
           title="Reiniciar el cronómetro con Iniciar"
-          message="El cronómetro ya está en marcha. Iniciar lo vuelve a poner en el tiempo completo de la estación actual para todos los paneles conectados. Si querés reanudar tras una pausa, usá Reanudar. ¿Continuar?"
+          message="El cronómetro ya está en marcha. Iniciar lo vuelve a poner en el tiempo completo de la estación actual para todos los paneles conectados. Si quieres reanudar tras una pausa, usa Reanudar. ¿Continuar?"
           confirmLabel="Iniciar de nuevo"
           severity="danger"
           onConfirm={() => {
