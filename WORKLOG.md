@@ -45,7 +45,7 @@ Verificacion sobre `ux/07-resultados`: `tsc` limpio, `eslint` sin errores (2 avi
 
 Mergeado a `main` (`3397cb4`) y desplegado el 2026-10-09 (solo se reconstruyo `ecoe-frontend`; backend y BD sin tocar). La imagen anterior quedo etiquetada `ecoe-frontend:pre-ux-2026-10-09` por si hay que volver atras.
 
-Node en el host (2026-10-09): Node 22 instalado a nivel de usuario con nvm (`~/.nvm`), con enlaces `node`/`npm`/`npx` en `~/.local/bin` para shells no interactivos. `npm run lint`, `npm test` y `npm run build` ya corren directo en `frontend/`. `./scripts/run_e2e.sh` todavia no: Chromium de Playwright esta descargado pero faltan librerias del sistema (`libatk-1.0.so.0` y otras), que requieren `sudo npx playwright install-deps chromium`. Mientras tanto el e2e corre con la imagen `mcr.microsoft.com/playwright:v1.61.1-noble` en modo `--network host` contra `docker-compose.e2e.yml`.
+Node en el host (2026-10-09): Node 22 instalado a nivel de usuario con nvm (`~/.nvm`), con enlaces `node`/`npm`/`npx` en `~/.local/bin` para shells no interactivos. `npm run lint`, `npm test` y `npm run build` ya corren directo en `frontend/`. `./scripts/run_e2e.sh` tambien corre nativo (4/4 del flujo dorado) tras instalar las librerias del sistema de Chromium con `sudo env "PATH=$HOME/.local/bin:$PATH" npx playwright install-deps chromium` (`sudo` no ve el `npx` del usuario sin pasarle el PATH).
 
 ## Sesion 2026-06-03 — Evolucion v1 → v2
 
