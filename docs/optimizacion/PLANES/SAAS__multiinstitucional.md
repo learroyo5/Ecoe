@@ -63,6 +63,17 @@ La auditoría lista diez. Sólo cinco bloquean empezar; propongo un valor por de
 | D4 | Pérdida máxima tolerable el día del examen | **5 minutos** (respaldo incremental cada 5 min mientras hay un ECOE en ejecución). | Estrategia de respaldo (WAL/PITR vs. dumps frecuentes). |
 | D5 | Acceso de soporte de Dr. Notus a datos de una institución | **Ninguno por defecto**; concesión temporal, con motivo, aprobada por la institución y auditada. | Plano de control y roles. |
 
+### Respuestas del usuario (2026-10-09)
+
+- **D1 — aprobado:** un subdominio por institución (p. ej. `uct.ecoe.cl`).
+- **D2 — aprobado:** cuentas locales por institución; la misma persona en dos instituciones tiene dos cuentas.
+- **D3 — por ahora el servidor actual para el piloto.** Se creará `demo.ecoe.cl` con uno o dos ECOE cargados de punta a punta para mostrar a las instituciones. **Para la venta, probablemente un VPS dedicado por institución** (decisión probable, no cerrada).
+- **D4 — pendiente:** el usuario pidió que se le explique antes de decidir.
+- **D5 — aprobado:** sin acceso de soporte por defecto; sólo sesión temporal, con motivo y auditada.
+- **Prioridad declarada:** todo depende de que el núcleo funcione sin errores ni pérdida de datos, con flujos probados de punta a punta. → Fase 0 primero.
+
+**Consecuencia de D3 para este plan.** Si cada institución tiene su propio VPS, el aislamiento lo da la infraestructura (otra máquina, otra base, otro dominio) y **las Fases 1 y 2 tal como están escritas dejan de ser necesarias**: no hace falta contexto institucional dentro de la aplicación. Lo que pasa a importar es que una instancia sea **reproducible y operable en serie**: instalación automatizada, configuración por variables (nombre, dominio, marca), respaldo y restauración por instancia, actualización de todas a la misma versión, y monitoreo. `demo.ecoe.cl` es la primera instancia dedicada y sirve para probar ese camino. Las Fases 1–2 quedan como alternativa si más adelante el costo de un VPS por cliente no cierra; la Fase 0 es común a ambos caminos.
+
 Las otras cinco (volumen esperado, datos clínicos reales en multimedia, autonomía de configuración, modalidad dedicada/on-premise, responsables de operación) pueden responderse durante la Fase 1 sin frenar la Fase 0.
 
 ## 5. Plan por fases
