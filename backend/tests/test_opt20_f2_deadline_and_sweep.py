@@ -18,7 +18,7 @@ de modo, no-op tras cierre, borrador de otra cuenta, borrador fuera de etapa.
 
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.models.entities import (
     ECOEEvent,
@@ -132,6 +132,16 @@ def _add_live_session(ctx: dict, *, status: str, remaining: int = 480,
 def _add_checkin(ctx: dict, *, minutes_ago: float = 0.0, student_id: int | None = None,
                  status: str = "confirmado") -> int:
     with TestingSessionLocal() as db:
+        if status == "confirmado":
+            # Como en una rotación real: confirmar a alguien cierra el ingreso
+            # activo de esa estación y el de ese estudiante en otra (F0.1).
+            db.execute(
+                text(
+                    "UPDATE station_checkins SET status = 'cerrado' WHERE status = 'confirmado' "
+                    "AND (station_id = :station OR (ecoe_event_id = :event AND student_id = :student))"
+                ),
+                {"station": ctx["station_id"], "event": ctx["event_id"], "student": student_id or ctx["student_id"]},
+            )
         checkin = StationCheckIn(
             ecoe_event_id=ctx["event_id"],
             station_id=ctx["station_id"],

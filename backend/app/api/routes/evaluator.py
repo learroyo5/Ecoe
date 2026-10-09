@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -232,6 +233,30 @@ def confirm_station_checkin(
     if not student:
         raise HTTPException(status_code=404, detail="No existe un estudiante activo con ese Número ECOE")
 
+    # F0.1 (H03): serializar por estación y por estudiante. Sin estos bloqueos
+    # dos confirmaciones simultáneas leían "nadie confirmado" a la vez y
+    # dejaban dos ingresos activos (los índices únicos parciales son la red
+    # de seguridad). Orden fijo estación → estudiante para no interbloquear.
+    db.execute(select(Station.id).where(Station.id == payload.station_id).with_for_update())
+    db.execute(select(Student.id).where(Student.id == student.id).with_for_update())
+
+    # Reintento / doble clic: el estudiante YA está confirmado en esta
+    # estación. Se devuelve ese ingreso tal cual; crear otro cerraría el
+    # propio y le autoenviaría la respuesta en blanco.
+    already_here = db.scalar(
+        select(StationCheckIn).where(
+            StationCheckIn.ecoe_event_id == payload.ecoe_event_id,
+            StationCheckIn.station_id == payload.station_id,
+            StationCheckIn.student_id == student.id,
+            StationCheckIn.status == "confirmado",
+            # Sólo del modo vigente: un ingreso de pilotaje que sobrevive no
+            # es "el mismo ingreso" una vez que el evento pasó a ejecución.
+            StationCheckIn.mode == session_mode,
+        )
+    )
+    if already_here is not None:
+        return _checkin_confirmation(db, ecoe_event, already_here, student, station, session_mode)
+
     if not payload.force:
         already_evaluated = (
             db.scalar(
@@ -350,6 +375,9 @@ def confirm_station_checkin(
         finalize_checkin_response(db, ecoe_event, item, station, session_mode)
         item.status = "cerrado"
         db.add(item)
+    # Los cierres deben llegar a la base antes del nuevo `confirmado`
+    # (índices únicos parciales de ingreso activo).
+    db.flush()
 
     checkin = StationCheckIn(
         ecoe_event_id=payload.ecoe_event_id,
@@ -376,8 +404,43 @@ def confirm_station_checkin(
             },
         )
     )
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        # Otra confirmación ganó la carrera pese a los bloqueos (motor sin
+        # FOR UPDATE, p. ej. SQLite): nunca dos activos, se pide reintentar.
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Otro ingreso se confirmó al mismo tiempo en esta estación. Vuelve a intentarlo.",
+        ) from exc
     db.refresh(checkin)
+    return _checkin_confirmation(db, ecoe_event, checkin, student, station, session_mode)
+
+
+def _checkin_confirmation(
+    db: Session, ecoe_event, checkin: StationCheckIn, student: Student, station: Station,
+    session_mode: str,
+) -> dict:
+    """Respuesta de `POST /station-checkins/confirm` para un ingreso activo,
+    recién creado o ya existente (reintento)."""
+    evaluator_submission_exists = (db.scalar(
+        select(func.count()).select_from(EvaluatorRecord).where(
+            EvaluatorRecord.ecoe_event_id == checkin.ecoe_event_id,
+            EvaluatorRecord.station_id == checkin.station_id,
+            EvaluatorRecord.student_id == checkin.student_id,
+            EvaluatorRecord.mode == session_mode,
+            EvaluatorRecord.is_draft.is_(False),
+        )
+    ) or 0) > 0
+    student_response_exists = (db.scalar(
+        select(func.count()).select_from(StudentResponse).where(
+            StudentResponse.ecoe_event_id == checkin.ecoe_event_id,
+            StudentResponse.station_id == checkin.station_id,
+            StudentResponse.student_id == checkin.student_id,
+            StudentResponse.mode == session_mode,
+        )
+    ) or 0) > 0
     return {
         "checkin_id": checkin.id,
         "student_id": student.id,
@@ -398,8 +461,8 @@ def confirm_station_checkin(
             )
         ),
         "server_now": utcnow_naive().isoformat(),
-        "evaluator_submission_exists": False,
-        "student_response_exists": False,
+        "evaluator_submission_exists": evaluator_submission_exists,
+        "student_response_exists": student_response_exists,
     }
 
 

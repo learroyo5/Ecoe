@@ -13,6 +13,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     false,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -534,6 +535,20 @@ class StationCheckIn(Base, TimestampMixin):
     __table_args__ = (
         Index("ix_station_checkins_event_station_status", "ecoe_event_id", "station_id", "status"),
         Index("ix_station_checkins_event_student_status", "ecoe_event_id", "student_id", "status"),
+        # F0.1 (H03): invariantes del ingreso activo respaldadas por la base —
+        # una estación tiene a lo más un estudiante confirmado y un estudiante
+        # está confirmado a lo más en una estación. Dos confirmaciones
+        # simultáneas ya no pueden dejar dos ingresos activos.
+        Index(
+            "uq_station_checkins_active_station", "station_id", unique=True,
+            postgresql_where=text("status = 'confirmado'"),
+            sqlite_where=text("status = 'confirmado'"),
+        ),
+        Index(
+            "uq_station_checkins_active_student", "ecoe_event_id", "student_id", unique=True,
+            postgresql_where=text("status = 'confirmado'"),
+            sqlite_where=text("status = 'confirmado'"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
