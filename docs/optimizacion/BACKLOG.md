@@ -64,7 +64,7 @@ Origen: `hallazgos/auditoria-ux-navegacion__2026-10-09.md`. Aprobado por el usua
 | UX-4 | Inicio como guía del ciclo (progreso + siguiente paso) | H-ux-6 | media | onboarding del coordinador | S–M · solo frontend | hecho en rama (tsc, lint, 107 tests y build verdes; sin merge) | `ux/04-inicio` |
 | UX-5 | Gestión del ECOE unificada | H-ux-7 | media | setup | M · solo frontend | hecho en rama (tsc, lint, 114 tests y build verdes; sin merge). `/ecoe/[id]` redirige a `/ecoe`; Publicación usa la misma confirmación que la barra de estado | `ux/05-gestion-ecoe` |
 | UX-6 | Día del examen: pantalla Kioscos y controles en vivo por estado | H-ux-8, H-ux-9 | media | operación en vivo | M · solo frontend | hecho en rama (tsc, lint, 125 tests y build verdes; sin merge). `/kiosks` usa el endpoint existente; el botón por fila de Estaciones se conserva | `ux/06-dia-examen` |
-| UX-7 | Resultados con pestañas | H-ux-10 | baja | cierre | S · solo frontend | aprobado | `ux/07-resultados` |
+| UX-7 | Resultados con pestañas | H-ux-10 | baja | cierre | S · solo frontend | hecho en rama (tsc, lint, 127 tests y build verdes; sin merge) | `ux/07-resultados` |
 
 ---
 

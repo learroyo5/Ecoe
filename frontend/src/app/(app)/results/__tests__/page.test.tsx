@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import ResultsPage from "@/app/(app)/results/page";
@@ -59,6 +59,11 @@ beforeEach(() => {
   mockedUseECOE.mockReturnValue({ authenticated: true, eventId: 1 } as never);
   mockedApi.psychometrics.mockResolvedValue(EMPTY_PSYCHOMETRICS as never);
 });
+
+// Las secciones viven en pestañas (UX-7); Notas es la inicial.
+function openTab(name: string) {
+  fireEvent.click(screen.getByRole("tab", { name }));
+}
 
 describe("ResultsPage — inmutabilidad OPT-1", () => {
   it("muestra el chip de resultados consolidados cuando el payload trae frozen", async () => {
@@ -134,6 +139,7 @@ describe("ResultsPage — resultados por estación OPT-16", () => {
     } as never);
 
     render(<ResultsPage />);
+    openTab("Por estación");
 
     expect(await screen.findByText("Resultados por estación")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("Anamnesis")).toBeInTheDocument());
@@ -150,6 +156,7 @@ describe("ResultsPage — resultados por estación OPT-16", () => {
     } as never);
 
     render(<ResultsPage />);
+    openTab("Por estación");
 
     expect(await screen.findByText("Resultados por estación")).toBeInTheDocument();
     await waitFor(() =>
@@ -218,6 +225,7 @@ describe("ResultsPage — análisis de respuestas OPT-18", () => {
     } as never);
 
     render(<ResultsPage />);
+    openTab("Análisis");
 
     expect(await screen.findByText("Análisis de respuestas (ejecución)")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("0.72")).toBeInTheDocument());
@@ -229,6 +237,7 @@ describe("ResultsPage — análisis de respuestas OPT-18", () => {
     mockedApi.psychometrics.mockResolvedValue(EMPTY_PSYCHOMETRICS as never);
 
     render(<ResultsPage />);
+    openTab("Análisis");
 
     expect(await screen.findByText("Análisis de respuestas (ejecución)")).toBeInTheDocument();
     await waitFor(() =>
@@ -282,5 +291,43 @@ describe("ResultsPage — normalización por estación OPT-17", () => {
     const row = screen.getByText("Ana Pérez").closest("tr");
     expect(row).not.toBeNull();
     expect(row).toHaveTextContent("2");
+  });
+});
+
+describe("ResultsPage — pestañas UX-7", () => {
+  it("abre en Notas, con la exportación siempre visible y el resto oculto", async () => {
+    mockedApi.results.mockResolvedValue({
+      results: [],
+      frozen: false,
+      consolidated_at: null,
+      ...baseTraceability,
+    } as never);
+
+    render(<ResultsPage />);
+
+    expect(screen.getByRole("tab", { name: "Notas" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Consolidado por estudiante")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Exportar Excel de resultados" })).toBeInTheDocument();
+    expect(screen.queryByText("Resultados por estación")).not.toBeInTheDocument();
+    expect(screen.queryByText("Trazabilidad por estudiante")).not.toBeInTheDocument();
+    expect(screen.queryByText("Actividad reciente")).not.toBeInTheDocument();
+  });
+
+  it("Trazabilidad reúne el resumen operativo y ambas trazas, sin dejar Notas a la vista", async () => {
+    mockedApi.results.mockResolvedValue({
+      results: [],
+      frozen: false,
+      consolidated_at: null,
+      ...baseTraceability,
+    } as never);
+
+    render(<ResultsPage />);
+    openTab("Trazabilidad");
+
+    expect(screen.getByText("Resumen operativo")).toBeInTheDocument();
+    expect(screen.getByText("Trazabilidad por estudiante")).toBeInTheDocument();
+    expect(screen.getByText("Trazabilidad por estación")).toBeInTheDocument();
+    expect(screen.queryByText("Consolidado por estudiante")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Exportar Excel de resultados" })).toBeInTheDocument();
   });
 });
