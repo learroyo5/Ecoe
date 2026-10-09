@@ -471,9 +471,28 @@ ALLOWED_STATUS_TRANSITIONS: dict[str, set[str]] = {
         ECOEStatus.en_ejecucion.value,
     },
     ECOEStatus.en_ejecucion.value: {ECOEStatus.cerrado.value},
-    ECOEStatus.cerrado.value: {ECOEStatus.archivado.value},
-    ECOEStatus.archivado.value: {ECOEStatus.borrador.value},
+    # PROC-7: el cierre se puede reabrir (sólo admin, con motivo, auditado)
+    # para ingresar lo que faltó; invalida el acta congelada.
+    ECOEStatus.cerrado.value: {
+        ECOEStatus.archivado.value,
+        ECOEStatus.en_ejecucion.value,
+    },
+    # "Reactivar" (archivado → borrador) se eliminó: reusaba el evento con las
+    # evaluaciones de la corrida anterior adentro. Para repetir, se duplica.
+    ECOEStatus.archivado.value: set(),
 }
+
+
+class IncompleteClosureError(ValueError):
+    """El cierre encontró estudiantes con estaciones esperadas sin nota (PROC-6)."""
+
+    def __init__(self, incomplete: list[dict]):
+        self.incomplete = incomplete
+        super().__init__(
+            f"Hay {len(incomplete)} estudiante(s) con estaciones sin registro. "
+            "Resuélvelos por contingencia, suspende a los ausentes, o fuerza el "
+            "cierre para que esas estaciones cuenten como 0."
+        )
 
 
 def update_ecoe_status(
@@ -483,6 +502,8 @@ def update_ecoe_status(
     *,
     commit: bool = True,
     actor_email: str | None = None,
+    force_close_incomplete: bool = False,
+    transition_reason: str = "",
 ) -> ECOEEvent:
     """Aplica una transición del grafo `ALLOWED_STATUS_TRANSITIONS` y sus
     efectos colaterales dentro de la misma transacción:
@@ -513,8 +534,33 @@ def update_ecoe_status(
             raise ValueError("El ECOE aún no cumple condiciones para pilotaje")
         if target_status == ECOEStatus.publicado.value and not validation["can_publish"]:
             raise ValueError("El ECOE aún no cumple condiciones para publicación")
-        if target_status == ECOEStatus.en_ejecucion.value and not validation["can_start_live"]:
+        reopening = (
+            current_status == ECOEStatus.cerrado.value
+            and target_status == ECOEStatus.en_ejecucion.value
+        )
+        if (
+            target_status == ECOEStatus.en_ejecucion.value
+            and not reopening
+            and not validation["can_start_live"]
+        ):
             raise ValueError("El ECOE aún no está listo para ejecución real")
+        if reopening:
+            if len(transition_reason.strip()) < 10:
+                raise ValueError(
+                    "Reabrir un ECOE cerrado exige indicar el motivo (al menos 10 caracteres)"
+                )
+            # El acta congelada deja de valer: se borra el snapshot y Resultados
+            # vuelve al cálculo en vivo hasta el próximo cierre.
+            from app.models.entities import AuditLog, ECOEResult, StationResult
+            db.query(ECOEResult).filter(ECOEResult.ecoe_event_id == ecoe_event.id).delete()
+            db.query(StationResult).filter(StationResult.ecoe_event_id == ecoe_event.id).delete()
+            db.add(AuditLog(
+                user_email=actor_email or "",
+                action="reopen_ecoe",
+                target_type="ECOEEvent",
+                target_id=str(ecoe_event.id),
+                payload={"ecoe_event_id": ecoe_event.id, "reason": transition_reason.strip()},
+            ))
 
     if target_status == ECOEStatus.publicado.value:
         live_session = db.scalar(
@@ -595,8 +641,31 @@ def update_ecoe_status(
         # Closing freezes the event: consolidate results in the same
         # transaction and close every check-in still open, so no submission
         # window survives the closure (the stage gate rejects new records).
-        from app.services.results import persist_results
+        from app.services.results import compute_missing_station_scores, persist_results
 
+        incomplete = compute_missing_station_scores(db, ecoe_event.id)
+        if incomplete and not force_close_incomplete:
+            raise IncompleteClosureError(incomplete)
+        if incomplete:
+            from app.models.entities import AuditLog
+            db.add(AuditLog(
+                user_email=actor_email or "",
+                action="force_close_incomplete",
+                target_type="ECOEEvent",
+                target_id=str(ecoe_event.id),
+                payload={
+                    "ecoe_event_id": ecoe_event.id,
+                    "incomplete_students": len(incomplete),
+                    "missing_station_scores": sum(
+                        len(item["missing_station_ids"]) for item in incomplete
+                    ),
+                    "students": [
+                        {"ecoe_number": item["ecoe_number"],
+                         "missing_station_numbers": item["missing_station_numbers"]}
+                        for item in incomplete
+                    ],
+                },
+            ))
         persist_results(db, ecoe_event.id, commit=False, actor_email=actor_email)
         open_checkins = db.scalars(
             select(StationCheckIn).where(

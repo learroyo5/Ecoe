@@ -205,7 +205,8 @@ def test_structure_changes_leave_an_audit_trail(auth_client):
             log.action: log
             for log in db.scalars(select(AuditLog).where(AuditLog.action.in_([
                 "update_station", "renumber_students", "update_student_status", "delete_student",
-            ])).order_by(AuditLog.id.desc())).all()[:8]
+            ])).order_by(AuditLog.id.asc())).all()
+            if (log.payload or {}).get("ecoe_event_id") == ctx["event_id"]
         }
     assert set(logs) == {"update_station", "renumber_students", "update_student_status", "delete_student"}
     assert "max_score" in logs["update_station"].payload["changed_fields"]

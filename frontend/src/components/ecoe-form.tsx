@@ -233,6 +233,8 @@ interface TransitionAction {
   confirmTitle: string;
   confirmMessage: string;
   severity: "info" | "warning" | "danger";
+  /** El backend exige un motivo (reapertura de un ECOE cerrado). */
+  requiresReason?: boolean;
 }
 
 const STATUS_TRANSITIONS: Record<string, TransitionAction[]> = {
@@ -263,11 +265,12 @@ const STATUS_TRANSITIONS: Record<string, TransitionAction[]> = {
     { target: "cerrado", label: "Cerrar ECOE", confirmTitle: "¿Cerrar ECOE?", confirmMessage: "Se detendrá la ejecución y ya no se aceptarán más evaluaciones.", severity: "danger" },
   ],
   cerrado: [
-    { target: "archivado", label: "Archivar", confirmTitle: "¿Archivar ECOE?", confirmMessage: "El ECOE se archivará. Seguirá accesible en modo lectura.", severity: "info" },
+    { target: "en_ejecucion", label: "Reabrir ejecución", confirmTitle: "¿Reabrir el ECOE cerrado?", confirmMessage: "El acta consolidada deja de valer y Resultados vuelve al cálculo en vivo hasta que cierres de nuevo. Úsalo sólo para ingresar por contingencia lo que faltó. Queda registrado quién lo reabrió y por qué.", severity: "danger", requiresReason: true },
+    { target: "archivado", label: "Archivar", confirmTitle: "¿Archivar ECOE?", confirmMessage: "El ECOE se archivará y quedará sólo en modo lectura, sin vuelta atrás. Para repetirlo con otro grupo, duplícalo.", severity: "info" },
   ],
-  archivado: [
-    { target: "borrador", label: "Reactivar", confirmTitle: "¿Reactivar ECOE?", confirmMessage: "El ECOE volverá a borrador para una nueva edición.", severity: "warning" },
-  ],
+  // Archivado es terminal: "Reactivar" reusaba el evento con las evaluaciones
+  // de la corrida anterior adentro (PROC-7). Para repetir, se duplica.
+  archivado: [],
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -296,7 +299,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 interface StatusTransitionBarProps {
   currentStatus: string;
-  onTransition: (targetStatus: string) => void;
+  onTransition: (targetStatus: string, extra?: { transition_reason?: string }) => void;
   disabled?: boolean;
   loading?: boolean;
   /** Números de estación con corrección diferida sin puntuar: se advierte al cerrar. */
@@ -308,6 +311,8 @@ interface StatusTransitionBarProps {
 
 export function StatusTransitionBar({ currentStatus, onTransition, disabled = false, loading = false, pendingDeferredGradingStations = [], pilotValidationWarnings = [] }: StatusTransitionBarProps) {
   const [confirming, setConfirming] = useState<TransitionAction | null>(null);
+  const [reason, setReason] = useState("");
+  const reasonMissing = Boolean(confirming?.requiresReason) && reason.trim().length < 10;
 
   const transitions = STATUS_TRANSITIONS[currentStatus] ?? [];
   const label = STATUS_LABELS[currentStatus] ?? currentStatus;
@@ -350,7 +355,11 @@ export function StatusTransitionBar({ currentStatus, onTransition, disabled = fa
             ))}
           </div>
         ) : (
-          <p className="text-sm text-slate-500">No hay transiciones disponibles desde este estado.</p>
+          <p className="text-sm text-slate-500">
+            {currentStatus === "archivado"
+              ? "ECOE archivado: queda en modo lectura. Para repetirlo con otro grupo, duplícalo."
+              : "No hay transiciones disponibles desde este estado."}
+          </p>
         )}
       </div>
 
@@ -383,6 +392,17 @@ export function StatusTransitionBar({ currentStatus, onTransition, disabled = fa
                 </p>
               </div>
             ) : null}
+            {confirming.requiresReason ? (
+              <label className="mt-4 block space-y-1 text-sm">
+                <span className="font-semibold text-slate-700">Motivo (obligatorio)</span>
+                <textarea
+                  rows={3}
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                  placeholder="Ejemplo: apareció una pauta en papel de la estación 2 sin transcribir"
+                />
+              </label>
+            ) : null}
             <div className="mt-6 flex gap-3 justify-end">
               <button className="btn-secondary" onClick={() => setConfirming(null)}>Cancelar</button>
               <button
@@ -393,10 +413,15 @@ export function StatusTransitionBar({ currentStatus, onTransition, disabled = fa
                       ? "!bg-amber-600 hover:!bg-amber-700"
                       : ""
                 }`}
-                disabled={loading}
+                disabled={loading || reasonMissing}
+                title={reasonMissing ? "Escribe el motivo (al menos 10 caracteres)" : undefined}
                 onClick={() => {
-                  onTransition(confirming.target);
+                  onTransition(
+                    confirming.target,
+                    confirming.requiresReason ? { transition_reason: reason.trim() } : undefined,
+                  );
                   setConfirming(null);
+                  setReason("");
                 }}
               >
                 {loading ? "Procesando..." : confirming.label}

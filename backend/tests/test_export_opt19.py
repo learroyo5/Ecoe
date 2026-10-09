@@ -226,7 +226,10 @@ def _eval_record(
 def _close(event_id: int) -> None:
     with TestingSessionLocal() as db:
         event = db.get(ECOEEvent, event_id)
-        update_ecoe_status(db, event, ECOEStatus.cerrado.value, actor_email="admin@ecoe.cl")
+        update_ecoe_status(
+            db, event, ECOEStatus.cerrado.value, actor_email="admin@ecoe.cl",
+            force_close_incomplete=True,
+        )
 
 
 def _sheets(event_id: int) -> dict[str, pd.DataFrame]:

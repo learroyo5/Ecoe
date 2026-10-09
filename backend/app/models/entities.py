@@ -654,6 +654,11 @@ class StationResult(Base, TimestampMixin):
     obtained_score: Mapped[float] = mapped_column(Float, nullable=False)
     max_score: Mapped[float] = mapped_column(Float, nullable=False)
     percent_score: Mapped[float] = mapped_column(Float, nullable=False)
+    # PROC-6: estación esperada sin ningún registro al consolidar; entra al
+    # acta con 0 (cierre forzado por el director), distinguible de un 0 real.
+    is_missing: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
 
 
 class ECOEResult(Base, TimestampMixin):
@@ -670,6 +675,13 @@ class ECOEResult(Base, TimestampMixin):
     max_score: Mapped[float] = mapped_column(Float, nullable=False)
     percentage: Mapped[float] = mapped_column(Float, nullable=False)
     equivalent_grade: Mapped[float] = mapped_column(Float, nullable=False)
+    # PROC-8: el acta congela también la identidad y la cobertura con que se
+    # consolidó; nulos en snapshots anteriores (se leen entonces de `students`).
+    student_name: Mapped[str | None] = mapped_column(String(255))
+    student_rut: Mapped[str | None] = mapped_column(String(32))
+    ecoe_number: Mapped[str | None] = mapped_column(String(32))
+    stations_counted: Mapped[int | None] = mapped_column(Integer)
+    stations_expected: Mapped[int | None] = mapped_column(Integer)
 
 
 class Incident(Base, TimestampMixin):

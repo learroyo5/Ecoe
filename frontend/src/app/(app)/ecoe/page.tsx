@@ -15,6 +15,14 @@ import { ECOEFormFields, buildECOEPayload, toEditableValues, validateECOEPayload
 import type { ECOEEvent, PsychometricsResponse } from "@/lib/types";
 import { EcoeOverviewTabs, type OverviewTab } from "./overview-tabs";
 
+type IncompleteStudent = {
+  student_id: number;
+  ecoe_number: string;
+  student_name: string;
+  circuit_name?: string;
+  missing_station_numbers: number[];
+};
+
 type Tab = "general" | OverviewTab;
 
 const TABS: { key: Tab; label: string }[] = [
@@ -78,6 +86,7 @@ export default function ECOEPage() {
   const [transitioning, setTransitioning] = useState(false);
   const [dupModal, setDupModal] = useState(false);
   const [createModal, setCreateModal] = useState(false);
+  const [incompleteClose, setIncompleteClose] = useState<{ students: IncompleteStudent[]; total: number } | null>(null);
   const [tab, setTab] = useState<Tab>("general");
   const [dupName, setDupName] = useState("");
   const [dupDate, setDupDate] = useState("");
@@ -109,20 +118,33 @@ export default function ECOEPage() {
   const updateField = (name: string, value: string) =>
     setFormValues((c) => ({ ...(c ?? editableValues ?? {}), [name]: value }));
 
-  const handleStatusTransition = async (targetStatus: string) => {
+  const handleStatusTransition = async (
+    targetStatus: string,
+    extra: { transition_reason?: string; force_close_incomplete?: boolean } = {},
+  ) => {
     if (!ecoeEvent) return;
     setTransitioning(true); setMessage(null);
     try {
       const updated = await api.updateECOE(
         ecoeEvent.id,
-        { ...buildECOEPayload(activeValues ?? toEditableValues(ecoeEvent as unknown as Record<string, unknown>)!), status: targetStatus },
+        { ...buildECOEPayload(activeValues ?? toEditableValues(ecoeEvent as unknown as Record<string, unknown>)!), status: targetStatus, ...extra },
       ) as ECOEEvent;
+      setIncompleteClose(null);
       setData(updated);
       setFormValues(toEditableValues(updated as unknown as Record<string, unknown>));
       await refreshList(updated.id);
       setMessage(`ECOE ahora en estado: ${ecoeStatusLabel(targetStatus)}`);
       setErrors({});
     } catch (err) {
+      const failure = err as Error & { code?: string; data?: { students?: IncompleteStudent[]; total?: number } };
+      if (failure.code === "incomplete_students") {
+        // PROC-6: el cierre se detuvo; se muestra quiénes y qué les falta.
+        setIncompleteClose({
+          students: failure.data?.students ?? [],
+          total: Number(failure.data?.total ?? 0),
+        });
+        return;
+      }
       setMessage(err instanceof Error ? err.message : "Error al cambiar estado.");
     } finally {
       setTransitioning(false);
@@ -219,6 +241,60 @@ export default function ECOEPage() {
       ) : (
         <EcoeOverviewTabs eventId={eventId} tab={tab} />
       )}
+
+      {/* Cierre con estudiantes incompletos (PROC-6) */}
+      {incompleteClose ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Estudiantes con estaciones sin registro"
+        >
+          <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-3xl bg-white p-6 shadow-2xl">
+            <h3 className="text-xl font-semibold text-slate-900">
+              No se cerró: {incompleteClose.total} estudiante{incompleteClose.total === 1 ? "" : "s"} con estaciones sin registro
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Antes de cerrar, ingresa lo que falte en <strong>Contingencia</strong> o suspende a quien
+              estuvo ausente en <strong>Estudiantes</strong>. Si cierras de todas formas, cada estación
+              sin registro contará como <strong>0</strong> en la nota.
+            </p>
+            <div className="mt-4 min-h-0 flex-1 overflow-y-auto rounded-2xl border border-slate-200">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">N° ECOE</th>
+                    <th className="px-3 py-2">Estudiante</th>
+                    <th className="px-3 py-2">Estaciones sin registro</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {incompleteClose.students.map((student) => (
+                    <tr key={student.student_id}>
+                      <td className="px-3 py-2 font-mono text-xs">{student.ecoe_number}</td>
+                      <td className="px-3 py-2">{student.student_name}</td>
+                      <td className="px-3 py-2">{student.missing_station_numbers.join(", ")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <button type="button" className="btn-secondary" onClick={() => setIncompleteClose(null)} disabled={transitioning}>
+                Volver sin cerrar
+              </button>
+              <button
+                type="button"
+                className="rounded-full bg-red-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
+                disabled={transitioning}
+                onClick={() => void handleStatusTransition("cerrado", { force_close_incomplete: true })}
+              >
+                {transitioning ? "Cerrando..." : "Cerrar de todas formas (faltantes = 0)"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Create modal */}
       {createModal ? (

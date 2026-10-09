@@ -44,6 +44,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const text = await response.text();
     let detail = text || "No se pudo completar la solicitud";
     let errorCode: string | undefined;
+    let errorData: Record<string, unknown> | undefined;
     try {
       const parsed = JSON.parse(text);
       if (typeof parsed.detail === "string") {
@@ -53,6 +54,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
         // el code lo usan los callers para decidir (p. ej. re-confirmar).
         if (typeof parsed.detail.message === "string") detail = parsed.detail.message;
         errorCode = typeof parsed.detail.code === "string" ? parsed.detail.code : undefined;
+        errorData = parsed.detail as Record<string, unknown>;
       } else if (Array.isArray(parsed.detail)) {
         // FastAPI validation errors arrive as a list of objects; stringifying
         // them directly renders "[object Object]".
@@ -68,9 +70,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     // Adjuntamos el status HTTP para que los callers puedan distinguir casos
     // recuperables (p. ej. 409 "pauta no editable" → ofrecer copia) sin parsear
     // el texto del mensaje. Los callers que solo leen `.message` no se afectan.
-    const error = new Error(detail) as Error & { status?: number; code?: string };
+    const error = new Error(detail) as Error & {
+      status?: number;
+      code?: string;
+      data?: Record<string, unknown>;
+    };
     error.status = response.status;
     error.code = errorCode;
+    // Detalle estructurado completo (p. ej. la lista de incompletos al cerrar).
+    error.data = errorData;
     throw error;
   }
 

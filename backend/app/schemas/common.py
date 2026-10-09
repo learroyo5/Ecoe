@@ -62,6 +62,10 @@ class ECOEEventCreate(ECOEEventBase):
 
 class ECOEEventUpdate(ECOEEventBase):
     status: str
+    # PROC-6: el director asume que las estaciones sin registro valen 0.
+    force_close_incomplete: bool = False
+    # PROC-7: motivo obligatorio al reabrir un ECOE cerrado.
+    transition_reason: str = ""
 
 
 class ECOEEventRead(ECOEEventBase, ORMBase):

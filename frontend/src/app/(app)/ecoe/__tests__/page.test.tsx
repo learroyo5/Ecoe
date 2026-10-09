@@ -127,6 +127,49 @@ describe("Datos del ECOE", () => {
     expect(await screen.findByText("ECOE ahora en estado: Listo para pilotaje")).toBeInTheDocument();
   });
 
+  it("si el cierre encuentra incompletos los lista y sólo fuerza tras una segunda confirmación", async () => {
+    mockedApi.ecoe.mockResolvedValue({ ...EVENT, status: "en_ejecucion" } as never);
+    const failure = Object.assign(new Error("Hay 1 estudiante(s) con estaciones sin registro."), {
+      code: "incomplete_students",
+      data: { total: 1, students: [{ student_id: 7, ecoe_number: "E007", student_name: "Ana Pérez", missing_station_numbers: [2, 5] }] },
+    });
+    mockedApi.updateECOE.mockRejectedValueOnce(failure).mockResolvedValueOnce({ ...EVENT, status: "cerrado" } as never);
+    render(<ECOEPage />);
+    await screen.findByRole("button", { name: "Guardar ECOE" });
+    await userEvent.click(screen.getByRole("button", { name: "Cerrar ECOE" }));
+    const confirmButtons = screen.getAllByRole("button", { name: "Cerrar ECOE" });
+    await userEvent.click(confirmButtons[confirmButtons.length - 1]);
+
+    const dialog = await screen.findByRole("dialog", { name: "Estudiantes con estaciones sin registro" });
+    expect(dialog).toHaveTextContent("E007");
+    expect(dialog).toHaveTextContent("2, 5");
+    expect(mockedApi.updateECOE).toHaveBeenCalledTimes(1);
+    expect(mockedApi.updateECOE.mock.calls[0][1]).not.toHaveProperty("force_close_incomplete");
+
+    await userEvent.click(screen.getByRole("button", { name: /Cerrar de todas formas/ }));
+    await waitFor(() => expect(mockedApi.updateECOE).toHaveBeenCalledTimes(2));
+    expect(mockedApi.updateECOE.mock.calls[1][1]).toMatchObject({ status: "cerrado", force_close_incomplete: true });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Estudiantes con estaciones sin registro" })).toBeNull());
+  });
+
+  it("reabrir un ECOE cerrado exige motivo; archivado no ofrece reactivar", async () => {
+    mockedApi.ecoe.mockResolvedValue({ ...EVENT, status: "cerrado" } as never);
+    mockedApi.updateECOE.mockResolvedValue({ ...EVENT, status: "en_ejecucion" } as never);
+    render(<ECOEPage />);
+    await screen.findByRole("button", { name: "Guardar ECOE" });
+    await userEvent.click(screen.getByRole("button", { name: "Reabrir ejecución" }));
+    const confirm = screen.getAllByRole("button", { name: "Reabrir ejecución" }).pop()!;
+    expect(confirm).toBeDisabled();
+    await userEvent.type(screen.getByPlaceholderText(/apareció una pauta/), "Faltó transcribir la estación 2");
+    expect(confirm).toBeEnabled();
+    await userEvent.click(confirm);
+    await waitFor(() => expect(mockedApi.updateECOE).toHaveBeenCalled());
+    expect(mockedApi.updateECOE.mock.calls[0][1]).toMatchObject({
+      status: "en_ejecucion", transition_reason: "Faltó transcribir la estación 2",
+    });
+    expect(screen.queryByRole("button", { name: "Reactivar" })).toBeNull();
+  });
+
   it("no ofrece crear un ECOE a quien no es admin global", async () => {
     userRole = "miembro";
     render(<ECOEPage />);

@@ -33,6 +33,8 @@ from app.models.enums import ECOEStatus, RoleCode, SessionMode
 # Una vez cerrado/archivado el evento, los resultados oficiales son el snapshot
 # `ECOEResult` escrito al cierre: ninguna edición posterior de respuestas o
 # registros debe mover el número que sirve `/results` o el export.
+from app.utils.helpers import resolve_station_max_score  # noqa: E402
+
 FROZEN_RESULT_STATUSES = {ECOEStatus.cerrado.value, ECOEStatus.archivado.value}
 
 
@@ -50,7 +52,103 @@ def compute_equivalent_grade(percentage: float, passing_reference_percent: float
     return 1.0 + (percentage / passing) * 3.0
 
 
-def compute_results(db: Session, ecoe_event_id: int) -> list[dict]:
+def _form_points(station: Station) -> float:
+    total = 0.0
+    for question in (station.student_form_definition or {}).get("questions") or []:
+        if not isinstance(question, dict):
+            continue
+        try:
+            total += max(0.0, float(question.get("points") or 0))
+        except (TypeError, ValueError):
+            continue
+    return total
+
+
+def station_is_scoreable(station: Station) -> bool:
+    """¿La estación puede aportar nota? (evaluador, o formulario con puntos)."""
+    return bool(station.requires_evaluator) or (
+        bool(station.requires_student_form) and _form_points(station) > 0
+    )
+
+
+def expected_station_max(db: Session, station: Station) -> float:
+    """Máximo nominal de una estación para registrarla como faltante (0 / máx)."""
+    total = 0.0
+    if station.requires_evaluator:
+        total += resolve_station_max_score(db, station)
+    if station.requires_student_form:
+        total += _form_points(station)
+    return total or float(station.max_score or 0)
+
+
+def expected_stations_by_student(db: Session, ecoe_event_id: int) -> dict[int, list[Station]]:
+    """Estaciones puntuables que cada estudiante activo debe rendir.
+
+    Por circuito (mismo criterio que la trazabilidad): en circuitos espejo cada
+    estudiante sólo recorre las estaciones de su circuito. Si el circuito del
+    estudiante no coincide con el de ninguna estación, se esperan todas.
+    """
+    def _key(value: str | None) -> str:
+        return str(value or "").strip().lower()
+
+    stations = [
+        station
+        for station in db.scalars(
+            select(Station)
+            .where(Station.ecoe_event_id == ecoe_event_id)
+            .order_by(Station.station_number.asc(), Station.id.asc())
+        ).all()
+        if station_is_scoreable(station)
+    ]
+    by_circuit: dict[str, list[Station]] = defaultdict(list)
+    for station in stations:
+        by_circuit[_key(station.circuit_name)].append(station)
+    students = db.scalars(
+        select(Student).where(Student.ecoe_event_id == ecoe_event_id, Student.is_active.is_(True))
+    ).all()
+    return {
+        student.id: by_circuit.get(_key(student.circuit_name)) or stations
+        for student in students
+    }
+
+
+def compute_missing_station_scores(db: Session, ecoe_event_id: int) -> list[dict]:
+    """Estudiantes activos con estaciones esperadas sin ninguna nota (PROC-6).
+
+    Es lo que el cierre exige resolver (por contingencia, o suspendiendo al
+    ausente) o que el director asuma como 0 al forzar el cierre.
+    """
+    scored: dict[int, set[int]] = defaultdict(set)
+    for row in compute_station_results(db, ecoe_event_id):
+        scored[row["student_id"]].add(row["station_id"])
+    students = {
+        student.id: student
+        for student in db.scalars(
+            select(Student).where(Student.ecoe_event_id == ecoe_event_id, Student.is_active.is_(True))
+        ).all()
+    }
+    incomplete: list[dict] = []
+    for student_id, stations in expected_stations_by_student(db, ecoe_event_id).items():
+        missing = [station for station in stations if station.id not in scored[student_id]]
+        if not missing:
+            continue
+        student = students[student_id]
+        incomplete.append({
+            "student_id": student_id,
+            "ecoe_number": student.ecoe_number,
+            "student_name": f"{student.name} {student.last_name}",
+            "circuit_name": student.circuit_name,
+            "missing_station_ids": [station.id for station in missing],
+            "missing_station_numbers": [station.station_number for station in missing],
+            "expected_count": len(stations),
+        })
+    incomplete.sort(key=lambda item: str(item["ecoe_number"] or ""))
+    return incomplete
+
+
+def compute_results(
+    db: Session, ecoe_event_id: int, *, fill_missing: bool = False
+) -> list[dict]:
     """Nota agregada por estudiante.
 
     OPT-17 — normalización por estación: `percentage` es el **promedio de los
@@ -79,9 +177,25 @@ def compute_results(db: Session, ecoe_event_id: int) -> list[dict]:
     station_rows_by_student: dict[int, list[dict]] = defaultdict(list)
     for row in compute_station_results(db, ecoe_event_id):
         station_rows_by_student[row["student_id"]].append(row)
+    expected = expected_stations_by_student(db, ecoe_event_id)
     results = []
     for student in students:
-        rows = station_rows_by_student.get(student.id, [])
+        rows = list(station_rows_by_student.get(student.id, []))
+        expected_stations = expected.get(student.id, [])
+        present_ids = {row["station_id"] for row in rows}
+        missing_stations = [s for s in expected_stations if s.id not in present_ids]
+        if fill_missing:
+            # PROC-6: al consolidar, una estación esperada sin registro vale 0
+            # sobre su máximo (cierre forzado). En vivo NO se rellena: a mitad
+            # de examen todas las estaciones por rendir bajarían la nota.
+            for station in missing_stations:
+                rows.append({
+                    "student_id": student.id,
+                    "station_id": station.id,
+                    "obtained_score": 0.0,
+                    "max_score": round(expected_station_max(db, station), 2),
+                    "percent_score": 0.0,
+                })
         # Sólo las estaciones con máximo > 0 pueden aportar un % de logro; una
         # fila con `max == 0` entra igual a las sumas crudas pero no a la media.
         scored = [row for row in rows if row["max_score"] and row["max_score"] > 0]
@@ -105,6 +219,8 @@ def compute_results(db: Session, ecoe_event_id: int) -> list[dict]:
             # OPT-17: nº de estaciones con actividad puntuable que entraron al
             # promedio (el divisor de `percentage`). Campo del dict, no de BD.
             "stations_counted": len(scored),
+            "stations_expected": len(expected_stations),
+            "missing_stations": sorted(s.station_number for s in missing_stations),
         })
     return results
 
@@ -209,6 +325,7 @@ def read_station_results(
                     "obtained_score": round(snap.obtained_score, 2),
                     "max_score": round(snap.max_score, 2),
                     "percent_score": round(snap.percent_score, 2),
+                    "is_missing": bool(snap.is_missing),
                 }
                 for snap in snapshots
             ], True
@@ -324,17 +441,26 @@ def read_results(
             results = []
             for snap in snapshots:
                 student = students.get(snap.student_id)
-                results.append({
+                row = {
                     "student_id": snap.student_id,
-                    "student_name": (
+                    # PROC-8: la identidad del acta es la congelada; sólo los
+                    # snapshots anteriores (sin esas columnas) leen `students`.
+                    "student_name": snap.student_name or (
                         f"{student.name} {student.last_name}" if student else ""
                     ),
-                    "ecoe_number": student.ecoe_number if student else None,
+                    "ecoe_number": snap.ecoe_number or (
+                        student.ecoe_number if student else None
+                    ),
                     "total_score": round(snap.total_score, 2),
                     "max_score": round(snap.max_score, 2),
                     "percentage": round(snap.percentage, 2),
                     "equivalent_grade": round(snap.equivalent_grade, 2),
-                })
+                }
+                if snap.stations_counted is not None:
+                    row["stations_counted"] = snap.stations_counted
+                if snap.stations_expected is not None:
+                    row["stations_expected"] = snap.stations_expected
+                results.append(row)
             return results, True, consolidated_at
     return compute_results(db, ecoe_event_id), False, None
 
@@ -346,9 +472,16 @@ def persist_results(
     commit: bool = True,
     actor_email: str | None = None,
 ) -> list[dict]:
-    results = compute_results(db, ecoe_event_id)
+    results = compute_results(db, ecoe_event_id, fill_missing=True)
+    students_by_id = {
+        student.id: student
+        for student in db.scalars(
+            select(Student).where(Student.ecoe_event_id == ecoe_event_id)
+        ).all()
+    }
     db.query(ECOEResult).filter(ECOEResult.ecoe_event_id == ecoe_event_id).delete()
     for item in results:
+        student = students_by_id.get(item["student_id"])
         db.add(ECOEResult(
             ecoe_event_id=ecoe_event_id,
             student_id=item["student_id"],
@@ -356,6 +489,12 @@ def persist_results(
             max_score=item["max_score"],
             percentage=item["percentage"],
             equivalent_grade=item["equivalent_grade"],
+            # PROC-8: identidad y cobertura congeladas junto con la nota.
+            student_name=item["student_name"],
+            student_rut=student.rut if student else None,
+            ecoe_number=item["ecoe_number"],
+            stations_counted=item["stations_counted"],
+            stations_expected=item["stations_expected"],
         ))
     # OPT-16: congelar la nota por estación igual que `ECOEResult`
     # (delete-then-insert idempotente; respeta
@@ -374,6 +513,25 @@ def persist_results(
             max_score=item["max_score"],
             percent_score=item["percent_score"],
         ))
+    # PROC-6: las estaciones esperadas sin registro quedan en el acta con 0,
+    # marcadas, para que el desglose por estación cuadre con la nota agregada.
+    stations_by_id = {
+        station.id: station
+        for station in db.scalars(
+            select(Station).where(Station.ecoe_event_id == ecoe_event_id)
+        ).all()
+    }
+    for incomplete in compute_missing_station_scores(db, ecoe_event_id):
+        for station_id in incomplete["missing_station_ids"]:
+            db.add(StationResult(
+                ecoe_event_id=ecoe_event_id,
+                student_id=incomplete["student_id"],
+                station_id=station_id,
+                obtained_score=0.0,
+                max_score=round(expected_station_max(db, stations_by_id[station_id]), 2),
+                percent_score=0.0,
+                is_missing=True,
+            ))
     if actor_email:
         db.add(AuditLog(
             user_email=actor_email,
