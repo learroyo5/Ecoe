@@ -55,7 +55,7 @@ Lo mas urgente antes de cualquier prueba con personas: PROC-1 (confirmar al estu
 
 ## Sesion 2026-10-09 (c) — Correcciones de la auditoria de proceso (PROC + coordinacion)
 
-Seis ramas apiladas, **sin merge ni deploy** (decision del usuario; incluyen 3 migraciones Alembic: `r8s9t0u1v2w3`, `s9t0u1v2w3x4`, `t0u1v2w3x4y5`, todas aditivas y sin backfill):
+Seis ramas apiladas, **mergeadas a `main` (`ef1b357`) y desplegadas el 2026-10-09** tras un respaldo manual (`backups/ecoe-pre-proc-20261009-074740.sql.gz`, copia en `~/backups-ecoe-manual/`). Produccion quedo en la revision Alembic `t0u1v2w3x4y5`; imagenes anteriores etiquetadas `ecoe-backend:pre-proc-2026-10-09` y `ecoe-frontend:pre-proc-2026-10-09`. Incluyen 3 migraciones Alembic: `r8s9t0u1v2w3`, `s9t0u1v2w3x4`, `t0u1v2w3x4y5`, todas aditivas y sin backfill):
 
 - `proc/01-transicion-y-clave`: check-in en transicion/pausa pertenece a la fase siguiente; el formulario llega al estudiante sin la clave; confirmar al siguiente conserva el borrador del anterior.
 - `proc/02-anulacion-y-contingencia`: anular ingreso, aviso de estudiante en otra estacion de la misma rotacion, contingencia sustituye autoenvios y rectifica evaluaciones; pantalla `/contingency`.
@@ -68,7 +68,9 @@ Verificacion sobre `proc/06-tablero-en-vivo`: backend 503 tests en SQLite y en P
 
 Cambios de comportamiento que afectan la operacion (ya reflejados en `docs/OPERACION_DIA_EXAMEN.md`): desde `publicado` no se edita estructura (hay que despublicar); el cierre exige resolver incompletos o forzarlo; el check-in avisa por otra estacion u otro circuito; el circuito automatico cuenta rondas por circuito.
 
-Pendiente: plan de rotacion generado (COORD-3), respaldo frecuente en ejecucion (COORD-4), identificacion del estudiante en kiosco para estaciones sin evaluador (PROC-12), y los de severidad baja PROC-17/18/20. Para correr pytest en este servidor: contenedor `ecoe-backend` + pytest (no hay pytest en el host).
+Nota: `backups/` es de root; un respaldo manual se escribe a traves del contenedor (`docker exec ecoe-db pg_dump -U ecoe ecoe | gzip | docker exec -i ecoe-db-backup sh -c 'cat > /backups/<nombre>.sql.gz'`). El comando de `OPERACION_DIA_EXAMEN.md` (redireccion directa a `backups/`) falla por permisos con el usuario normal.
+
+Pendiente: revisar `docs/AUDITORIA_SAAS_MULTIINSTITUCIONAL_ECOE.md` (auditoria de Codex para multi-institucion, sin seguimiento en git); plan de rotacion generado (COORD-3), respaldo frecuente en ejecucion (COORD-4), identificacion del estudiante en kiosco para estaciones sin evaluador (PROC-12), y los de severidad baja PROC-17/18/20. Para correr pytest en este servidor: contenedor `ecoe-backend` + pytest (no hay pytest en el host).
 
 ## Sesion 2026-06-03 — Evolucion v1 → v2
 

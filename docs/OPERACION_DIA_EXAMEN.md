@@ -17,7 +17,7 @@ Guía operativa para correr un ECOE real con esta plataforma servida desde
 ## T-1 día
 
 - [ ] `docker compose ps` en el servidor: todo `healthy`.
-- [ ] Backup manual además del automático: `docker exec ecoe-db pg_dump -U ecoe ecoe | gzip > backups/pre-examen-$(date +%Y%m%d).sql.gz`
+- [ ] Backup manual además del automático (la carpeta `backups/` es de root, por eso se escribe a través del contenedor de respaldos): `docker exec ecoe-db pg_dump -U ecoe ecoe | gzip | docker exec -i ecoe-db-backup sh -c "cat > /backups/pre-examen-$(date +%Y%m%d).sql.gz"`
 - [ ] PDF de contingencia impreso por estación (Resultados → Export PDF por estación): pautas en papel por si todo falla.
 - [ ] Tablets de estación cargadas, con el navegador probado y bloqueo de pantalla desactivado.
 - [ ] Definir quién es el **coordinador de contingencia** del día (usuario con rol coordinador): es la única persona que puede registrar envíos fuera de ventana.

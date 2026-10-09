@@ -68,36 +68,36 @@ Origen: `hallazgos/auditoria-ux-navegacion__2026-10-09.md`. Aprobado por el usua
 
 ## Grupo E — Proceso ECOE: coherencia, pérdida de información y seguridad (auditoría 2026-10-09)
 
-Origen: `hallazgos/auditoria-proceso-ecoe__2026-10-09.md` (incluye la propuesta de coordinación de personas y dispositivos). Reproducido por API contra el stack e2e (PostgreSQL real). **Aprobado por el usuario el 2026-10-09 para implementar completo.** Decisiones: (1) estación sin registro bloquea el cierre y el director puede forzarlo dejándola en 0; (2) reapertura `cerrado → en_ejecucion` sólo admin y auditada, se elimina «Reactivar»; (3) los circuitos espejo son dos circuitos simultáneos. Implementado en seis ramas apiladas `proc/01…06` (ver abajo); **merge y deploy pendientes del usuario: incluye 3 migraciones**.
+Origen: `hallazgos/auditoria-proceso-ecoe__2026-10-09.md` (incluye la propuesta de coordinación de personas y dispositivos). Reproducido por API contra el stack e2e (PostgreSQL real). **Aprobado por el usuario el 2026-10-09 para implementar completo.** Decisiones: (1) estación sin registro bloquea el cierre y el director puede forzarlo dejándola en 0; (2) reapertura `cerrado → en_ejecucion` sólo admin y auditada, se elimina «Reactivar»; (3) los circuitos espejo son dos circuitos simultáneos. Implementado en seis ramas apiladas `proc/01…06` (ver abajo); **mergeado a `main` (`ef1b357`) y desplegado el 2026-10-09**, con las 3 migraciones aplicadas.
 
 | ID | Título | Severidad | Evidencia | Factibilidad | Estado |
 |----|--------|-----------|-----------|--------------|--------|
-| PROC-1 | Check-in durante transición/pausa entre rondas → autoenvío en blanco | bloqueante | verificado | S · solo backend | hecho en rama `proc/01` (sin merge) |
-| PROC-2 | Contingencia no puede sustituir un autoenvío en blanco ni rectificar una evaluación | alta | verificado | M · backend + UI | hecho en rama `proc/02` (sin merge) |
-| PROC-3 | Check-in equivocado sin anulación; estudiante confirmado en dos estaciones | alta | verificado | M · backend + UI | hecho en rama `proc/02` (sin merge) |
-| PROC-4 | Clave de respuestas enviada al kiosco/estudiante | alta (seguridad) | verificado | XS · solo backend | hecho en rama `proc/01` (sin merge) |
-| PROC-5 | Sin candado por estado sobre estaciones, nómina, equipo, tiempos | alta | verificado | M · backend + UI | hecho en rama `proc/03` (sin merge) |
-| PROC-6 | Estación sin registro no baja la nota; el cierre no advierte incompletos | alta | verificado | S–M · decisión del usuario | hecho en rama `proc/04` (sin merge) |
-| PROC-7 | Cierre irreversible; «Reactivar» mezcla corridas | alta | verificado | M · decisión del usuario | hecho en rama `proc/04` (sin merge) |
-| PROC-8 | El acta congelada no guarda identidad ni protege la estructura | alta | verificado | M · migración | hecho en rama `proc/04 (migración)` (sin merge) |
-| PROC-9 | La sesión en vivo no parte limpia (herencia del pilotaje, Iniciar, Reanudar) | media | verificado en parte | S · solo backend | hecho en rama `proc/05` (sin merge) |
-| PROC-10 | Puntaje del evaluador calculado por el navegador | media | verificado | S · solo backend | hecho en rama `proc/05` (sin merge) |
-| PROC-11 | Circuitos espejo, grupos y modo de circuito no gobiernan cronómetro ni check-in | media | por lectura | M–L · decisión de diseño | hecho en rama `proc/05` (sin merge) |
+| PROC-1 | Check-in durante transición/pausa entre rondas → autoenvío en blanco | bloqueante | verificado | S · solo backend | hecho en rama `proc/01` · desplegado 2026-10-09 |
+| PROC-2 | Contingencia no puede sustituir un autoenvío en blanco ni rectificar una evaluación | alta | verificado | M · backend + UI | hecho en rama `proc/02` · desplegado 2026-10-09 |
+| PROC-3 | Check-in equivocado sin anulación; estudiante confirmado en dos estaciones | alta | verificado | M · backend + UI | hecho en rama `proc/02` · desplegado 2026-10-09 |
+| PROC-4 | Clave de respuestas enviada al kiosco/estudiante | alta (seguridad) | verificado | XS · solo backend | hecho en rama `proc/01` · desplegado 2026-10-09 |
+| PROC-5 | Sin candado por estado sobre estaciones, nómina, equipo, tiempos | alta | verificado | M · backend + UI | hecho en rama `proc/03` · desplegado 2026-10-09 |
+| PROC-6 | Estación sin registro no baja la nota; el cierre no advierte incompletos | alta | verificado | S–M · decisión del usuario | hecho en rama `proc/04` · desplegado 2026-10-09 |
+| PROC-7 | Cierre irreversible; «Reactivar» mezcla corridas | alta | verificado | M · decisión del usuario | hecho en rama `proc/04` · desplegado 2026-10-09 |
+| PROC-8 | El acta congelada no guarda identidad ni protege la estructura | alta | verificado | M · migración | hecho en rama `proc/04 (migración)` · desplegado 2026-10-09 |
+| PROC-9 | La sesión en vivo no parte limpia (herencia del pilotaje, Iniciar, Reanudar) | media | verificado en parte | S · solo backend | hecho en rama `proc/05` · desplegado 2026-10-09 |
+| PROC-10 | Puntaje del evaluador calculado por el navegador | media | verificado | S · solo backend | hecho en rama `proc/05` · desplegado 2026-10-09 |
+| PROC-11 | Circuitos espejo, grupos y modo de circuito no gobiernan cronómetro ni check-in | media | por lectura | M–L · decisión de diseño | hecho en rama `proc/05` · desplegado 2026-10-09 |
 | PROC-12 | Estaciones sin evaluador dependen de check-in manual por rotación | media | por lectura | M | mitigado en proc/05–06 (aviso en Validación y tablero); falta que el estudiante se identifique en el kiosco |
-| PROC-13 | Borrar con registros responde 500 | media | verificado | XS | hecho en rama `proc/03` (sin merge) |
-| PROC-14 | Ediciones y borrados de estructura sin AuditLog | media | por lectura | S | hecho en rama `proc/03` (sin merge) |
-| PROC-15 | «+ Nuevo ECOE» visible para quien no puede crearlo | baja | por lectura | XS · solo frontend | hecho en rama `proc/03` (sin merge) |
-| PROC-16 | Vacíos de la validación previa a publicar/ejecutar | media | por lectura | S–M | hecho en rama `proc/05` (sin merge) |
+| PROC-13 | Borrar con registros responde 500 | media | verificado | XS | hecho en rama `proc/03` · desplegado 2026-10-09 |
+| PROC-14 | Ediciones y borrados de estructura sin AuditLog | media | por lectura | S | hecho en rama `proc/03` · desplegado 2026-10-09 |
+| PROC-15 | «+ Nuevo ECOE» visible para quien no puede crearlo | baja | por lectura | XS · solo frontend | hecho en rama `proc/03` · desplegado 2026-10-09 |
+| PROC-16 | Vacíos de la validación previa a publicar/ejecutar | media | por lectura | S–M | hecho en rama `proc/05` · desplegado 2026-10-09 |
 | PROC-17 | El pilotaje sin panel en vivo no ensaya el reloj central | baja | por lectura | doc | pendiente (baja) |
 | PROC-18 | Token de kiosco en la URL, 24 h | baja | por lectura | S | pendiente (baja) |
-| PROC-19 | Medios «ambos» no visibles en modo estudiante | baja | por lectura | XS | hecho en rama `proc/01` (sin merge) |
+| PROC-19 | Medios «ambos» no visibles en modo estudiante | baja | por lectura | XS | hecho en rama `proc/01` · desplegado 2026-10-09 |
 | PROC-20 | Duplicar ECOE comparte pautas y no copia correctores | baja | por lectura | S | pendiente (baja) |
 | PROC-21 | Punto único de falla e intervalo de respaldo el día del examen | alta (operación) | por documentación | infra + doc | pendiente (infraestructura): respaldo frecuente en ejecución y plan ante cambio de IP |
-| PROC-22 | Confirmar al siguiente estudiante descartaba el borrador del anterior | alta | por lectura → test | S | hecho en rama `proc/01` (sin merge) |
-| PROC-23 | `POST /results/{id}/consolidate` podía reescribir un acta cerrada | media | por lectura → test | XS | hecho en rama `proc/05` (sin merge) |
-| PROC-24 | Pausar en una transición y reanudar la convertía en fase de estación | alta | por lectura → test | S · migración | hecho en rama `proc/05` (sin merge) |
-| COORD-1 | Señal de vida, verificación previa y tablero de estaciones en el panel en vivo | — | propuesta B.1/B.2 | M · migración | hecho en rama `proc/06` (sin merge) |
-| COORD-2 | Pantalla Contingencia (transcripción de papel y rectificación) | — | zona sin cubrir | M | hecho en rama `proc/02` (sin merge) |
+| PROC-22 | Confirmar al siguiente estudiante descartaba el borrador del anterior | alta | por lectura → test | S | hecho en rama `proc/01` · desplegado 2026-10-09 |
+| PROC-23 | `POST /results/{id}/consolidate` podía reescribir un acta cerrada | media | por lectura → test | XS | hecho en rama `proc/05` · desplegado 2026-10-09 |
+| PROC-24 | Pausar en una transición y reanudar la convertía en fase de estación | alta | por lectura → test | S · migración | hecho en rama `proc/05` · desplegado 2026-10-09 |
+| COORD-1 | Señal de vida, verificación previa y tablero de estaciones en el panel en vivo | — | propuesta B.1/B.2 | M · migración | hecho en rama `proc/06` · desplegado 2026-10-09 |
+| COORD-2 | Pantalla Contingencia (transcripción de papel y rectificación) | — | zona sin cubrir | M | hecho en rama `proc/02` · desplegado 2026-10-09 |
 | COORD-3 | Plan de rotación generado por la plataforma | — | propuesta B.3 | M–L | pendiente |
 | COORD-4 | Respaldo automático frecuente durante la ejecución | — | propuesta B.6 | S · infraestructura | pendiente |
 
