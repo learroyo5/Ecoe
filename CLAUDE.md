@@ -122,6 +122,15 @@ El ciclo de vida del ECOE (`borrador → en_configuracion → listo_para_pilotaj
 - `compute_ecoe_validation` bloquea pilotaje y publicación (`mirror_issues`) si hay más de un circuito y no son espejo exacto: dos circuitos armados a mano, espejo incompleto o con diseño distinto.
 - Rondas y estaciones esperadas ya eran por circuito (PROC-11); el check-in avisa si el estudiante es de otro circuito.
 
+### Estaciones desde una guía de simulación (IA)
+
+`backend/app/services/guide_import.py`. `POST /station-guide/suggest` recibe un .docx/.pdf, extrae texto y tablas (docx con `zipfile`, PDF con `pypdf`), **quita los datos personales del docente** (`redact_personal_data`) y lanza un trabajo en segundo plano que llama a Claude con salida estructurada (herramienta forzada `proponer_estaciones`); el cliente consulta `GET /station-guide/jobs/{id}`. Es asíncrono porque la llamada puede superar los 100 s del túnel; los trabajos viven en memoria, son privados de quien los creó y vencen a los 30 min.
+
+- **La IA no escribe en la base.** El resultado es un borrador: `/stations/from-guide` lo guarda en `sessionStorage` (`lib/guide-draft.ts`) y `/stations/builder?guideStation=N` lo carga como estación nueva con la pauta en modo "crear". La estación y la pauta nacen por los `POST /stations` e `/instruments` de siempre, con sus permisos y candados.
+- `normalize_suggestions` no confía en la forma de la respuesta: recalcula el puntaje desde los criterios (y avisa si no coincide con el total declarado en la guía), descarta claves de respuesta que no son una opción, y marca cada campo `guia` / `ia` / `falta`.
+- Roles: `admin_ecoe` y `coeditor_docente` (no `coordinador_operativo`). Sin `ANTHROPIC_API_KEY` el endpoint responde 503 y la UI no ofrece la opción. Modelo en `GUIDE_AI_MODEL`.
+- Los tests reemplazan `request_station_suggestions`; nunca se llama al modelo real.
+
 ### Candados por estado (PROC-5)
 
 `backend/app/services/event_lock.py`: la **estructura** (estaciones, formularios, multimedia, tiempos/circuito del evento, borrar/depurar/renumerar estudiantes) queda bloqueada desde `publicado` (`ensure_structure_editable`); con el evento `cerrado`/`archivado` no cambia nada, tampoco equipo ni nómina (`ensure_event_not_frozen`). En `en_ejecucion` sí se puede agregar un estudiante rezagado y reasignar equipo. Los cambios de estructura escriben `AuditLog` (`audit_change`). Espejo en frontend: `components/structure-lock-notice.tsx`.

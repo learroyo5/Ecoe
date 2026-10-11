@@ -29,6 +29,17 @@ Guia corta para retomar trabajo sin reconstruir contexto desde cero.
 - Credenciales: cada entorno en su `.env` (`backend/.env`, `demo.env`); nunca en git.
 - Siguiente: pruebas del usuario sobre el nucleo. Prioridades en `NEXT_STEPS.md`.
 
+## Sesion 2026-10-11 — Estaciones desde una guia de simulacion (IA)
+
+Rama `feat/estacion-desde-guia` (sin mergear ni desplegar). Tercera forma de crear estaciones: subir la guia de un practico (.docx o PDF) y que Claude proponga una o mas estaciones como borrador para el Constructor.
+
+- Backend: `services/guide_import.py` + rutas `/station-guide/{status,suggest,jobs/{id}}` en `routes/stations.py`. Sin migraciones. Dependencias nuevas: `anthropic`, `pypdf`.
+- Frontend: `/stations/from-guide`, `lib/guide-draft.ts`, carga del borrador en el Constructor (`?guideStation=N`), boton en Estaciones (solo si el asistente esta configurado).
+- Decisiones del usuario: Claude via API; .docx y PDF; solo `admin_ecoe` y `coeditor_docente`; la IA nunca guarda sola.
+- Verificado: 572 backend (PostgreSQL), 149 frontend, e2e, y recorrido en navegador con respuestas del modelo simuladas.
+- **Pendiente**: no se ha probado contra el modelo real (falta `ANTHROPIC_API_KEY` en `backend/.env` y `demo.env`). Al configurarla, probar con las dos guias de ejemplo (higienizacion de manos, administracion intramuscular) y ajustar `SYSTEM_PROMPT` segun lo que proponga.
+- La imagen local de pruebas `ecoe-backend-test` debe incluir las dependencias nuevas (instalarlas como root, no en el sitio de usuario).
+
 ## Sesion 2026-10-09 — Auditoria UX de la intranet (UX-1..UX-7)
 
 Auditoria de navegacion, barra lateral y flujos (`docs/optimizacion/hallazgos/auditoria-ux-navegacion__2026-10-09.md`) e implementacion completa en 7 ramas apiladas, solo frontend, sin migraciones ni cambios de permisos. Triage y estado en `docs/optimizacion/BACKLOG.md` (Grupo D).

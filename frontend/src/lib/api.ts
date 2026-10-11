@@ -23,6 +23,8 @@ import type {
   StudentAccessContext,
 } from "@/lib/types";
 
+import type { GuideSuggestionResult } from "@/lib/guide-draft";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -307,6 +309,26 @@ export const api = {
     request<StationBank>(`/station-bank/${bankStationId}?ecoe_event_id=${eventId}`, { method: "PUT", body: JSON.stringify(payload) }),
   updateStationBankStatus: (eventId: number, bankStationId: number, payload: { status: string }) =>
     request<StationBank>(`/station-bank/${bankStationId}/status?ecoe_event_id=${eventId}`, { method: "PATCH", body: JSON.stringify(payload) }),
+
+  // Estaciones sugeridas desde una guía de simulación (IA)
+  stationGuideStatus: () =>
+    request<{ enabled: boolean; max_size_mb: number }>("/station-guide/status"),
+  suggestStationsFromGuide: (eventId: number, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return request<{ job_id: string; status: string }>(
+      `/station-guide/suggest?ecoe_event_id=${eventId}`,
+      { method: "POST", body: formData },
+    );
+  },
+  stationGuideJob: (jobId: string) =>
+    request<{
+      job_id: string;
+      status: "processing" | "done" | "error";
+      filename: string;
+      result: GuideSuggestionResult | null;
+      error: string | null;
+    }>(`/station-guide/jobs/${jobId}`),
 
   // Stations
   stations: (eventId: number) => request<Station[]>(`/stations/${eventId}`),

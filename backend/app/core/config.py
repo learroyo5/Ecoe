@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     # Base publica para construir enlaces de activacion/reset en los correos.
     public_app_url: str = "http://localhost:3000"
+    # Estaciones sugeridas desde una guía de simulación (services/guide_import.py).
+    # Sin clave, la opción no se ofrece y el resto de la plataforma no cambia.
+    anthropic_api_key: str = ""
+    guide_ai_model: str = "claude-opus-5-5"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

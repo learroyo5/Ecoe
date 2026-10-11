@@ -110,6 +110,21 @@ En **Estaciones** ves las estaciones agrupadas por circuito, con su tipo, tiempo
 
 Una estación debe poder puntuarse: necesita evaluador con pauta, o un formulario con puntos.
 
+### Desde una guía de simulación
+
+Si ya tienes la guía de un práctico (por ejemplo, el instructivo Sim Zone 1), **Desde una guía de simulación** la lee y propone una o más estaciones. Un práctico de una hora suele dar varias: una por técnica, y a veces una estación escrita con las preguntas teóricas.
+
+1. Sube la guía en Word (.docx) o PDF con texto. El análisis tarda cerca de un minuto.
+2. Revisa las propuestas. Cada una indica qué se **tomó de la guía** (normalmente la pauta, los desempeños y los insumos), qué **redactó la IA** (instrucciones al estudiante, guía del evaluador, preguntas) y qué **falta completar**. Los avisos en amarillo marcan inconsistencias de la guía, como un puntaje total que no coincide con la suma de los criterios.
+3. **Revisar y crear** abre la propuesta en el Constructor como borrador. Corrige lo necesario y guarda: recién ahí se crean la estación y su pauta.
+4. Vuelve a las propuestas para crear las demás; las ya creadas quedan marcadas.
+
+Ten en cuenta:
+
+- Nada se guarda solo, y lo que redacta la IA debe revisarlo un docente: una guía describe una clase guiada y una estación es un examen individual.
+- Antes de enviar el texto al asistente se quitan nombre, RUT, teléfono y correo del docente. La guía no queda guardada en la plataforma. No subas documentos con datos de pacientes o estudiantes reales.
+- Sólo la ofrecen los roles que diseñan estaciones (administración del ECOE y coeditor), y sólo si la instalación tiene configurado el asistente.
+
 ### Modo kiosco
 
 Las estaciones con formulario o multimedia usan una tablet. Se vinculan desde **Kioscos** (ver sección 9).

@@ -11,6 +11,13 @@ import { canEditStations } from "@/lib/permissions";
 import { defaultRouteForRole } from "@/lib/routes";
 import { useApi } from "@/hooks/use-api";
 import { StatusNotice } from "@/components/forms";
+import {
+  describeGuideSources,
+  guideStationToStationLike,
+  loadGuideSession,
+  markGuideStationCreated,
+  type GuideStationSuggestion,
+} from "@/lib/guide-draft";
 import { SectionCard } from "@/components/section-card";
 import { StationIdentityStep } from "./identity-step";
 import { InstrumentStep, StudentFormSection } from "./instrument-step";
@@ -49,6 +56,27 @@ const bankStatusOptions = [
   { value: "archivada", label: "Archivada" },
 ];
 
+function GuideDraftNotice({ station }: { station: GuideStationSuggestion }) {
+  const sources = describeGuideSources(station);
+  return (
+    <div role="status" className="mb-4 space-y-1 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+      <p>
+        <strong>Borrador propuesto por la IA a partir de una guía.</strong> Aún no está guardado: revisa
+        cada paso, corrige lo que haga falta y guarda.{" "}
+        <Link href="/stations/from-guide" className="font-semibold underline">
+          Ver las demás propuestas
+        </Link>
+      </p>
+      {sources.fromGuide.length ? <p>Tomado de la guía: {sources.fromGuide.join(", ")}.</p> : null}
+      {sources.fromAi.length ? <p>Redactado por la IA, revísalo: {sources.fromAi.join(", ")}.</p> : null}
+      {sources.missing.length ? <p>Falta completar: {sources.missing.join(", ")}.</p> : null}
+      {station.warnings.map((warning, index) => (
+        <p key={index}>⚠ {warning}</p>
+      ))}
+    </div>
+  );
+}
+
 export default function StationBuilderPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -66,6 +94,15 @@ export default function StationBuilderPage() {
   const useBankStationId = Number(searchParams.get("useBankStationId") ?? "");
   const isUsingBankStation =
     builderScope === "ecoe" && Number.isFinite(useBankStationId) && useBankStationId > 0;
+  // Borrador propuesto por la IA desde una guía de simulación
+  // (/stations/from-guide). Sólo aplica al crear una estación del ECOE.
+  const guideStationParam = searchParams.get("guideStation");
+  const guideStationIndex = guideStationParam === null ? -1 : Number(guideStationParam);
+  const isUsingGuide =
+    builderScope === "ecoe" && !isEditing && Number.isInteger(guideStationIndex) && guideStationIndex >= 0;
+  const [guideStation, setGuideStation] = useState<GuideStationSuggestion | null>(null);
+  const guideAppliedRef = useRef(false);
+  const [guideSaved, setGuideSaved] = useState(false);
   const { data: templates } = useApi(
     () => api.templates(eventId) as Promise<Record<string, unknown>[]>,
     [authenticated, eventId],
@@ -799,6 +836,35 @@ export default function StationBuilderPage() {
   }, [applyStationLikeData, builderScope, isEditing, isUsingBankStation, selectedBankStation]);
 
   useEffect(() => {
+    if (!isUsingGuide || guideAppliedRef.current || !eventId || stations === null) {
+      return;
+    }
+    guideAppliedRef.current = true;
+    const suggestion = loadGuideSession(eventId)?.result.stations[guideStationIndex];
+    if (!suggestion) {
+      setMessage("La propuesta de la guía ya no está disponible. Vuelve a subir la guía.");
+      return;
+    }
+    applyStationLikeData(guideStationToStationLike(suggestion));
+    if (suggestion.instrument) {
+      // La pauta propuesta se carga como pauta nueva: se crea recién al guardar.
+      setInstrumentDraft({
+        name: suggestion.instrument.name,
+        tool_type: suggestion.instrument.tool_type,
+        free_observation: true,
+        items: suggestion.instrument.items.map((item) => ({
+          label: item.label,
+          score_per_item: String(item.score_per_item),
+        })),
+      });
+      setAssessmentMode("create");
+    }
+    // Nada de esto está guardado: el Constructor debe mostrarlo como pendiente.
+    setSavedSnapshot("");
+    setGuideStation(suggestion);
+  }, [applyStationLikeData, eventId, guideStationIndex, isUsingGuide, stations]);
+
+  useEffect(() => {
     if (expandedSection === null || pendingScrollSectionRef.current !== expandedSection) {
       return;
     }
@@ -836,6 +902,8 @@ export default function StationBuilderPage() {
         : "Nueva estación del banco"
       : isUsingBankStation
         ? "Desde banco hacia ECOE"
+        : isUsingGuide
+          ? "Propuesta desde una guía"
         : isEditing
           ? "Editando estación del ECOE"
           : "Nueva estación del ECOE";
@@ -871,6 +939,16 @@ export default function StationBuilderPage() {
         <div role="status" className="mb-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
           Esta estación tiene {mirrorCount === 1 ? "un espejo" : `${mirrorCount} espejos`} en otro circuito: lo
           que guardes aquí se copia automáticamente.
+        </div>
+      ) : null}
+      {guideStation ? (
+        <GuideDraftNotice station={guideStation} />
+      ) : guideSaved ? (
+        <div role="status" className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          Estación creada a partir de la guía.{" "}
+          <Link href="/stations/from-guide" className="font-semibold underline">
+            Volver a las demás propuestas
+          </Link>
         </div>
       ) : null}
       {/* Barra fija de contexto: siempre se ve qué estación se edita,
@@ -1073,6 +1151,11 @@ export default function StationBuilderPage() {
             const createdStation = (await api.createStation(
               payload,
             )) as Record<string, unknown>;
+            if (isUsingGuide) {
+              markGuideStationCreated(eventId, guideStationIndex);
+              setGuideStation(null);
+              setGuideSaved(true);
+            }
             setStations((current) => [...(current ?? []), createdStation]);
             setMessage(
               "Estación creada correctamente. Ya puedes seguir editándola y cargar recursos si hace falta.",

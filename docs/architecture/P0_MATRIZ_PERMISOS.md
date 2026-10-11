@@ -42,6 +42,7 @@ Fecha: 2026-06-29 · última revisión: 2026-10-09 (filas nuevas de octubre y co
 | Invitar/asignar miembro al ECOE | Si | No | No | No | No | No |
 | Estaciones | Si | Si | Lectura | No | Via `/evaluator/context` [^ctx] | No |
 | Circuitos espejo (crear, sincronizar, eliminar) | Si | Si | No | No | No | No |
+| Estaciones sugeridas desde una guia (IA, `/station-guide/*`) | Si | Si | No | No | No | No |
 | Enlaces de kiosco (emitir, revocar) | Si | No | Si | No | No | No |
 | Instrumentos/plantillas/pacientes | Si | Si | Lectura | No | Via `/evaluator/context` [^ctx] | Via `/student/access` [^ctx] |
 | Pilotaje | Si | Si | Crear/ver | No | No | No |
