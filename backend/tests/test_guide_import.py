@@ -210,6 +210,8 @@ class TestNormalization:
         # Clave que no es una de las opciones: se descarta y se avisa.
         assert questions[1]["correct_option"] is None
         assert any("pregunta 2" in warning for warning in box["warnings"])
+        # Sin evaluador, la guía del evaluador no es un pendiente.
+        assert "guía del evaluador" not in box["missing"]
         assert box["requires_deferred_grading"] is True
         assert box["max_score"] == 6
 
