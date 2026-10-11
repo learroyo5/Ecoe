@@ -1,6 +1,6 @@
 """Station management, templates, instruments, patients, bank, pilotage routes."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -45,7 +45,7 @@ from app.services.authorization import (
     ADMIN_EVENT_ROLE_CODES,
     ensure_event_access,
 )
-from app.services import content_bank
+from app.services import content_bank, guide_import
 from app.services.instruments import (
     apply_tool_patch,
     ensure_tool_editable,
@@ -731,6 +731,68 @@ def update_station_bank_status(
     db.commit()
     db.refresh(bank_station)
     return bank_station
+
+
+# ── Estaciones sugeridas desde una guía de simulación ───────────────────
+# La IA propone; no escribe nada. El docente revisa cada propuesta en el
+# Constructor y la estación se crea por el POST /stations de siempre.
+
+STATION_DESIGN_ROLES = ("admin_ecoe", "coeditor_docente")
+
+
+@router.get("/station-guide/status")
+def station_guide_status(user=Depends(require_roles(*STATION_DESIGN_ROLES))):
+    return {
+        "enabled": guide_import.guide_import_enabled(),
+        "max_size_mb": guide_import.MAX_GUIDE_SIZE_BYTES // (1024 * 1024),
+    }
+
+
+@router.post("/station-guide/suggest", status_code=202)
+async def suggest_stations_from_guide(
+    ecoe_event_id: int,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user=Depends(require_roles(*STATION_DESIGN_ROLES)),
+):
+    ensure_event_access(db, user, ecoe_event_id,
+                        RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
+    if not guide_import.guide_import_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="El asistente de IA no está configurado en esta instalación.",
+        )
+    content = await file.read(guide_import.MAX_GUIDE_SIZE_BYTES + 1)
+    filename = (file.filename or "guia")[:255]
+    try:
+        guide_text, truncated = guide_import.prepare_guide_text(filename, content)
+        job_id = guide_import.create_job(user.email, filename)
+    except guide_import.GuideImportError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    # Se audita quién usó el asistente y con qué archivo; la guía no se guarda.
+    db.add(AuditLog(
+        user_email=user.email, action="suggest_stations_from_guide",
+        target_type="ECOEEvent", target_id=str(ecoe_event_id),
+        payload={"filename": filename, "bytes": len(content), "chars_sent": len(guide_text)},
+    ))
+    db.commit()
+    background_tasks.add_task(guide_import.run_job, job_id, guide_text, truncated)
+    return {"job_id": job_id, "status": "processing"}
+
+
+@router.get("/station-guide/jobs/{job_id}")
+def station_guide_job(job_id: str, user=Depends(require_roles(*STATION_DESIGN_ROLES))):
+    job = guide_import.get_job(job_id, user.email)
+    if not job:
+        raise HTTPException(status_code=404, detail="Análisis no encontrado o vencido. Sube la guía otra vez.")
+    return {
+        "job_id": job_id,
+        "status": job["status"],
+        "filename": job["filename"],
+        "result": job["result"],
+        "error": job["error"],
+    }
 
 
 # ── Stations ────────────────────────────────────────────────────────────

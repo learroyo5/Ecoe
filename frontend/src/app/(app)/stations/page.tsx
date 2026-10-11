@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
 import { useECOE } from "@/lib/auth";
-import { canAccessStationArea } from "@/lib/permissions";
+import { canAccessStationArea, canEditStations } from "@/lib/permissions";
 import { stationStatusLabel, stationTypeLabel } from "@/lib/labels";
 import { defaultRouteForRole } from "@/lib/routes";
 import { useApi } from "@/hooks/use-api";
@@ -43,6 +43,13 @@ export default function StationsPage() {
   const { data, loading, error, setData } = useApi(
     () => api.stations(eventId) as Promise<Record<string, unknown>[]>,
     [eventId, authenticated],
+  );
+  // "Desde una guía" sólo se ofrece a quien diseña estaciones y si la
+  // instalación tiene configurado el asistente de IA.
+  const canEdit = canEditStations(user?.role, eventRoles);
+  const { data: guideStatus } = useApi(
+    () => (canEdit ? api.stationGuideStatus().catch(() => null) : Promise.resolve(null)),
+    [authenticated, canEdit],
   );
   const confirm = useConfirm();
   const { locked: structureLocked } = useStructureLock();
@@ -191,6 +198,11 @@ export default function StationsPage() {
           <Link href="/station-bank" className="btn-secondary">
             Banco de estaciones
           </Link>
+          {canEdit && guideStatus?.enabled && !structureLocked ? (
+            <Link href="/stations/from-guide" className="btn-secondary">
+              Desde una guía de simulación
+            </Link>
+          ) : null}
           {originalCircuits.length === 1 && stations.length > 0 ? (
             <button
               type="button"
