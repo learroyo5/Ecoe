@@ -11,7 +11,8 @@ from app.models.entities import EvaluatorRecord, Student, StudentResponse
 from app.models.enums import ECOEStatus, RoleCode, SessionMode
 from app.schemas.common import Page, StudentCreate, StudentRead, StudentStatusUpdate
 from app.services.dependencies import get_current_user, require_roles
-from app.utils.files import parse_tabular_file
+from app.utils.files import MAX_IMPORT_FILE_BYTES
+from app.services.student_import import apply_import_plan, build_import_plan, read_roster
 from app.services.authorization import ensure_event_access
 from app.utils.helpers import (
     format_ecoe_number,
@@ -79,13 +80,18 @@ def create_student(
     ensure_event_not_frozen(db, payload.ecoe_event_id, "agregar estudiantes")
     rut = normalize_rut(payload.rut)
     email = normalize_email(payload.email)
-    existing = db.scalar(
-        select(Student).where(Student.ecoe_event_id == payload.ecoe_event_id, Student.rut == rut)
+    # Se compara en forma canónica: «12.345.678-9» y «12345678-9» son el mismo.
+    existing = any(
+        normalize_rut(other) == rut
+        for other in db.scalars(
+            select(Student.rut).where(Student.ecoe_event_id == payload.ecoe_event_id)
+        ).all()
     )
     if existing:
         raise HTTPException(status_code=400, detail="Ya existe un estudiante con ese RUT en este ECOE")
-    student = Student(**payload.model_dump(exclude={"rut", "email", "ecoe_number"}),
+    student = Student(**payload.model_dump(exclude={"rut", "email", "ecoe_number", "registration_number"}),
                       rut=rut, email=email,
+                      registration_number=(payload.registration_number or "").strip()[:32] or None,
                       ecoe_number=next_student_ecoe_number(db, payload.ecoe_event_id))
     db.add(student)
     db.flush()
@@ -218,74 +224,47 @@ def renumber_students(
 @router.post("/students/import")
 async def import_students(
     ecoe_event_id: int,
+    dry_run: bool = False,
+    distribution: str | None = Query(default=None, pattern="^(file|halves|first)$"),
+    use_list_numbers: bool | None = None,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user=Depends(require_roles("admin_ecoe", "coeditor_docente")),
 ):
+    """Carga la nómina desde la plantilla o desde el listado oficial de curso.
+
+    Con ``dry_run`` devuelve el plan (qué se cargaría, con qué número y en
+    qué circuito) sin escribir nada; la carga real aplica ese mismo plan.
+    """
     ensure_event_access(db, user, ecoe_event_id,
                         RoleCode.admin_ecoe.value, RoleCode.coeditor_docente.value)
     ensure_event_not_frozen(db, ecoe_event_id, "importar estudiantes")
-    rows = await parse_tabular_file(file)
-
-    # Check that required columns exist
-    detected_columns = list(rows[0].keys()) if rows else []
-    expected = {"rut", "correo"}
-    # Accept both Spanish and English column names
-    col_rut = "rut" if "rut" in detected_columns else None
-    col_email = "correo" if "correo" in detected_columns else ("email" if "email" in detected_columns else None)
-
-    if not col_rut or not col_email:
-        return {
-            "imported": 0,
-            "skipped": 0,
-            "skipped_rut_duplicate": 0,
-            "skipped_missing_data": 0,
-            "error": True,
-            "detail": f"El archivo no tiene las columnas requeridas. Columnas detectadas: {detected_columns}. Se espera al menos: rut, correo (o email).",
-            "detected_columns": detected_columns,
-        }
-
-    imported: list = []
-    skipped_rut_duplicate = 0
-    skipped_missing_data = 0
-    next_number = next_student_ecoe_number(db, ecoe_event_id)
-    next_numeric_value = int(re.sub(r"\D", "", next_number) or 0)
-    next_width = len(re.sub(r"\D", "", next_number))
-    existing_ruts = {
-        normalize_rut(rut)
-        for rut in db.scalars(select(Student.rut).where(Student.ecoe_event_id == ecoe_event_id)).all()
+    content = await file.read(MAX_IMPORT_FILE_BYTES + 1)
+    roster = read_roster(file.filename or "", content)
+    plan = build_import_plan(
+        db, ecoe_event_id, roster,
+        distribution=distribution, use_list_numbers=use_list_numbers,
+    )
+    counts = plan["counts"]
+    summary = {
+        "skipped_rut_duplicate": counts.get("ya_cargado", 0) + counts.get("repetido", 0),
+        "skipped_missing_data": counts.get("sin_rut", 0) + counts.get("sin_correo", 0)
+        + counts.get("sin_nombre", 0),
     }
-    for row in rows:
-        rut = normalize_rut(row.get("rut"))
-        if not rut or rut in existing_ruts:
-            skipped_missing_data += 1 if not rut else 0
-            skipped_rut_duplicate += 1 if rut else 0
-            continue
-        email = normalize_email(row.get("correo", row.get("email", "")))
-        if not email:
-            skipped_missing_data += 1
-            continue
-        student = Student(
-            ecoe_event_id=ecoe_event_id,
-            name=row.get("nombre", row.get("name", "")),
-            last_name=row.get("apellidos", row.get("last_name", "")),
-            rut=rut,
-            email=email,
-            ecoe_number=format_ecoe_number(next_numeric_value, next_width),
-            group_name=row.get("grupo", row.get("group_name", "Grupo 1")),
-            circuit_name=row.get("circuito", row.get("circuit_name", "Circuito A")),
-        )
-        db.add(student)
-        imported.append(student)
-        existing_ruts.add(rut)
-        next_numeric_value += 1
+    summary["skipped"] = summary["skipped_rut_duplicate"] + summary["skipped_missing_data"]
+    if dry_run:
+        return {"dry_run": True, "imported": 0, **summary, **plan}
+    imported = apply_import_plan(db, ecoe_event_id, plan)
     audit_change(db, user, "import_students", "ECOEEvent", ecoe_event_id,
-                 {"ecoe_event_id": ecoe_event_id, "imported": len(imported)})
-    db.commit()
-    total_skipped = skipped_rut_duplicate + skipped_missing_data
+                 {"ecoe_event_id": ecoe_event_id, "imported": len(imported),
+                  "filename": (file.filename or "")[:255], "source": plan["source"],
+                  "distribution": plan["distribution"], "per_circuit": plan["per_circuit"],
+                  "use_list_numbers": plan["use_list_numbers"]})
+    commit_or_conflict(db, "La nómina cambió mientras se importaba. Vuelve a cargar el archivo.")
     return {
+        "dry_run": False,
         "imported": len(imported),
-        "skipped": total_skipped,
-        "skipped_rut_duplicate": skipped_rut_duplicate,
-        "skipped_missing_data": skipped_missing_data,
+        **summary,
+        "per_circuit": plan["per_circuit"],
+        "with_warnings": plan["with_warnings"],
     }

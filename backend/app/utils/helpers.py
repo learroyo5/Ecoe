@@ -17,8 +17,48 @@ from app.utils.clock import utcnow_naive  # noqa: F401 — re-exported for exist
 
 # ── Normalization helpers ───────────────────────────────────────────────
 
-def normalize_rut(value: str | None) -> str:
-    return str(value or "").strip().lower()
+_RUT_SHAPE = re.compile(r"^(\d{6,8})-?([\dk])$")
+
+
+def rut_check_digit(body: str) -> str:
+    """Dígito verificador (módulo 11) del cuerpo numérico de un RUT."""
+    total = 0
+    factor = 2
+    for digit in reversed(body):
+        total += int(digit) * factor
+        factor = 2 if factor == 7 else factor + 1
+    remainder = 11 - (total % 11)
+    return {11: "0", 10: "k"}.get(remainder, str(remainder))
+
+
+def normalize_rut(value: str | None, dv: str | None = None) -> str:
+    """Forma canónica de un RUT: ``12345678-k`` (sin puntos, guion, minúscula).
+
+    Acepta ``12.345.678-K``, ``12345678-k`` y cuerpo + ``dv`` en columnas
+    separadas (listados oficiales). Un valor sin guion sólo se parte en
+    cuerpo + dígito si el dígito calza: ``12345678`` puede ser un cuerpo sin
+    verificador y no se le inventa uno. Lo que no tiene forma de RUT
+    (pasaporte, identificador provisorio) se conserva tal cual, en minúscula.
+    """
+    text = re.sub(r"[.\s]", "", str(value or "")).lower()
+    dv_text = re.sub(r"[.\s]", "", str(dv or "")).lower()
+    if not text:
+        return ""
+    if dv_text and text.isdigit():
+        return f"{text.lstrip('0') or '0'}-{dv_text}"
+    match = _RUT_SHAPE.match(text)
+    if not match:
+        return text
+    body, digit = match.group(1).lstrip("0") or "0", match.group(2)
+    if "-" in text or rut_check_digit(body) == digit:
+        return f"{body}-{digit}"
+    return text
+
+
+def rut_is_valid(value: str | None) -> bool:
+    """True si ``value`` (ya canónico) es un RUT con dígito verificador correcto."""
+    match = re.match(r"^(\d{6,8})-([\dk])$", str(value or ""))
+    return bool(match) and rut_check_digit(match.group(1)) == match.group(2)
 
 
 def normalize_email(value: str | None) -> str:

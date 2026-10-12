@@ -63,7 +63,7 @@ El ECOE sigue un ciclo con autoridad en el backend:
 - Estaciones con el Constructor (identidad, pauta, instrucciones, recursos), o desde el banco.
 - **Estaciones desde una guía de simulación**: se sube la guía de un práctico (.docx o PDF) y la IA propone una o más estaciones como borrador para revisar. Opcional: requiere `ANTHROPIC_API_KEY` en el `.env` del entorno.
 - **Circuitos espejo**: se diseña un circuito y la plataforma crea su copia idéntica para otro piso o sala; las estaciones espejo no se editan por separado.
-- Nómina de estudiantes (manual o Excel/CSV) y equipo (evaluadores, correctores, coordinación, cronometrador) con invitación por correo.
+- Nómina de estudiantes: alta manual, plantilla Excel/CSV o el **listado oficial de curso** tal como se descarga, con vista previa y reparto por circuito y equipo (evaluadores, correctores, coordinación, cronometrador) con invitación por correo.
 - Biblioteca reutilizable: banco de estaciones, plantillas, instrumentos y pacientes simulados.
 
 **Preparar**

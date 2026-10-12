@@ -1275,6 +1275,23 @@ def export_results_excel(db: Session, ecoe_event_id: int) -> bytes:
     consolidated, _, _ = read_results(db, ecoe_event_id)
     meta_df = pd.DataFrame(_metadata_rows(db, ecoe_event_id), columns=["campo", "valor"])
     consolidated_df = pd.DataFrame(consolidated)
+    # La matrícula no es parte del acta congelada: se agrega sólo a la planilla,
+    # para poder cruzar las notas con el sistema de la universidad.
+    registrations = {
+        student_id: registration
+        for student_id, registration in db.execute(
+            select(Student.id, Student.registration_number).where(
+                Student.ecoe_event_id == ecoe_event_id,
+                Student.registration_number.is_not(None),
+            )
+        ).all()
+    }
+    if registrations and "student_id" in consolidated_df.columns:
+        position = list(consolidated_df.columns).index("student_id") + 1
+        consolidated_df.insert(
+            position, "matricula",
+            [registrations.get(student_id, "") for student_id in consolidated_df["student_id"]],
+        )
     station_df = pd.DataFrame(
         _station_score_rows(db, ecoe_event_id), columns=_STATION_SCORE_COLUMNS
     )

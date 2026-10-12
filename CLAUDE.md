@@ -131,6 +131,15 @@ El ciclo de vida del ECOE (`borrador → en_configuracion → listo_para_pilotaj
 - Roles: `admin_ecoe` y `coeditor_docente` (no `coordinador_operativo`). Sin `ANTHROPIC_API_KEY` el endpoint responde 503 y la UI no ofrece la opción. Modelo en `GUIDE_AI_MODEL`.
 - Los tests reemplazan `request_station_suggestions`; nunca se llama al modelo real.
 
+### Carga de la nómina
+
+`backend/app/services/student_import.py`. `POST /students/import` acepta la plantilla propia y el **listado oficial de curso** sin modificar: `read_roster` busca la fila de títulos dentro de las primeras filas, reconoce alias de columnas (`COLUMN_ALIASES`), une RUT + DV y apellido paterno + materno, y lee asignatura/sección del encabezado (no los profesores). `build_import_plan` decide por fila estado, circuito y Número ECOE; `dry_run=true` devuelve ese plan sin escribir y la carga real aplica **el mismo plan**.
+
+- RUT: `helpers.normalize_rut` es la forma canónica (`12345678-k`) y la clave de comparación; un dígito verificador que no calza **avisa pero no bloquea** (pasaportes).
+- Circuito: `distribution` = `halves` (por defecto si el ECOE tiene más de un circuito: partes iguales en orden de lista), `file` (columna del archivo) o `first`.
+- Número ECOE = correlativo de la lista sólo si el ECOE no tiene estudiantes y la lista lo trae limpio; si no, continúa la numeración.
+- `students.registration_number` (matrícula) se agrega como columna a la hoja `consolidado` del Excel de resultados, fuera del acta congelada.
+
 ### Candados por estado (PROC-5)
 
 `backend/app/services/event_lock.py`: la **estructura** (estaciones, formularios, multimedia, tiempos/circuito del evento, borrar/depurar/renumerar estudiantes) queda bloqueada desde `publicado` (`ensure_structure_editable`); con el evento `cerrado`/`archivado` no cambia nada, tampoco equipo ni nómina (`ensure_event_not_frozen`). En `en_ejecucion` sí se puede agregar un estudiante rezagado y reasignar equipo. Los cambios de estructura escriben `AuditLog` (`audit_change`). Espejo en frontend: `components/structure-lock-notice.tsx`.
