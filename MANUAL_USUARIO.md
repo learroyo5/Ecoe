@@ -164,20 +164,23 @@ En Resultados, cada estación aparece una vez con todos los estudiantes y el pro
 
 ### Carga masiva
 
-En **Estudiantes**, descarga la plantilla (Excel o CSV), complétala y súbela:
+En **Estudiantes** puedes subir dos tipos de archivo:
 
-| Columna | Obligatoria | Descripción |
-|---|---|---|
-| nombre | Sí | |
-| apellidos | Sí | |
-| rut | Sí | Con guion y dígito verificador |
-| correo | Sí | |
-| grupo | No | Por defecto «Grupo 1» |
-| circuito | No | Por defecto «Circuito A». En espejo, indica el de cada estudiante |
+- El **listado oficial de curso** de la universidad, tal como se descarga (Excel con encabezado de asignatura y sección, y las columnas CORRELATIVO, RUT, DV, REGISTRO, AP.PATERNO, AP.MATERNO, NOMBRES, EMAIL). No hay que modificarlo.
+- La **plantilla** de la plataforma (Excel o CSV), con las columnas `nombre`, `apellidos`, `rut` y `correo`; `grupo` y `circuito` son opcionales.
 
-El **Número ECOE** se asigna solo (E001, E002…). Al terminar se informa cuántos se importaron y cuántos se omitieron por RUT duplicado o datos faltantes.
+Al elegir el archivo aparece una **vista previa** y todavía no se guarda nada:
 
-También hay alta manual, uno a uno.
+- Qué estudiantes se cargan, con su Número ECOE, RUT, matrícula y circuito.
+- Qué filas se omiten y por qué: ya están en el ECOE, están repetidas en el archivo, o les falta el RUT o un correo válido.
+- **Circuito**: si el ECOE tiene circuito espejo, se reparten en partes iguales según el orden de la lista (con 52 estudiantes, del 1 al 26 al Circuito A y del 27 al 52 al B). Puedes cambiarlo a «Todos a Circuito A». Si el archivo trae columna `circuito`, se respeta.
+- **Número ECOE**: si el ECOE aún no tiene estudiantes, se usa el correlativo de la lista (el 7 de la lista es el E007), para que la lista impresa sirva el día del examen. Si ya hay estudiantes —por ejemplo, al subir una segunda sección— los nuevos continúan la numeración.
+
+**Cargar N estudiantes** confirma; **Cancelar** descarta.
+
+Sobre el RUT: se guarda siempre en el mismo formato (`12345678-9`) y se compara sin puntos ni guion, así nadie queda duplicado por estar escrito distinto. Si el dígito verificador no calza, el estudiante se carga igual pero con un aviso para revisarlo (puede ser un pasaporte).
+
+La **matrícula** (columna REGISTRO) queda guardada y sale en la planilla de resultados, para cruzar las notas con el sistema de la universidad.
 
 ### Acciones
 

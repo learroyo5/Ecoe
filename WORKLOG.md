@@ -24,10 +24,23 @@ Guia corta para retomar trabajo sin reconstruir contexto desde cero.
 
 - Produccion: `https://app.ecoe.cl` y `https://ecoe.drnotus.cl` (mismo backend). Demo: `https://demo.ecoe.cl` (mismas imagenes, base propia). Landing: `https://ecoe.cl`.
 - Entrada por tunel de Cloudflare; despliegue con `./scripts/deploy.sh` (produccion + demo).
-- Esquema en la revision Alembic `x4y5z6a7b8c9`. 545 tests backend, 143 frontend, e2e 5/5.
+- Esquema en produccion: revision Alembic `x4y5z6a7b8c9` (la rama `feat/importar-lista-oficial` agrega `y5z6a7b8c9d0`).
 - La base de produccion tiene un solo ECOE de prueba, en pilotaje, con dos circuitos armados a mano (rehacer como espejo antes de publicar).
 - Credenciales: cada entorno en su `.env` (`backend/.env`, `demo.env`); nunca en git.
 - Siguiente: pruebas del usuario sobre el nucleo. Prioridades en `NEXT_STEPS.md`.
+
+## Sesion 2026-10-12 — Carga del listado oficial de curso
+
+Rama `feat/importar-lista-oficial` (sin mergear ni desplegar). **Trae migracion** `y5z6a7b8c9d0` (`students.registration_number`): respaldar produccion antes de desplegar.
+
+- `services/student_import.py`: lee el listado oficial UCT sin tocarlo y la plantilla propia; vista previa (`dry_run`) y carga con el mismo plan.
+- RUT canonico y comparacion sin puntos ni guion (`helpers.normalize_rut`); DV invalido avisa, no bloquea.
+- Reparto por mitades entre circuitos (decision del usuario), Numero ECOE = correlativo de la lista cuando el ECOE parte vacio, matricula guardada y exportada.
+- Frontend: `students/student-import.tsx` reemplaza la carga directa por vista previa + confirmacion.
+- Verificado: 603 backend (PostgreSQL, con la migracion), 151 frontend, e2e, y recorrido en navegador con un listado ficticio. El listado real de MED1118 se leyo completo (52 de 52 con RUT valido) sin cargarlo en ninguna base.
+- Los RUT ya guardados no se reescriben; se comparan en forma canonica.
+
+La funcion de guias con IA se mergeo y desplego el 2026-10-11 (probada contra el modelo real con las dos guias de ejemplo).
 
 ## Sesion 2026-10-11 — Estaciones desde una guia de simulacion (IA)
 

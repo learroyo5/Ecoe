@@ -186,6 +186,8 @@ class Student(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     last_name: Mapped[str] = mapped_column(String(128), nullable=False)
     rut: Mapped[str] = mapped_column(String(32), nullable=False)
+    # Matrícula / número de registro del listado oficial de curso (opcional).
+    registration_number: Mapped[str | None] = mapped_column(String(32))
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     ecoe_number: Mapped[str] = mapped_column(String(32), nullable=False)
     group_name: Mapped[str] = mapped_column(String(64), nullable=False)

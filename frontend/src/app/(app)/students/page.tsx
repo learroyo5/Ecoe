@@ -7,7 +7,8 @@ import { useECOE } from "@/lib/auth";
 import { useApi } from "@/hooks/use-api";
 import { useConfirm } from "@/components/confirm-provider";
 import { DataTable } from "@/components/data-table";
-import { FileImport, QuickForm, StatusNotice } from "@/components/forms";
+import { QuickForm, StatusNotice } from "@/components/forms";
+import { StudentImport } from "./student-import";
 import { StructureLockNotice } from "@/components/structure-lock-notice";
 import { SectionCard } from "@/components/section-card";
 
@@ -32,95 +33,41 @@ export default function StudentsPage() {
     <div className="space-y-6">
       <SectionCard title="Gestión de estudiantes" subtitle="Carga masiva por Excel/CSV y alta manual">
         <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-          <FileImport
-            label="Importar estudiantes desde archivo"
+          <StudentImport
+            eventId={eventId}
             helper={
               <div className="space-y-4">
                 <div className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4">
-                  <p className="text-sm font-semibold text-blue-900">Como preparar tu archivo</p>
-                  <ol className="mt-2 list-inside list-decimal space-y-1 text-xs leading-5 text-blue-800">
-                    <li>Descarga la plantilla Excel o CSV usando los botones de abajo.</li>
-                    <li>Abre el archivo y completa una fila por cada estudiante.</li>
-                    <li>Los unicos campos obligatorios son: <strong>nombre, apellidos, rut, correo</strong>.</li>
-                    <li>El <strong>Número ECOE</strong> se asigna automáticamente; puedes dejarlo vacío.</li>
-                    <li>El <strong>correo</strong> es el email del estudiante (no necesita ser un usuario del sistema).</li>
-                    <li>Los estudiantes con <strong>RUT duplicado</strong> dentro del mismo ECOE serán omitidos.</li>
-                  </ol>
+                  <p className="text-sm font-semibold text-blue-900">Qué archivo subir</p>
+                  <ul className="mt-2 list-inside list-disc space-y-1 text-xs leading-5 text-blue-800">
+                    <li>
+                      El <strong>listado oficial de curso</strong> de la universidad, tal como se descarga
+                      (Excel con RUT, DV, registro, apellidos, nombres y email). No hay que modificarlo.
+                    </li>
+                    <li>
+                      O la <strong>plantilla</strong> de abajo, con las columnas nombre, apellidos, rut y
+                      correo (grupo y circuito son opcionales).
+                    </li>
+                    <li>
+                      Antes de guardar verás una <strong>vista previa</strong>: quiénes se cargan, con qué
+                      número y en qué circuito, y qué filas se omiten.
+                    </li>
+                    <li>Quien ya está en el ECOE (mismo RUT) no se duplica.</li>
+                  </ul>
                 </div>
-
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Columnas del archivo</p>
-                  <div className="mt-2 overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-slate-100 text-left text-slate-500">
-                          <th className="pb-1 pr-3 font-semibold">Columna</th>
-                          <th className="pb-1 pr-3 font-semibold">Obligatorio</th>
-                          <th className="pb-1 font-semibold">Descripción</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-50">
-                        <tr><td className="py-1 pr-3 font-mono text-slate-700">nombre</td><td className="py-1 pr-3 text-emerald-600">Sí</td><td className="py-1 text-slate-500">Nombre del estudiante</td></tr>
-                        <tr><td className="py-1 pr-3 font-mono text-slate-700">apellidos</td><td className="py-1 pr-3 text-emerald-600">Sí</td><td className="py-1 text-slate-500">Apellidos completos</td></tr>
-                        <tr><td className="py-1 pr-3 font-mono text-slate-700">rut</td><td className="py-1 pr-3 text-emerald-600">Sí</td><td className="py-1 text-slate-500">RUT con guion y dígito verificador (ej: 11111111-1)</td></tr>
-                        <tr><td className="py-1 pr-3 font-mono text-slate-700">correo</td><td className="py-1 pr-3 text-emerald-600">Sí</td><td className="py-1 text-slate-500">Correo electrónico del estudiante</td></tr>
-                        <tr><td className="py-1 pr-3 font-mono text-slate-700">numero_ecoe</td><td className="py-1 pr-3 text-slate-400">No</td><td className="py-1 text-slate-500">Se asigna automáticamente de forma correlativa</td></tr>
-                        <tr><td className="py-1 pr-3 font-mono text-slate-700">grupo</td><td className="py-1 pr-3 text-slate-400">No</td><td className="py-1 text-slate-500">Nombre del grupo (default: Grupo 1)</td></tr>
-                        <tr><td className="py-1 pr-3 font-mono text-slate-700">circuito</td><td className="py-1 pr-3 text-slate-400">No</td><td className="py-1 text-slate-500">Nombre del circuito (default: Circuito A)</td></tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
                 <div className="flex flex-wrap gap-2">
-                  <a
-                    href="/plantilla_estudiantes.xlsx"
-                    download
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700"
-                  >
-                    <svg className="size-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a1 1 0 011 1v7.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L9 10.586V3a1 1 0 011-1z"/><path fillRule="evenodd" d="M3 14a2 2 0 012-2h10a2 2 0 012 2v2a2 2 0 01-2 2H5a2 2 0 01-2-2v-2zm2 0v2h10v-2H5z" clipRule="evenodd"/></svg>
+                  <a href="/plantilla_estudiantes.xlsx" download className="btn-secondary px-3 py-2 text-xs">
                     Plantilla Excel
                   </a>
-                  <a
-                    href="/plantilla_estudiantes.csv"
-                    download
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                  >
-                    <svg className="size-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a1 1 0 011 1v7.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L9 10.586V3a1 1 0 011-1z"/><path fillRule="evenodd" d="M3 14a2 2 0 012-2h10a2 2 0 012 2v2a2 2 0 01-2 2H5a2 2 0 01-2-2v-2zm2 0v2h10v-2H5z" clipRule="evenodd"/></svg>
+                  <a href="/plantilla_estudiantes.csv" download className="btn-secondary px-3 py-2 text-xs">
                     Plantilla CSV
                   </a>
                 </div>
               </div>
             }
-            onImport={async (file) => {
-              const response = (await api.importStudents(eventId, file)) as {
-                imported?: number;
-                skipped?: number;
-                skipped_rut_duplicate?: number;
-                skipped_missing_data?: number;
-                error?: boolean;
-                detail?: string;
-                detected_columns?: string[];
-              };
+            onImported={async (summary) => {
               await refresh();
-
-              // If the import returned a structural error (e.g. wrong columns)
-              if (response.error && response.detail) {
-                setMessage(response.detail);
-                return response.detail;
-              }
-
-              const imported = response.imported ?? 0;
-              const dupes = response.skipped_rut_duplicate ?? 0;
-              const missing = response.skipped_missing_data ?? 0;
-              const parts: string[] = [`${imported} estudiantes importados.`];
-              if (dupes > 0) parts.push(`${dupes} omitidos por RUT duplicado.`);
-              if (missing > 0) parts.push(`${missing} omitidos por falta de datos (rut o correo vacío).`);
-              if (imported === 0 && (dupes > 0 || missing > 0)) {
-                parts.push("Verifica que las columnas del archivo se llamen exactamente: nombre, apellidos, rut, correo.");
-              }
-              setMessage(parts.join(" "));
-              return parts.join(" ");
+              setMessage(summary);
             }}
           />
           <QuickForm
@@ -128,6 +75,7 @@ export default function StudentsPage() {
               { name: "name", label: "Nombre" },
               { name: "last_name", label: "Apellidos" },
               { name: "rut", label: "RUT" },
+              { name: "registration_number", label: "Matrícula", description: "Opcional." },
               { name: "email", label: "Correo", type: "email", description: "Email del estudiante (no requiere cuenta en el sistema)." },
               {
                 name: "group_name",
@@ -248,6 +196,7 @@ export default function StudentsPage() {
               { key: "name", label: "Nombre" },
               { key: "last_name", label: "Apellidos" },
               { key: "rut", label: "RUT" },
+              { key: "registration_number", label: "Matrícula" },
               { key: "email", label: "Correo" },
               { key: "group_name", label: "Grupo" },
               {

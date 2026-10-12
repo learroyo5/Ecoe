@@ -21,6 +21,7 @@ import type {
   StationTemplate,
   Student,
   StudentAccessContext,
+  StudentImportPlan,
 } from "@/lib/types";
 
 import type { GuideSuggestionResult } from "@/lib/guide-draft";
@@ -178,10 +179,19 @@ export const api = {
     request<{ removed: number }>(`/students/${eventId}/deduplicate-rut`, { method: "POST" }),
   renumberStudents: (eventId: number) =>
     request<{ updated: number }>(`/students/${eventId}/renumber`, { method: "POST" }),
-  importStudents: (eventId: number, file: File) => {
+  // Con `dryRun` devuelve el plan de carga (vista previa) sin guardar nada.
+  importStudents: (
+    eventId: number,
+    file: File,
+    options: { dryRun?: boolean; distribution?: string; useListNumbers?: boolean } = {},
+  ) => {
     const formData = new FormData();
     formData.append("file", file);
-    return request<ImportResult>(`/students/import?ecoe_event_id=${eventId}`, { method: "POST", body: formData });
+    const params = new URLSearchParams({ ecoe_event_id: String(eventId) });
+    if (options.dryRun) params.set("dry_run", "true");
+    if (options.distribution) params.set("distribution", options.distribution);
+    if (options.useListNumbers !== undefined) params.set("use_list_numbers", String(options.useListNumbers));
+    return request<StudentImportPlan>(`/students/import?${params.toString()}`, { method: "POST", body: formData });
   },
 
   // Staff

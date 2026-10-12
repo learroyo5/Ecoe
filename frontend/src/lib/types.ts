@@ -43,6 +43,7 @@ export type Student = {
   name: string;
   last_name: string;
   rut: string;
+  registration_number?: string | null;
   email: string;
   ecoe_number: string;
   group_name: string;
@@ -50,6 +51,42 @@ export type Student = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+};
+
+export type StudentImportRow = {
+  row: number;
+  status: "nuevo" | "ya_cargado" | "repetido" | "sin_rut" | "sin_correo" | "sin_nombre";
+  name: string;
+  last_name: string;
+  rut: string;
+  registration_number: string;
+  email: string;
+  ecoe_number: string;
+  group_name: string;
+  circuit_name: string;
+  warnings: string[];
+};
+
+// Respuesta de POST /students/import. Con dry_run trae el plan completo; la
+// carga real sólo el resumen.
+export type StudentImportPlan = {
+  dry_run: boolean;
+  imported: number;
+  skipped: number;
+  skipped_rut_duplicate: number;
+  skipped_missing_data: number;
+  with_warnings: number;
+  per_circuit: Record<string, number>;
+  source?: { format: string; course?: string; section?: string; year?: string; semester?: string; school?: string };
+  rows?: StudentImportRow[];
+  total_rows?: number;
+  to_import?: number;
+  circuits?: string[];
+  distribution?: string;
+  distribution_options?: string[];
+  can_use_list_numbers?: boolean;
+  use_list_numbers?: boolean;
+  existing_students?: number;
 };
 
 export type StaffAssignment = {

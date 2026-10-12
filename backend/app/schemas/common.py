@@ -98,6 +98,7 @@ class StudentBase(BaseModel):
     name: str
     last_name: str
     rut: str
+    registration_number: str | None = None
     email: EmailStr
     ecoe_number: str = ""
     group_name: str
